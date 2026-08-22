@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "name": "pi-subagents",
+      "status": "audited",
+      "version": "0.54.0",
+      "license": "MIT",
+      "integrity": "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww==",
+      "purpose": "Focused subagents and orchestration primitives."
+    },
+    {
+      "name": "pi-mcp-adapter",
+      "status": "audited",
+      "version": "2.27.0",
+      "license": "MIT",
+      "integrity": "sha512-IM9dfGhou5Q5AJqwkm1kW1+WXyMsvL53GEO4JVYukzvTxNPHn2b+Zi49+JAnOhlaOpEq5vEodUSJXmpghik+lw==",
+      "purpose": "Pi-native MCP transport and tool exposure."
+    },
+    {
+      "name": "@juicesharp/rpiv-ask-user-question",
+      "status": "audited",
+      "version": "2.7.0",
+      "license": "MIT",
+      "integrity": "sha512-5amOEZ8RfSZJUTahYSajsulHGGKHaYwEQAd+J/f7gNPq7MkzgxOUCZzvwM9V8hTmFISHWNQFq1pv0ZIky8aTNw==",
+      "purpose": "Structured user questions in interactive workflows."
+    },
+    {
+      "name": "@gotgenes/pi-permission-system",
+      "status": "audited",
+      "version": "27.0.0",
+      "license": "MIT",
+      "integrity": "sha512-5WpP2z0Ohxipi2Myfg4ArchXgtMX15HbJl7b2YMK3iB2sRIm57hDXt86e0zsVX+sGOVrDLCkKtLoqMkrPS1rwQ==",
+      "purpose": "Explicit allow, ask, and deny policy enforcement."
+    },
+    {
+      "name": "pi-web-access",
+      "status": "audited",
+      "version": "0.24.1",
+      "license": "MIT",
+      "integrity": "sha512-kNYVqPT2wbWbDKD2mfMsrCie1DyVsE/KYNVgpp7yqq072sG2PciKAB28PG4h0+klSO3MtCFRoPWAyA+l0CS7/A==",
+      "purpose": "Web research and retrieval capabilities."
+    },
+    {
+      "name": "@narumitw/pi-goal",
+      "status": "audited",
+      "version": "0.53.0",
+      "license": "MIT",
+      "integrity": "sha512-cmWowqAzlkgRLKYp2hFnUZvEEs6G6aGjEOazBWNW88T7LB9cd/AzOFOGYvA1QxxsGtIdOuFRZJVhfAJDGsAcjw==",
+      "purpose": "Durable goal execution and progress tracking."
+    }
+  ]
+}
