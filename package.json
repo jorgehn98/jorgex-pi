@@ -13,11 +13,14 @@
   ],
   "files": [
     "contract",
+    "skills",
+    "snapshot/agents",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
     "build": "pnpm test",
+    "snapshot:generate": "node scripts/generate-snapshot.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "pi": {

@@ -7,7 +7,7 @@
     "schemaVersion": 1,
     "manifestVersion": 1,
     "ownership": "package",
-    "resources": [],
+    "resources": ["contract/parity.v1.json", "skills", "snapshot/agents"],
     "externalWrites": []
   },
   "packageName": "jorgex-pi",
@@ -15,6 +15,7 @@
   "requiredPiResourceKinds": ["extensions", "skills", "prompts", "themes"],
   "foundationResources": [],
   "foundationSchemas": {},
+  "forbiddenTarPaths": ["package/scripts/generate-snapshot.mjs"],
   "requiredComponentStatus": "audited",
   "requiredComponents": [
     "pi-subagents",
