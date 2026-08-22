@@ -1,0 +1,21 @@
+{
+  "contractPath": "contract/jorgex-pi.v1.json",
+  "componentInventoryPath": "contract/components.v1.json",
+  "assetManifestPath": "contract/assets.v1.json",
+  "schemaVersion": 1,
+  "assetManifestVersion": 1,
+  "packageName": "jorgex-pi",
+  "sourcePrefix": "npm:jorgex-pi@",
+  "requiredPiResourceKinds": ["extensions", "skills", "prompts", "themes"],
+  "foundationResources": [],
+  "requiredCommands": ["status", "doctor", "models", "sync", "cleanup"],
+  "allowedComponentStatuses": ["planned", "audited", "active"],
+  "requiredComponents": [
+    "pi-subagents",
+    "pi-mcp-adapter",
+    "@juicesharp/rpiv-ask-user-question",
+    "@gotgenes/pi-permission-system",
+    "pi-web-access",
+    "@narumitw/pi-goal"
+  ]
+}

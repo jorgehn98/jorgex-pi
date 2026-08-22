@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "name": "pi-subagents",
+      "status": "planned",
+      "purpose": "Focused subagents and orchestration primitives."
+    },
+    {
+      "name": "pi-mcp-adapter",
+      "status": "planned",
+      "purpose": "Pi-native MCP transport and tool exposure."
+    },
+    {
+      "name": "@juicesharp/rpiv-ask-user-question",
+      "status": "planned",
+      "purpose": "Structured user questions in interactive workflows."
+    },
+    {
+      "name": "@gotgenes/pi-permission-system",
+      "status": "planned",
+      "purpose": "Explicit allow, ask, and deny policy enforcement."
+    },
+    {
+      "name": "pi-web-access",
+      "status": "planned",
+      "purpose": "Web research and retrieval capabilities."
+    },
+    {
+      "name": "@narumitw/pi-goal",
+      "status": "planned",
+      "purpose": "Durable goal execution and progress tracking."
+    }
+  ]
+}

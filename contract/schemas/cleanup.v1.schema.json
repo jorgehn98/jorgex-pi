@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jorgex.dev/schemas/jorgex-pi/cleanup.v1.schema.json",
+  "title": "JorgeX Pi cleanup result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "ok", "removed", "preserved", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "ok": { "type": "boolean" },
+    "removed": { "type": "array", "items": { "type": "string" } },
+    "preserved": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

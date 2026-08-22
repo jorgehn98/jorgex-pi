@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "jorgex-pi",
+    "version": "0.0.0-development",
+    "source": "npm:jorgex-pi@0.0.0-development"
+  },
+  "pi": {
+    "minimumVersion": "0.84.2",
+    "maximumVersion": "0.84.2",
+    "testedVersions": [
+      "0.84.2"
+    ]
+  },
+  "capabilities": [
+    "foundation-contract-v1"
+  ],
+  "assets": {
+    "manifestVersion": 1,
+    "manifestPath": "contract/assets.v1.json"
+  },
+  "components": {
+    "inventoryPath": "contract/components.v1.json"
+  },
+  "schemas": {
+    "status": "contract/schemas/status.v1.schema.json",
+    "doctor": "contract/schemas/doctor.v1.schema.json",
+    "models": "contract/schemas/models.v1.schema.json",
+    "sync": "contract/schemas/sync.v1.schema.json",
+    "cleanup": "contract/schemas/cleanup.v1.schema.json"
+  }
+}

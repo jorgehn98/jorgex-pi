@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jorgex.dev/schemas/jorgex-pi/sync.v1.schema.json",
+  "title": "JorgeX Pi sync result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "ok", "changed", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "ok": { "type": "boolean" },
+    "changed": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}
