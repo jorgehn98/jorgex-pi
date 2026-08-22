@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 
-test("the packed foundation survives Pi 0.84.2 install, reload, repeat, and remove", () => {
+test("the packed foundation survives install, reload, repeat, and remove on its contract-tested Pi", () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-lifecycle-"));
   const agentDir = join(sandbox, "agent");
   const homeDir = join(sandbox, "home");
@@ -70,7 +70,12 @@ test("the packed foundation survives Pi 0.84.2 install, reload, repeat, and remo
   );
 
   try {
-    const pi = resolveLocalPi();
+    const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
+    assert.ok(Array.isArray(contract.pi?.testedVersions), "contract.pi.testedVersions must provide the lifecycle Pi version");
+    assert.equal(contract.pi.testedVersions.length, 1, "the lifecycle requires one tested Pi authority");
+    const [expectedVersion] = contract.pi.testedVersions;
+    assert.match(expectedVersion, /^\d+\.\d+\.\d+$/, "the lifecycle Pi authority must be an exact semver");
+    const pi = resolveLocalPi(expectedVersion);
     runPi(pi, ["--version"], isolatedEnv, cwd);
 
     execFileSync("pnpm", ["pack", "--pack-destination", packDir], {
@@ -129,13 +134,19 @@ function runPi(pi, args, env, cwd) {
   });
 }
 
-function resolveLocalPi() {
+function resolveLocalPi(expectedVersion) {
+  const packageManifest = readJson(join(root, "package.json"));
+  assert.equal(
+    packageManifest.devDependencies?.["@earendil-works/pi-coding-agent"],
+    expectedVersion,
+    "the Pi development dependency must match contract.pi.testedVersions[0]",
+  );
   const manifestPath = join(root, "node_modules", "@earendil-works", "pi-coding-agent", "package.json");
-  assert.ok(existsSync(manifestPath), "Pi 0.84.2 must be provisioned as an exact local development dependency");
+  assert.ok(existsSync(manifestPath), `Pi ${expectedVersion} must be provisioned as an exact local development dependency`);
   const manifest = readJson(manifestPath);
-  assert.equal(manifest.version, "0.84.2", "the local Pi development dependency must stay pinned to 0.84.2");
+  assert.equal(manifest.version, expectedVersion, "the installed local Pi package must match contract.pi.testedVersions[0]");
   const entry = join(dirname(manifestPath), manifest.bin?.pi ?? "");
-  assert.ok(manifest.bin?.pi && existsSync(entry), `the local Pi 0.84.2 entrypoint must exist at ${relative(root, entry)}`);
+  assert.ok(manifest.bin?.pi && existsSync(entry), `the local Pi ${expectedVersion} entrypoint must exist at ${relative(root, entry)}`);
   return { command: process.execPath, entry };
 }
 

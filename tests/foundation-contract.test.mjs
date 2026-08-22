@@ -34,23 +34,34 @@ test("contract v1 describes a pinned, closed compatibility boundary", () => {
   assert.equal(contract.package?.name, expected.packageName);
   assert.equal(contract.package?.version, packageManifest.version);
   assert.equal(contract.package?.source, `${expected.sourcePrefix}${packageManifest.version}`);
-  assertClosedPiCompatibility(contract.pi);
+  assert.ok(Array.isArray(contract.pi?.testedVersions), "contract.pi.testedVersions must be an array");
+  assert.equal(contract.pi.testedVersions.length, 1, "contract.pi.testedVersions must contain one exact authority");
+  const [testedVersion] = contract.pi.testedVersions;
+  assert.match(testedVersion, /^\d+\.\d+\.\d+$/, "the tested Pi authority must be an exact semver");
+  assert.equal(contract.pi.minimumVersion, testedVersion, "pi.minimumVersion must equal the tested Pi authority");
+  assert.equal(contract.pi.maximumVersion, testedVersion, "pi.maximumVersion must equal the tested Pi authority");
+  assert.equal(
+    packageManifest.devDependencies?.["@earendil-works/pi-coding-agent"],
+    testedVersion,
+    "the local Pi development dependency must match the tested Pi authority exactly",
+  );
   assertNonEmptyStringArray(contract.capabilities, "contract capabilities");
-  assert.equal(contract.assets?.manifestVersion, expected.assetManifestVersion);
+  assert.equal(contract.assets?.manifestVersion, expected.foundationAssetManifest.manifestVersion);
   assert.equal(contract.assets?.manifestPath, expected.assetManifestPath);
   assert.equal(contract.components?.inventoryPath, expected.componentInventoryPath);
-  const assetManifest = readJson(join(root, expected.assetManifestPath), "foundation asset manifest");
-  assert.equal(assetManifest.schemaVersion, expected.schemaVersion);
-  assert.equal(assetManifest.manifestVersion, expected.assetManifestVersion);
-  assert.deepEqual(
-    assetManifest.resources,
-    expected.foundationResources,
-    "contract/assets.v1.json resources must be empty in foundation",
-  );
   assert.deepEqual(
     contract.schemas,
     expected.foundationSchemas,
     "foundation must not publish schemas for commands that PR01 does not implement",
+  );
+});
+
+test("foundation asset ownership is explicit and closed", () => {
+  const assetManifest = readJson(join(root, expected.assetManifestPath), "foundation asset manifest");
+  assert.deepEqual(
+    assetManifest,
+    expected.foundationAssetManifest,
+    "contract/assets.v1.json must fix the complete PR01 ownership boundary",
   );
 });
 
@@ -127,15 +138,6 @@ function readTarJson(tarball, entry) {
   } catch (error) {
     assert.fail(`${entry} in packed artifact is not valid JSON (${error.message})`);
   }
-}
-
-function assertClosedPiCompatibility(pi) {
-  assert.ok(pi && typeof pi === "object", "contract must describe tested Pi compatibility");
-  assert.match(pi.minimumVersion ?? "", /^\d+\.\d+\.\d+$/, "pi.minimumVersion must be exact semver");
-  assert.match(pi.maximumVersion ?? "", /^\d+\.\d+\.\d+$/, "pi.maximumVersion must be exact semver");
-  assertNonEmptyStringArray(pi.testedVersions, "pi.testedVersions");
-  assert.ok(pi.testedVersions.includes(pi.minimumVersion), "minimum Pi version must have been tested");
-  assert.ok(pi.testedVersions.includes(pi.maximumVersion), "maximum Pi version must have been tested");
 }
 
 function assertAuditedComponent(component, name) {

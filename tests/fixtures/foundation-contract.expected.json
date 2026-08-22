@@ -3,7 +3,13 @@
   "componentInventoryPath": "contract/components.v1.json",
   "assetManifestPath": "contract/assets.v1.json",
   "schemaVersion": 1,
-  "assetManifestVersion": 1,
+  "foundationAssetManifest": {
+    "schemaVersion": 1,
+    "manifestVersion": 1,
+    "ownership": "package",
+    "resources": [],
+    "externalWrites": []
+  },
   "packageName": "jorgex-pi",
   "sourcePrefix": "npm:jorgex-pi@",
   "requiredPiResourceKinds": ["extensions", "skills", "prompts", "themes"],
