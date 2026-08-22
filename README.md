@@ -42,7 +42,7 @@ Regenerate only from a local JorgeX Stack checkout that contains the pinned comm
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" pnpm snapshot:generate
 ```
 
-The generator reads committed Git objects at the exact SHA; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, and `contract/parity.v1.json` deterministically. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
+The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, and `contract/parity.v1.json` deterministically and publishes the three together as one transaction. If publication fails, the prior generation is restored. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
 
 Run the explicit cross-repository parity check against the same checkout:
 
@@ -50,7 +50,7 @@ Run the explicit cross-repository parity check against the same checkout:
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" node --test tests/cross-repo/snapshot-parity.test.mjs
 ```
 
-Vendored files are preserved byte-for-byte. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical commit; the SHA-256 entries in `contract/parity.v1.json` are the parity authority. The development-only generator under `scripts/` is excluded from the published tarball.
+Skills are preserved byte-for-byte. Agent sources are normalized to LF for portable output, so the parity manifest records separate source and output SHA-256 hashes. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical skills; the hashes in `contract/parity.v1.json` are the parity authority. The development-only generator and transaction modules under `scripts/` are excluded from the published tarball.
 
 The package is currently `private` with the development version `0.0.0-development`. There is therefore no valid installation command for users yet. After a reviewed release is published, installation will use Pi's package manager with an exact version:
 
