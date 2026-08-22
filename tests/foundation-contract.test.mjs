@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
@@ -87,10 +88,12 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     const packedFiles = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
     assert.equal(packedFiles.length, 1, "pnpm pack must produce exactly one tarball");
     const tarball = join(packDir, packedFiles[0]);
-    const entries = new Set(execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean));
-    const packageManifest = readTarJson(tarball, "package/package.json");
-    const contract = readTarJson(tarball, `package/${expected.contractPath}`);
-    readTarJson(tarball, `package/${expected.componentInventoryPath}`);
+    const archive = readTgz(tarball);
+    const entries = new Set(archive.keys());
+    const packageManifest = readPackedJson(archive, "package/package.json");
+    const contract = readPackedJson(archive, `package/${expected.contractPath}`);
+    const parity = readPackedJson(archive, "package/contract/parity.v1.json");
+    readPackedJson(archive, `package/${expected.componentInventoryPath}`);
     const requiredPaths = new Set([
       "package/package.json",
       `package/${expected.contractPath}`,
@@ -102,6 +105,7 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
       ),
     ]);
     for (const path of requiredPaths) assertTarPath(entries, path);
+    assertPackedParityTargets(archive, entries, parity);
     for (const path of expected.forbiddenTarPaths) {
       assert.equal(entries.has(path), false, `packed artifact must exclude build-only path ${path}`);
     }
@@ -126,13 +130,72 @@ function readJson(path, label) {
   }
 }
 
-function readTarJson(tarball, entry) {
-  const bytes = execFileSync("tar", ["-xOzf", tarball, entry], { encoding: "utf8" });
-  try {
-    return JSON.parse(bytes);
-  } catch (error) {
-    assert.fail(`${entry} in packed artifact is not valid JSON (${error.message})`);
+function assertPackedParityTargets(archive, entries, parity) {
+  const expectedTargets = new Map();
+  for (const agent of parity.agents) expectedTargets.set(`package/${agent.targetPath}`, agent.outputSha256);
+  for (const skill of parity.skills) {
+    for (const file of skill.files) expectedTargets.set(`package/${skill.targetPath}/${file.path}`, file.sha256);
   }
+  assert.equal(expectedTargets.size, 111, "the packed snapshot must contain the approved 15 agents and 96 skill files");
+
+  const actualOwnedFiles = [...entries]
+    .filter((path) => !path.endsWith("/") && (path.startsWith("package/snapshot/agents/") || path.startsWith("package/skills/")))
+    .sort();
+  assert.deepEqual(actualOwnedFiles, [...expectedTargets.keys()].sort(), "packed owned roots must contain every parity target and no untracked extras");
+
+  for (const [path, expectedHash] of expectedTargets) {
+    const bytes = archive.get(path);
+    assert.ok(bytes, `${path} must be present in the packed artifact`);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), expectedHash, `${path} packed bytes must match parity`);
+  }
+}
+
+function readPackedJson(archive, path) {
+  const bytes = archive.get(path);
+  assert.ok(bytes, `packed artifact is missing ${path}`);
+  try {
+    return JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    assert.fail(`${path} in packed artifact is not valid JSON (${error.message})`);
+  }
+}
+
+function readTgz(path) {
+  const tar = gunzipSync(readFileSync(path));
+  const files = new Map();
+  let offset = 0;
+  let nextPath;
+  while (offset + 512 <= tar.length) {
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const size = Number.parseInt(readTarString(header, 124, 12).trim() || "0", 8);
+    const type = String.fromCharCode(header[156] || 48);
+    const body = tar.subarray(offset + 512, offset + 512 + size);
+    const prefix = readTarString(header, 345, 155);
+    const headerPath = [prefix, readTarString(header, 0, 100)].filter(Boolean).join("/");
+    if (type === "x") nextPath = readPaxPath(body) ?? nextPath;
+    else if (type === "L") nextPath = body.toString("utf8").replace(/\0.*$/s, "");
+    else {
+      const entryPath = nextPath ?? headerPath;
+      nextPath = undefined;
+      if (type === "0" || type === "\0") files.set(entryPath, Buffer.from(body));
+    }
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
+
+function readTarString(header, start, length) {
+  return header.subarray(start, start + length).toString("utf8").replace(/\0.*$/s, "");
+}
+
+function readPaxPath(bytes) {
+  const text = bytes.toString("utf8");
+  for (const record of text.match(/\d+ [^\n]*\n/g) ?? []) {
+    const field = record.slice(record.indexOf(" ") + 1, -1);
+    if (field.startsWith("path=")) return field.slice("path=".length);
+  }
+  return undefined;
 }
 
 function assertAuditedComponent(component, name) {
