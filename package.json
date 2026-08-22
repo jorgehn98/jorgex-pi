@@ -14,7 +14,7 @@
   "files": [
     "contract",
     "skills",
-    "snapshot",
+    "snapshot/agents",
     "LICENSE",
     "README.md"
   ],
