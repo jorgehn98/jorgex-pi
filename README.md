@@ -2,17 +2,18 @@
 
 `jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their Pi-specific representation and lifecycle.
 
-PR01 is a private development foundation, not an end-user release. It publishes a versioned machine-readable contract and reserves Pi's native resource lists, but implements no runtime capabilities yet.
+This private development package is not an end-user release. It publishes the PR01 foundation contract plus a dormant, versioned snapshot of the reviewed JorgeX Stack assets, but implements no runtime capabilities yet.
 
 ## Current boundary
 
-| Area | PR01 state |
+| Area | Current state |
 | --- | --- |
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
 | Pi resources | `extensions`, `skills`, `prompts`, and `themes` are declared as empty arrays. |
-| Package assets | `contract/assets.v1.json` declares no resources and no external writes. |
+| Canonical snapshot | 15 agents and 17 complete skill trees (96 files) from JorgeX Stack commit `6d2b98b1728e275bf97920f9712dd4b7928de6a7`. |
+| Package assets | `contract/assets.v1.json` owns the parity manifest, skills, and agent snapshot; it declares no external writes. |
 | Companions | Supply-chain metadata is audited, but no companion is installed, bundled, or activated. |
-| Runtime commands | PR01 publishes neither a runner nor command schemas. Their behavior and schemas are designed together in PR05. |
+| Runtime commands | The package publishes neither a runner nor command schemas. Their behavior and schemas are designed together in PR06. |
 
 Component status is deliberate:
 
@@ -33,6 +34,24 @@ pnpm pack
 
 `pnpm install --frozen-lockfile` provisions `@earendil-works/pi-coding-agent@0.84.2` as an exact development dependency. The lifecycle test invokes that local Pi entrypoint with isolated home, cache, workspace, and `PI_CODING_AGENT_DIR` paths, so verification does not depend on a globally installed Pi. Pi itself is not bundled in the tarball and is not a runtime dependency of `jorgex-pi`.
 
+### Refresh and verify the canonical snapshot
+
+Regenerate only from a local JorgeX Stack checkout that contains the pinned commit:
+
+```bash
+JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" pnpm snapshot:generate
+```
+
+The generator reads committed Git objects at the exact SHA; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, and `contract/parity.v1.json` deterministically. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
+
+Run the explicit cross-repository parity check against the same checkout:
+
+```bash
+JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" node --test tests/cross-repo/snapshot-parity.test.mjs
+```
+
+Vendored files are preserved byte-for-byte. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical commit; the SHA-256 entries in `contract/parity.v1.json` are the parity authority. The development-only generator under `scripts/` is excluded from the published tarball.
+
 The package is currently `private` with the development version `0.0.0-development`. There is therefore no valid installation command for users yet. After a reviewed release is published, installation will use Pi's package manager with an exact version:
 
 ```bash
@@ -43,12 +62,12 @@ That `pi install` invocation is the narrow package-manager exception: Pi must re
 
 ## Paths and ownership
 
-Pi may relocate its agent directory through `PI_CODING_AGENT_DIR`. Future lifecycle code must honor the value selected by Pi instead of assuming a fixed user path. PR01 does not write there or anywhere outside the package.
+Pi may relocate its agent directory through `PI_CODING_AGENT_DIR`. Future lifecycle code must honor the value selected by Pi instead of assuming a fixed user path. The current package does not write there or anywhere outside the package.
 
-The ownership boundary is `contract/assets.v1.json`. Only paths explicitly declared as package-owned may later be synchronized or removed; user files and resources owned by other packages remain outside that boundary. The PR01 manifest contains `resources: []` and `externalWrites: []`.
+The ownership boundary is `contract/assets.v1.json`. Only paths explicitly declared as package-owned may later be synchronized or removed; user files and resources owned by other packages remain outside that boundary. The current manifest owns `contract/parity.v1.json`, `skills`, and `snapshot/agents`, while `externalWrites` remains empty.
 
 ## Supply chain and security
 
 `contract/components.v1.json` records the reviewed companion candidates with exact versions and npm `sha512` integrity values. No version floats, no companion dependency is present, and installation performs no live GitHub download. A later PR must separately activate and verify each selected component.
 
-The repository contains no keys, tokens, credentials, or secret placeholders. PR01 adds no runner, command schemas, network integration, hooks, project bootstrap, permission policy, Engram setup, model policy, subagents, web access, goals, custom theme, or startup branding. Those capabilities remain outside this foundation until their dedicated PRs.
+The repository contains no keys, tokens, credentials, or secret placeholders. The snapshot adds no runner, command schemas, network integration, hooks, project bootstrap, permission policy, Engram setup, model policy, active subagents, web access, goals, custom theme, or startup branding. Activation begins in the next capability PR; this snapshot PR only packages reviewed, hash-verifiable bytes.
