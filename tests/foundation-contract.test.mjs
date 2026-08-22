@@ -96,19 +96,14 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
       `package/${expected.contractPath}`,
       `package/${expected.componentInventoryPath}`,
       `package/${expected.assetManifestPath}`,
+      ...expected.foundationAssetManifest.resources.map((path) => `package/${normalizePackagePath(path)}`),
       ...expected.requiredPiResourceKinds.flatMap((kind) =>
         (packageManifest.pi[kind] ?? []).map((path) => `package/${normalizePackagePath(path)}`),
       ),
     ]);
     for (const path of requiredPaths) assertTarPath(entries, path);
-    for (const kind of expected.requiredPiResourceKinds) {
-      if ((packageManifest.pi[kind] ?? []).length === 0) {
-        assert.equal(
-          [...entries].some((entry) => entry.startsWith(`package/${kind}/`)),
-          false,
-          `packed artifact must not contain an undeclared package/${kind}/ directory`,
-        );
-      }
+    for (const path of expected.forbiddenTarPaths) {
+      assert.equal(entries.has(path), false, `packed artifact must exclude build-only path ${path}`);
     }
     const digest = createHash("sha256").update(readFileSync(tarball)).digest("hex");
     assert.match(digest, /^[a-f0-9]{64}$/, "packed artifact must be hashable for release evidence");

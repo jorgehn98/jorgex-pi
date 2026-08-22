@@ -2,6 +2,10 @@
   "schemaVersion": 1,
   "manifestVersion": 1,
   "ownership": "package",
-  "resources": [],
+  "resources": [
+    "contract/parity.v1.json",
+    "skills",
+    "snapshot/agents"
+  ],
   "externalWrites": []
 }

@@ -1,0 +1,619 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/jorgehn98/jorgex-stack",
+    "commit": "6d2b98b1728e275bf97920f9712dd4b7928de6a7"
+  },
+  "agents": [
+    {
+      "name": "backend-analyst",
+      "sourcePath": "stack/agents/backend-analyst.md",
+      "targetPath": "snapshot/agents/backend-analyst.md",
+      "sourceSha256": "2a31f8ce438c1e9e06df122b23a5319bede15e2cb97bcf6f64d53136f6d37419",
+      "outputSha256": "2a31f8ce438c1e9e06df122b23a5319bede15e2cb97bcf6f64d53136f6d37419"
+    },
+    {
+      "name": "code-reviewer",
+      "sourcePath": "stack/agents/code-reviewer.md",
+      "targetPath": "snapshot/agents/code-reviewer.md",
+      "sourceSha256": "a6c87a744fe7974d2d9f72d3ed7dbcaebb8048fe25a8f85137d8e379c2d0f859",
+      "outputSha256": "a6c87a744fe7974d2d9f72d3ed7dbcaebb8048fe25a8f85137d8e379c2d0f859"
+    },
+    {
+      "name": "code-simplifier",
+      "sourcePath": "stack/agents/code-simplifier.md",
+      "targetPath": "snapshot/agents/code-simplifier.md",
+      "sourceSha256": "29cf25cbb9e88661d08fbe92f9fd96cb06f7e3e252e225c045c33b444c3c565a",
+      "outputSha256": "29cf25cbb9e88661d08fbe92f9fd96cb06f7e3e252e225c045c33b444c3c565a"
+    },
+    {
+      "name": "comment-fixer",
+      "sourcePath": "stack/agents/comment-fixer.md",
+      "targetPath": "snapshot/agents/comment-fixer.md",
+      "sourceSha256": "9c333488327fa08e692368d91955999bb7e046a9226f6d47828602eee6a8972b",
+      "outputSha256": "9c333488327fa08e692368d91955999bb7e046a9226f6d47828602eee6a8972b"
+    },
+    {
+      "name": "docs-maintainer",
+      "sourcePath": "stack/agents/docs-maintainer.md",
+      "targetPath": "snapshot/agents/docs-maintainer.md",
+      "sourceSha256": "7565af7338f6fe57b566c9f91ffc88a374f66284f56757b319bcc580c924a94e",
+      "outputSha256": "7565af7338f6fe57b566c9f91ffc88a374f66284f56757b319bcc580c924a94e"
+    },
+    {
+      "name": "engram",
+      "sourcePath": "stack/agents/engram.md",
+      "targetPath": "snapshot/agents/engram.md",
+      "sourceSha256": "6bcf225b75c5c80c0af9e8537c605968c2ba780f36693b5f4d43578cfae51959",
+      "outputSha256": "6bcf225b75c5c80c0af9e8537c605968c2ba780f36693b5f4d43578cfae51959"
+    },
+    {
+      "name": "frontend-analyst",
+      "sourcePath": "stack/agents/frontend-analyst.md",
+      "targetPath": "snapshot/agents/frontend-analyst.md",
+      "sourceSha256": "03cbb4bed5c158b9e13828f19d859a71af2f24218f8ac856e73888af0073a421",
+      "outputSha256": "03cbb4bed5c158b9e13828f19d859a71af2f24218f8ac856e73888af0073a421"
+    },
+    {
+      "name": "implementer",
+      "sourcePath": "stack/agents/implementer.md",
+      "targetPath": "snapshot/agents/implementer.md",
+      "sourceSha256": "2dfb20721c56d1a41fabcca0141267cdd6c35aa3ca8262d9cf59af2c2288515b",
+      "outputSha256": "2dfb20721c56d1a41fabcca0141267cdd6c35aa3ca8262d9cf59af2c2288515b"
+    },
+    {
+      "name": "orchestrator",
+      "sourcePath": "stack/agents/orchestrator.md",
+      "targetPath": "snapshot/agents/orchestrator.md",
+      "sourceSha256": "c9ca061ba2edd4c251f12e6caa0af220eb20ff5f8a1a48139a3262853b4d4928",
+      "outputSha256": "c9ca061ba2edd4c251f12e6caa0af220eb20ff5f8a1a48139a3262853b4d4928"
+    },
+    {
+      "name": "security-auditor",
+      "sourcePath": "stack/agents/security-auditor.md",
+      "targetPath": "snapshot/agents/security-auditor.md",
+      "sourceSha256": "c7ef698e47ee31f5bb55a4d5731446a06df80eb3887678ad648ee9b921e3fb13",
+      "outputSha256": "c7ef698e47ee31f5bb55a4d5731446a06df80eb3887678ad648ee9b921e3fb13"
+    },
+    {
+      "name": "silent-failure-hunter",
+      "sourcePath": "stack/agents/silent-failure-hunter.md",
+      "targetPath": "snapshot/agents/silent-failure-hunter.md",
+      "sourceSha256": "3a3cc65026bafe1735936c416e2f6e1550ed30477b4bff62637fb0db0e106efd",
+      "outputSha256": "3a3cc65026bafe1735936c416e2f6e1550ed30477b4bff62637fb0db0e106efd"
+    },
+    {
+      "name": "test-analyzer",
+      "sourcePath": "stack/agents/test-analyzer.md",
+      "targetPath": "snapshot/agents/test-analyzer.md",
+      "sourceSha256": "5933203d8e98cbe7f185281e3bd98ff91ca9380e75720b4c4e32358b1ecbb4bb",
+      "outputSha256": "5933203d8e98cbe7f185281e3bd98ff91ca9380e75720b4c4e32358b1ecbb4bb"
+    },
+    {
+      "name": "tester",
+      "sourcePath": "stack/agents/tester.md",
+      "targetPath": "snapshot/agents/tester.md",
+      "sourceSha256": "abb59fcdfc9cd4cc61a15235ca3766719124b34ff76d22435f1eb4434f508863",
+      "outputSha256": "abb59fcdfc9cd4cc61a15235ca3766719124b34ff76d22435f1eb4434f508863"
+    },
+    {
+      "name": "translator",
+      "sourcePath": "stack/agents/translator.md",
+      "targetPath": "snapshot/agents/translator.md",
+      "sourceSha256": "4178b4dfaca91872c1f145fd87d1b5d0936335330b90ae25fefd079050c671cc",
+      "outputSha256": "4178b4dfaca91872c1f145fd87d1b5d0936335330b90ae25fefd079050c671cc"
+    },
+    {
+      "name": "type-design-analyzer",
+      "sourcePath": "stack/agents/type-design-analyzer.md",
+      "targetPath": "snapshot/agents/type-design-analyzer.md",
+      "sourceSha256": "c6b46f17855beeeb283825843df0d13a2e71a80d2ebfc40b76939d7897482026",
+      "outputSha256": "c6b46f17855beeeb283825843df0d13a2e71a80d2ebfc40b76939d7897482026"
+    }
+  ],
+  "skills": [
+    {
+      "name": "agent-delegation",
+      "sourcePath": "stack/skills/agent-delegation",
+      "targetPath": "skills/agent-delegation",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "b8c560dbf53b90e70aa7a1ded188ec127566190f35af9e4342d6e97c290f0be4"
+        }
+      ]
+    },
+    {
+      "name": "deploy-to-vercel",
+      "sourcePath": "stack/skills/deploy-to-vercel",
+      "targetPath": "skills/deploy-to-vercel",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "1bd9e88a9638381202ddd3eb123e17d93864719b436a99af4c4de61987469b6e"
+        },
+        {
+          "path": "resources/deploy-codex.sh",
+          "sha256": "18b411e2bfe07778bca11d7f0e1ec9c95e5764011dd2e3838f51066728646855"
+        },
+        {
+          "path": "resources/deploy.sh",
+          "sha256": "418da6ff48c582790799d850a88fd83ca00f2ee00502665caf8dbb06d4dab8b9"
+        }
+      ]
+    },
+    {
+      "name": "diagnose",
+      "sourcePath": "stack/skills/diagnose",
+      "targetPath": "skills/diagnose",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "0bf1c4da48ee40ec4667a3ed241e2cb24237bc3b522d66da68e1e2e36cec848e"
+        },
+        {
+          "path": "scripts/hitl-loop.template.sh",
+          "sha256": "b2932630950e5210075bcd6f850e5accf30c101c5367b29eac3a29b4dd8084c8"
+        }
+      ]
+    },
+    {
+      "name": "find-skills",
+      "sourcePath": "stack/skills/find-skills",
+      "targetPath": "skills/find-skills",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "9a302d721ec053674237e4102392ea70ab9f127bb811b22f6884309d684adb61"
+        }
+      ]
+    },
+    {
+      "name": "lean-code",
+      "sourcePath": "stack/skills/lean-code",
+      "targetPath": "skills/lean-code",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "f53b9754f8f42647c6b0cee99899146a08d0bd1076322197668ec4d19ad60b94"
+        }
+      ]
+    },
+    {
+      "name": "mcp-builder",
+      "sourcePath": "stack/skills/mcp-builder",
+      "targetPath": "skills/mcp-builder",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "14099b9c79d031b9d4b32c736a4e20f2b941f52dd79500532d62d26dd716110c"
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "8a29e1943e04ce4c641a73a8c751b8e84a015d49dd4bfe5ac51c8d8518ccfd5c"
+        },
+        {
+          "path": "reference/evaluation.md",
+          "sha256": "05b9240250a2f81cd937b6cbe53c9d266b6a165318e50f108a015ccb01f54467"
+        },
+        {
+          "path": "reference/mcp_best_practices.md",
+          "sha256": "80fb4369a349447cf18ecdd7494fe7938b6065377e9f08c077cec411093a3007"
+        },
+        {
+          "path": "reference/node_mcp_server.md",
+          "sha256": "708c1b8b4fba366993660f704a18a755fb8f3b4f5368882b80a3a4032832cdde"
+        },
+        {
+          "path": "reference/python_mcp_server.md",
+          "sha256": "2da52f77e675191014ca2e146a4b95aa04d0ca7dd7e2b100322df15ade685e80"
+        },
+        {
+          "path": "scripts/connections.py",
+          "sha256": "9403668a2041568772082a8b334122c1f88daf0541fb393af4522d0094a47a6e"
+        },
+        {
+          "path": "scripts/evaluation.py",
+          "sha256": "49ed1d17cdce5da101b210197740713f49b935c29d4f339542a14b132658e6f7"
+        },
+        {
+          "path": "scripts/example_evaluation.xml",
+          "sha256": "9272b348ddcc4b06ba562367ccd0770e018158c0068ac5116d5e34aaeff8777a"
+        },
+        {
+          "path": "scripts/requirements.txt",
+          "sha256": "1e5cc68aa2497925f254e088578ae566f65f8440b53f4c3589e88dc142c62f89"
+        }
+      ]
+    },
+    {
+      "name": "orchestrator",
+      "sourcePath": "stack/skills/orchestrator",
+      "targetPath": "skills/orchestrator",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "4bd53047ff2d451476a866df1f670c22d2aba5333f1f60999fcc4e9cc879a7a0"
+        }
+      ]
+    },
+    {
+      "name": "playwright-cli",
+      "sourcePath": "stack/skills/playwright-cli",
+      "targetPath": "skills/playwright-cli",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "d8e3e2428103ba39a6fcddaee0dd84f1412b7761580579d3bc54eef1d1e61c7c"
+        },
+        {
+          "path": "references/element-attributes.md",
+          "sha256": "bf19aa4671e0a50a0fefa9c790f39124e803060eefe395042b723c29fcb7faa2"
+        },
+        {
+          "path": "references/playwright-tests.md",
+          "sha256": "ac55b80ad6e8e51a5b713318dbba6c2290733c69dec9f456518898c201651a80"
+        },
+        {
+          "path": "references/request-mocking.md",
+          "sha256": "54e801c9663fc2b6d68ceb058cb1c360724c2499f42acc7852a68e83e5b5f37c"
+        },
+        {
+          "path": "references/running-code.md",
+          "sha256": "d95c539a5990b71d02d8bdf1d9414df16191eb6cff95b0063820518b7a13dcb2"
+        },
+        {
+          "path": "references/session-management.md",
+          "sha256": "cd3e261b8763bf952f1e371b876cb78d054379afec85482f9250633e1b7e6c44"
+        },
+        {
+          "path": "references/storage-state.md",
+          "sha256": "9ac47f9ae4a1aedcd2077f8ac9ab1ba6bee1962cb83ff51adcd36fb6d83b5ec6"
+        },
+        {
+          "path": "references/test-generation.md",
+          "sha256": "227c70e9f8869ab7677ccaa3d4587c17cfd783fcfd60fce75fac451b80687cfb"
+        },
+        {
+          "path": "references/tracing.md",
+          "sha256": "792e0ac7705e56ac48df84c0f5400221ce86107897c671590a64a4ea6a82508e"
+        },
+        {
+          "path": "references/video-recording.md",
+          "sha256": "8555ab5400df0d90e66318aacc0a8a4418fbf872e7463824d55d5c41615abd83"
+        }
+      ]
+    },
+    {
+      "name": "react-doctor",
+      "sourcePath": "stack/skills/react-doctor",
+      "targetPath": "skills/react-doctor",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "b0c1b9e47bd4c37e9d048e8a7bbb358fbf984dff0d9ef9077e9232811ef63e9d"
+        }
+      ]
+    },
+    {
+      "name": "skill-creator",
+      "sourcePath": "stack/skills/skill-creator",
+      "targetPath": "skills/skill-creator",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "14099b9c79d031b9d4b32c736a4e20f2b941f52dd79500532d62d26dd716110c"
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "dcd4803e61e913e6fc27294184cd3a71f09f5e924ff20c8a9a20173e7b3c2bcf"
+        },
+        {
+          "path": "agents/analyzer.md",
+          "sha256": "bf68f4cac5a56c673a928c2e6d619586c5b93ea364026ab37547772cb45a663a"
+        },
+        {
+          "path": "agents/comparator.md",
+          "sha256": "fe1fc9787c495d864c5d6eada47396478572325fde1b33a96d78bf4b849b7a3e"
+        },
+        {
+          "path": "agents/grader.md",
+          "sha256": "57134da0c1a4eea33fbd74a1c9c44aa814f07d6bc64de303edb586f941e5d21a"
+        },
+        {
+          "path": "assets/eval_review.html",
+          "sha256": "ce477dcc74dc1c0d1d3352646a79167b5a63634e936b1019160025065974e452"
+        },
+        {
+          "path": "eval-viewer/generate_review.py",
+          "sha256": "fc9d1b9243fe5ab6012ebd579bd76d0035de1b79fd3b969de114defab26478fb"
+        },
+        {
+          "path": "eval-viewer/viewer.html",
+          "sha256": "a53213426ee1100441d701a3a0d49cda7a842f992d2c36463f4d3cc0258575fa"
+        },
+        {
+          "path": "references/schemas.md",
+          "sha256": "8e8876180a8989b406a4d3edddf875b04cdfd5805cc8616686d552b11ce4455f"
+        },
+        {
+          "path": "scripts/aggregate_benchmark.py",
+          "sha256": "123ef128ea5ccc01a4b1ac212ef5567f21e9c13d3d240609780beeb3200c49aa"
+        },
+        {
+          "path": "scripts/generate_report.py",
+          "sha256": "13df7118a3c50c83c4c3250a606d5f2b20b25a3d44cbc392b3d669ec75281453"
+        },
+        {
+          "path": "scripts/improve_description.py",
+          "sha256": "0dc43232db7ac6361775c894f4a1dbac958cb510c51a1230ff9e7fb30a74a7e8"
+        },
+        {
+          "path": "scripts/package_skill.py",
+          "sha256": "1a33059b0db1ef73375d46d513e5ea81369d2e8838c970597b0d52ddef8d1c0f"
+        },
+        {
+          "path": "scripts/quick_validate.py",
+          "sha256": "67cf5703402013936c8fb75ad6a1afecd8841d45cc5e606b634eb05825fde365"
+        },
+        {
+          "path": "scripts/run_eval.py",
+          "sha256": "43e3b8f80dbf69c343967ba77e268fae991d9fa3ed68b32a0ff02532cd48657f"
+        },
+        {
+          "path": "scripts/run_loop.py",
+          "sha256": "bafdb8e25c740813c735c54bf0489b9e87146da4cf697265927513c5430112d7"
+        },
+        {
+          "path": "scripts/utils.py",
+          "sha256": "3af8ae62c40c73ab712207436a0d9a981e845f25c5a7040229eb189cc8e45bb1"
+        }
+      ]
+    },
+    {
+      "name": "supabase",
+      "sourcePath": "stack/skills/supabase",
+      "targetPath": "skills/supabase",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "2147375d4e070475a66d5960c199f9803ef284426a82bcad88e3e93f0754e678"
+        },
+        {
+          "path": "assets/feedback-issue-template.md",
+          "sha256": "ea211aa174c5a096fe76461f25143b8bc23f3bde3adc9e727cda38218cc8c282"
+        },
+        {
+          "path": "references/skill-feedback.md",
+          "sha256": "09ad94c0291735dfc04c92557c8734fa259ec39e1d56bf2bd5c6a6529d838717"
+        }
+      ]
+    },
+    {
+      "name": "supabase-postgres-best-practices",
+      "sourcePath": "stack/skills/supabase-postgres-best-practices",
+      "targetPath": "skills/supabase-postgres-best-practices",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "10472a05d1433a0020a1daab698e584912d0ad8effacdb92096f4025ba7bd9b2"
+        },
+        {
+          "path": "references/_contributing.md",
+          "sha256": "191e039e7d94764e6073410b513b559f9a594e0fdf0252a30c2a2986df2ab3bc"
+        },
+        {
+          "path": "references/_sections.md",
+          "sha256": "c9e992612b422c7122de0b7542ebc2450db283edaab08cfe86c6d657fcccccd5"
+        },
+        {
+          "path": "references/_template.md",
+          "sha256": "6299954250f212caabe339d752c3e5313a8e07d1a182a4e4b425baee91df1bd2"
+        },
+        {
+          "path": "references/advanced-full-text-search.md",
+          "sha256": "40c2606bbb4c4dce31308f201b24cc7f58c7df05b1d9c6856fe2b888d3b7cf28"
+        },
+        {
+          "path": "references/advanced-jsonb-indexing.md",
+          "sha256": "24cacf6a8bc35901dd566d24502ce8e57f810a5c196b897e61d52726e521d106"
+        },
+        {
+          "path": "references/conn-idle-timeout.md",
+          "sha256": "630588902c00fcec59a5988cc5d042f76dcf2c923a535abfd8c47dca205eaed5"
+        },
+        {
+          "path": "references/conn-limits.md",
+          "sha256": "11b2a67a7c7679cbbc5d807bbb17e69c98484a581d0c8b929c03408f412b81b2"
+        },
+        {
+          "path": "references/conn-pooling.md",
+          "sha256": "88cf086bf98ba865d2e9d0579974e1366b14157619d6a93e7da77be91084e4a5"
+        },
+        {
+          "path": "references/conn-prepared-statements.md",
+          "sha256": "174e9332fe3dda5c99b2b00159fb1915ae36c00bab3a7882c14e73e4344e946e"
+        },
+        {
+          "path": "references/data-batch-inserts.md",
+          "sha256": "531933b82d6a622d0fae29e0ea80be6fe5d78655adf2804c271ea84a1930de37"
+        },
+        {
+          "path": "references/data-n-plus-one.md",
+          "sha256": "21a44905e5b16a42741892ec34bb1bfef124d049b140a76934a9acd0f46f5fc2"
+        },
+        {
+          "path": "references/data-pagination.md",
+          "sha256": "73c9fa10a3d439bedea0e11b640bd25bf30dd50f0d9006cf85baf7c3151543fa"
+        },
+        {
+          "path": "references/data-upsert.md",
+          "sha256": "2612af83b20a2701dde30ef1f8d7efd26b7e9eef84717226b8f038a2d2150ff7"
+        },
+        {
+          "path": "references/lock-advisory.md",
+          "sha256": "c88d259dbf81c3771438f59a165f7eab8acd09999dd370bdf807521c73f35aab"
+        },
+        {
+          "path": "references/lock-deadlock-prevention.md",
+          "sha256": "09aee46f51d7178c8e55fe056cd5a94a64ba2c122fe418e6900cd99f297b2347"
+        },
+        {
+          "path": "references/lock-short-transactions.md",
+          "sha256": "5aa7f61095916986d39644b446cdbcd2bacca7ef698a3bb50b3f82dd60207602"
+        },
+        {
+          "path": "references/lock-skip-locked.md",
+          "sha256": "6c45077f430f29cd9cd8f448c94d578e827e7bd023fcdaf717a756acb116fa4b"
+        },
+        {
+          "path": "references/monitor-explain-analyze.md",
+          "sha256": "4cb67ffbf8e57f2e5b380b0beb4242528b513723ce314a2c2ffcf083bd4203d7"
+        },
+        {
+          "path": "references/monitor-pg-stat-statements.md",
+          "sha256": "89dca99d4e894fcbdcac136be7ad9fbc03d1342904f065c1b198dc9cf495f098"
+        },
+        {
+          "path": "references/monitor-vacuum-analyze.md",
+          "sha256": "2892272011710eb49b3f185ec12f15ce9ce4c365792c672f6e2a9c90da426a1a"
+        },
+        {
+          "path": "references/query-composite-indexes.md",
+          "sha256": "73e42424e671f0266e74fdb220db3196790f69fb43e2b19c7b9483eb4971b554"
+        },
+        {
+          "path": "references/query-covering-indexes.md",
+          "sha256": "daf2a7f0477fb7357b62b5fb5b185b1995a77a186347e45cb780e25e7a7589b6"
+        },
+        {
+          "path": "references/query-index-types.md",
+          "sha256": "472a74f22c2df203bd0154999b3a5a0187cca2ab3d9a3978e305bb7c32f1a282"
+        },
+        {
+          "path": "references/query-missing-indexes.md",
+          "sha256": "91ad8b0ff4365704b4830a7f077c6f140f7140fd5d3ce5cd0b92b160cf9e25f1"
+        },
+        {
+          "path": "references/query-partial-indexes.md",
+          "sha256": "6448982bc8558c6555284958edc331b29239c6a0130e6b4501dd6d4da607a6dd"
+        },
+        {
+          "path": "references/schema-constraints.md",
+          "sha256": "90e8efda3e9e81095e642911ad4aae2809d160f29414338fa997253238f510f8"
+        },
+        {
+          "path": "references/schema-data-types.md",
+          "sha256": "e01b58c14c7f3f65d8ead580b9a4fcf70b83baaab0f9a5f83c569c9fd113e8c8"
+        },
+        {
+          "path": "references/schema-foreign-key-indexes.md",
+          "sha256": "7587713d12a65a212365459b3d39e4717d8a79e4073b10bd62f1054d8192c0dd"
+        },
+        {
+          "path": "references/schema-lowercase-identifiers.md",
+          "sha256": "4bc80f70865f2390872591f326c8a6be6456a0aeb5a7e5a2475d7cd9d43059ab"
+        },
+        {
+          "path": "references/schema-partitioning.md",
+          "sha256": "541e13fbeaf4bb1485c9059d4c9417dbdb766cf16f4237cd63a04ada7ec45b90"
+        },
+        {
+          "path": "references/schema-primary-keys.md",
+          "sha256": "3c8beabef82066f9a0838b926da0885117fd2d9a263aaf84cb5ca9e5f0d400e9"
+        },
+        {
+          "path": "references/security-privileges.md",
+          "sha256": "095909274a4fb43df785d7144cf674eeb40284d2d45628f14af4108737b93663"
+        },
+        {
+          "path": "references/security-rls-basics.md",
+          "sha256": "e04dd1a3a382aafdaaa73fe9f7976352acdde6e90c2a2470d281b94d4f44b096"
+        },
+        {
+          "path": "references/security-rls-performance.md",
+          "sha256": "2e1faeca7d5746e246b1c78f9492fe2a9cfa41c4d7fa1e23c402d58fa18ea014"
+        }
+      ]
+    },
+    {
+      "name": "tdd",
+      "sourcePath": "stack/skills/tdd",
+      "targetPath": "skills/tdd",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "e74169237e1afb45061268465ecbf7981310a0ec73c43f74ba659c35bf5fd72c"
+        },
+        {
+          "path": "deep-modules.md",
+          "sha256": "f2123700bf953db1740625686c75bdd145efd486357c47c6818c869fee657a32"
+        },
+        {
+          "path": "interface-design.md",
+          "sha256": "764c5ff0e3fa6b4ab7095eb65ccc7201e090baf19fa16051dfdb72c06d27417d"
+        },
+        {
+          "path": "mocking.md",
+          "sha256": "a57872244893fc3fa696428cc40baace4ae89b6e55e231837ea3e11e15b11ca3"
+        },
+        {
+          "path": "refactoring.md",
+          "sha256": "54fced22dd1911b7094c3fe7979b7c1a40d40be307482c4adf7dc0588f27d6cc"
+        },
+        {
+          "path": "tests.md",
+          "sha256": "95d2ca239e2ffa2c0562984f31ded559fcaa77265043aaee8309b9d6b9051481"
+        }
+      ]
+    },
+    {
+      "name": "to-issues",
+      "sourcePath": "stack/skills/to-issues",
+      "targetPath": "skills/to-issues",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "90ae1b5a2c4f572cac59d7e6581a85631f2888eafe886b8d24e28abffedc2b80"
+        }
+      ]
+    },
+    {
+      "name": "to-prd",
+      "sourcePath": "stack/skills/to-prd",
+      "targetPath": "skills/to-prd",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "ea15aa78562932b09efea5e6884ad2d943ec4e4508fc90dbed9412dc978df1bd"
+        }
+      ]
+    },
+    {
+      "name": "work-lifecycle",
+      "sourcePath": "stack/skills/work-lifecycle",
+      "targetPath": "skills/work-lifecycle",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "cc034935e0188f3d34d48f0d28761c21e46b16cbf227f4448ba9f486874fe5d1"
+        },
+        {
+          "path": "references/plan-template.md",
+          "sha256": "7bdae7e439c831b59f63a4d7744ee4bb2744252efcebf97851fff5ed21745c13"
+        }
+      ]
+    },
+    {
+      "name": "xreview",
+      "sourcePath": "stack/skills/xreview",
+      "targetPath": "skills/xreview",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "730f3f89b5c5329f395f51d5e0520229bf4b961b0cf061646e5d5fac5a1ee70b"
+        }
+      ]
+    }
+  ]
+}
