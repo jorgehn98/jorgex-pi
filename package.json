@@ -26,5 +26,8 @@
     "prompts": [],
     "themes": []
   },
-  "packageManager": "pnpm@11.22.0"
+  "packageManager": "pnpm@11.22.0",
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.2"
+  }
 }

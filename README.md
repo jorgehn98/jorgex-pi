@@ -12,7 +12,7 @@ PR01 is a private development foundation, not an end-user release. It publishes 
 | Pi resources | `extensions`, `skills`, `prompts`, and `themes` are declared as empty arrays. |
 | Package assets | `contract/assets.v1.json` declares no resources and no external writes. |
 | Companions | Supply-chain metadata is audited, but no companion is installed, bundled, or activated. |
-| Runtime commands | JSON schemas define future contracts; `status`, `doctor`, `models`, `sync`, and cleanup commands are not implemented. |
+| Runtime commands | PR01 publishes neither a runner nor command schemas. Their behavior and schemas are designed together in PR05. |
 
 Component status is deliberate:
 
@@ -30,6 +30,8 @@ pnpm test
 pnpm build
 pnpm pack
 ```
+
+`pnpm install --frozen-lockfile` provisions `@earendil-works/pi-coding-agent@0.84.2` as an exact development dependency. The lifecycle test invokes that local Pi entrypoint with isolated home, cache, workspace, and `PI_CODING_AGENT_DIR` paths, so verification does not depend on a globally installed Pi. Pi itself is not bundled in the tarball and is not a runtime dependency of `jorgex-pi`.
 
 The package is currently `private` with the development version `0.0.0-development`. There is therefore no valid installation command for users yet. After a reviewed release is published, installation will use Pi's package manager with an exact version:
 
@@ -49,4 +51,4 @@ The ownership boundary is `contract/assets.v1.json`. Only paths explicitly decla
 
 `contract/components.v1.json` records the reviewed companion candidates with exact versions and npm `sha512` integrity values. No version floats, no companion dependency is present, and installation performs no live GitHub download. A later PR must separately activate and verify each selected component.
 
-The repository contains no keys, tokens, credentials, or secret placeholders. PR01 adds no network integration, hooks, project bootstrap, permission policy, Engram setup, model policy, subagents, web access, goals, custom theme, or startup branding. Those capabilities remain outside this foundation until their dedicated PRs.
+The repository contains no keys, tokens, credentials, or secret placeholders. PR01 adds no runner, command schemas, network integration, hooks, project bootstrap, permission policy, Engram setup, model policy, subagents, web access, goals, custom theme, or startup branding. Those capabilities remain outside this foundation until their dedicated PRs.

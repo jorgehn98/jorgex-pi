@@ -47,9 +47,11 @@ test("contract v1 describes a pinned, closed compatibility boundary", () => {
     expected.foundationResources,
     "contract/assets.v1.json resources must be empty in foundation",
   );
-  for (const command of expected.requiredCommands) {
-    assert.equal(typeof contract.schemas?.[command], "string", `contract schemas.${command} must name its published JSON schema`);
-  }
+  assert.deepEqual(
+    contract.schemas,
+    expected.foundationSchemas,
+    "foundation must not publish schemas for commands that PR01 does not implement",
+  );
 });
 
 test("component inventory records the approved roadmap without activating future companions", () => {
@@ -57,14 +59,12 @@ test("component inventory records the approved roadmap without activating future
   assert.equal(inventory.schemaVersion, expected.schemaVersion);
   assert.ok(Array.isArray(inventory.components), "component inventory must contain components[]");
   const byName = new Map(inventory.components.map((component) => [component.name, component]));
+  assert.equal(byName.size, inventory.components.length, "component inventory names must be unique");
   assert.deepEqual([...byName.keys()].sort(), [...expected.requiredComponents].sort(), "component inventory must contain exactly the approved core companions");
   for (const name of expected.requiredComponents) {
     const component = byName.get(name);
-    assert.ok(
-      expected.allowedComponentStatuses.includes(component.status),
-      `${name} status must be one of ${expected.allowedComponentStatuses.join(", ")}`,
-    );
-    if (component.status !== "planned") assertAuditedComponent(component, name);
+    assert.equal(component.status, expected.requiredComponentStatus, `${name} must remain audited and inactive in PR01`);
+    assertAuditedComponent(component, name);
   }
 });
 
@@ -85,12 +85,20 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
       `package/${expected.contractPath}`,
       `package/${expected.componentInventoryPath}`,
       `package/${expected.assetManifestPath}`,
-      ...expected.requiredCommands.map((command) => `package/${contract.schemas[command]}`),
       ...expected.requiredPiResourceKinds.flatMap((kind) =>
         (packageManifest.pi[kind] ?? []).map((path) => `package/${normalizePackagePath(path)}`),
       ),
     ]);
     for (const path of requiredPaths) assertTarPath(entries, path);
+    for (const kind of expected.requiredPiResourceKinds) {
+      if ((packageManifest.pi[kind] ?? []).length === 0) {
+        assert.equal(
+          [...entries].some((entry) => entry.startsWith(`package/${kind}/`)),
+          false,
+          `packed artifact must not contain an undeclared package/${kind}/ directory`,
+        );
+      }
+    }
     const digest = createHash("sha256").update(readFileSync(tarball)).digest("hex");
     assert.match(digest, /^[a-f0-9]{64}$/, "packed artifact must be hashable for release evidence");
   } finally {

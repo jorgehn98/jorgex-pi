@@ -8,8 +8,8 @@
   "sourcePrefix": "npm:jorgex-pi@",
   "requiredPiResourceKinds": ["extensions", "skills", "prompts", "themes"],
   "foundationResources": [],
-  "requiredCommands": ["status", "doctor", "models", "sync", "cleanup"],
-  "allowedComponentStatuses": ["planned", "audited", "active"],
+  "foundationSchemas": {},
+  "requiredComponentStatus": "audited",
   "requiredComponents": [
     "pi-subagents",
     "pi-mcp-adapter",
