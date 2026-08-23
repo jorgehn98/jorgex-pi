@@ -130,19 +130,39 @@ test("doctor requires both exact package registration and a ready Engram binary"
   }
 });
 
-test("invalid Pi settings retain a stable path, reason, and remedy in machine output", () => {
-  const sandbox = createSandbox("invalid-settings");
-  const settingsPath = join(sandbox.agentDir, "settings.json");
-  writeFileSync(settingsPath, "{invalid json\n");
-  try {
-    const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
-    assert.equal(status.status, expected.exitCodes.unhealthy);
-    assert.equal(status.json.result.installation.state, "invalid");
-    assert.equal(status.json.result.installation.path, settingsPath);
-    assert.match(status.json.result.installation.reason, /json|parse|invalid/i);
-    assert.match(status.json.error?.remedy ?? "", /correct|settings|json/i);
-  } finally {
-    rmSync(sandbox.root, { recursive: true, force: true });
+test("every invalid Pi settings shape retains a schema-valid stable diagnosis", async (t) => {
+  const exactSource = "npm:jorgex-pi@0.0.0-development";
+  const cases = [
+    ["invalid-json", "{invalid json\n"],
+    ["root-array", "[]\n"],
+    ["packages-non-array", '{"packages":{}}\n'],
+    ["duplicate-exact", `${JSON.stringify({ packages: [exactSource, exactSource] })}\n`],
+  ];
+  for (const [label, bytes] of cases) {
+    await t.test(label, () => {
+      const sandbox = createSandbox(`invalid-settings-${label}`);
+      const settingsPath = join(sandbox.agentDir, "settings.json");
+      writeFileSync(settingsPath, bytes);
+      try {
+        const first = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+        const second = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+        for (const status of [first, second]) {
+          assert.equal(status.status, expected.exitCodes.unhealthy, label);
+          assert.equal(typeof status.json.error?.message, "string", `${label} must emit schema-required error.message`);
+          assertEnvelope(status, "status");
+          assert.equal(status.json.result.installation.state, "invalid", label);
+          assert.equal(status.json.result.installation.path, settingsPath, label);
+          assert.equal(typeof status.json.result.installation.reason, "string", label);
+          assert.ok(status.json.result.installation.reason.length > 0, label);
+          assert.equal(status.json.error.message, status.json.result.installation.reason, label);
+          assert.match(status.json.error.remedy, /settings/i, label);
+          assert.equal(status.json.error.remedy.includes(settingsPath), true, label);
+        }
+        assert.deepEqual(second.json, first.json, `${label} diagnosis must be stable across repeated reads`);
+      } finally {
+        rmSync(sandbox.root, { recursive: true, force: true });
+      }
+    });
   }
 });
 
@@ -261,6 +281,12 @@ function assertEnvelope(result, command) {
   assert.equal(typeof json.package?.root, "string");
   assert.ok(json.result && typeof json.result === "object" && !Array.isArray(json.result));
   assert.equal(json.ok ? json.error === undefined : typeof json.error === "object", true, "ok must discriminate success from error envelopes");
+  if (!json.ok) {
+    for (const field of ["phase", "code", "message"]) {
+      assert.equal(typeof json.error[field], "string", `schema-required error.${field} must be a string`);
+      assert.ok(json.error[field].length > 0, `schema-required error.${field} must not be empty`);
+    }
+  }
   if (command === "status") assert.deepEqual(Object.keys(json.result).sort(), ["engram", "installation"]);
   if (command === "doctor") {
     assert.equal(typeof json.result.healthy, "boolean");

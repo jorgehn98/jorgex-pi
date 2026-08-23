@@ -13,7 +13,7 @@ export const ENGRAM_CHILD_ENV_KEYS = [
 
 export function buildEngramChildSpec({ binary, env = process.env }) {
   if (typeof binary !== "string" || !isAbsolute(binary) || !isExecutableFile(binary)
-    || (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(binary))) {
+    || (process.platform === "win32" && !/\.exe$/i.test(binary))) {
     throw new Error("Engram MCP requires an absolute executable ENGRAM_BIN path.");
   }
   return {

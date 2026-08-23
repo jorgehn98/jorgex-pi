@@ -85,8 +85,8 @@ export function resolveConfiguredEngramBinary({
   const configured = env.ENGRAM_BIN;
   if (typeof configured !== "string" || !configured) return undefined;
   if (!isAbsolute(configured)) throw new Error("ENGRAM_BIN must be absolute");
-  if (platform === "win32" && /\.(?:cmd|bat)$/i.test(configured)) {
-    throw new Error("ENGRAM_BIN must point to a native executable, not a .cmd or .bat shim");
+  if (platform === "win32" && !/\.exe$/i.test(configured)) {
+    throw new Error("ENGRAM_BIN must point to a native .exe executable on Windows");
   }
   return isExecutable(configured, platform) ? configured : undefined;
 }

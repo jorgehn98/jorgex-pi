@@ -74,6 +74,7 @@ function inspectState() {
 
 function inspectInstallation() {
   const settingsPath = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "settings.json");
+  const invalid = (reason, matches = 0) => ({ state: "invalid", matches, path: settingsPath, reason });
   let settings;
   try {
     settings = readJson(settingsPath);
@@ -82,19 +83,20 @@ function inspectInstallation() {
     const reason = error instanceof SyntaxError
       ? `Invalid JSON in Pi settings: ${error.message}`
       : `Unable to read Pi settings: ${error instanceof Error ? error.message : String(error)}`;
-    return { state: "invalid", matches: 0, path: settingsPath, reason };
+    return invalid(reason);
   }
   if (typeof settings !== "object" || settings === null || Array.isArray(settings)) {
-    return { state: "invalid", matches: 0 };
+    return invalid("Pi settings root must be a JSON object.");
   }
   if (settings.packages === undefined) return { state: "unregistered", matches: 0 };
-  if (!Array.isArray(settings.packages)) return { state: "invalid", matches: 0 };
+  if (!Array.isArray(settings.packages)) return invalid("Pi settings packages must be an array.");
   const source = `npm:${manifest.name}@${manifest.version}`;
   const matches = settings.packages.filter((entry) => {
     const candidate = typeof entry === "string" ? entry : entry?.source;
     return candidate === source;
   }).length;
-  return { state: matches === 0 ? "unregistered" : matches === 1 ? "registered" : "invalid", matches };
+  if (matches > 1) return invalid(`Pi settings contain ${matches} exact registrations for ${source}.`, matches);
+  return { state: matches === 0 ? "unregistered" : "registered", matches };
 }
 
 function inspectEngram() {
@@ -103,8 +105,8 @@ function inspectEngram() {
     if (!isAbsolute(configured)) {
       return { state: "invalid", ownership: "user", reason: "ENGRAM_BIN must be an absolute path" };
     }
-    if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(configured)) {
-      return { state: "invalid", ownership: "user", path: configured, source: "environment", reason: "ENGRAM_BIN must point to a native executable, not a .cmd or .bat shim" };
+    if (process.platform === "win32" && !/\.exe$/i.test(configured)) {
+      return { state: "invalid", ownership: "user", path: configured, source: "environment", reason: "ENGRAM_BIN must point to a native .exe executable" };
     }
     return isExecutable(configured)
       ? { state: "ready", ownership: "user", path: configured, source: "environment" }
@@ -119,12 +121,11 @@ function inspectEngram() {
 function findOnPath(name) {
   const directories = (process.env.PATH ?? "").split(delimiter).filter((directory) => isAbsolute(directory));
   const extensions = process.platform === "win32"
-    ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
+    ? (process.env.PATHEXT ?? ".EXE").split(";").filter((extension) => extension.toLowerCase() === ".exe")
     : [""];
   for (const directory of directories) {
     for (const extension of extensions) {
       const candidate = join(directory, `${name}${extension}`);
-      if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(candidate)) continue;
       if (isExecutable(candidate)) return candidate;
     }
   }
@@ -142,11 +143,14 @@ function isExecutable(path) {
 
 function stateError(state) {
   if (state.installation.state === "invalid") {
+    const duplicate = state.installation.matches > 1;
     return {
       phase: "status",
-      code: "INVALID_SETTINGS",
+      code: duplicate ? "DUPLICATE_REGISTRATION" : "INVALID_SETTINGS",
       message: state.installation.reason,
-      remedy: `Correct the Pi settings JSON at ${state.installation.path} and retry.`,
+      remedy: duplicate
+        ? `Keep exactly one package entry in Pi settings at ${state.installation.path} and retry.`
+        : `Correct the Pi settings JSON at ${state.installation.path} and retry.`,
     };
   }
   if (state.engram.state === "invalid") {
@@ -157,12 +161,7 @@ function stateError(state) {
       remedy: "Set ENGRAM_BIN to an absolute executable path or remove it to use PATH discovery.",
     };
   }
-  return {
-    phase: "status",
-    code: "INVALID_STATE",
-    message: "Pi settings contain duplicate JorgeX registrations.",
-    remedy: "Keep exactly one package entry for this jorgex-pi version and retry.",
-  };
+  return { phase: "status", code: "INVALID_STATE", message: "Runtime state is invalid." };
 }
 
 function emit(command, ok, result, error, exitCode = exitCodes.success) {

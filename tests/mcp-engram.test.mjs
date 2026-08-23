@@ -83,16 +83,25 @@ test("managed Engram resolves only an absolute native ENGRAM_BIN and never searc
   assert.equal(typeof resolveConfiguredEngramBinary, "function", "binary policy must expose a deterministic platform seam");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-engram-resolution-"));
   const nativeBin = join(sandbox, "engram.exe");
-  const cmdShim = join(sandbox, "engram.cmd");
+  const rejectedBins = ["engram.cmd", "engram.bat", "engram.ps1", "engram.txt", "engram"]
+    .map((name) => join(sandbox, name));
   writeFileSync(nativeBin, "native fixture\n");
-  writeFileSync(cmdShim, "@echo off\n");
   chmodSync(nativeBin, 0o755);
-  chmodSync(cmdShim, 0o755);
+  for (const path of rejectedBins) {
+    writeFileSync(path, "non-native fixture\n");
+    chmodSync(path, 0o755);
+  }
   try {
     assert.equal(resolveConfiguredEngramBinary({ env: { PATH: sandbox }, platform: "linux" }), undefined, "PATH fallback is outside the managed bridge contract");
     assert.throws(() => resolveConfiguredEngramBinary({ env: { ENGRAM_BIN: "engram" }, platform: "linux" }), /absolute/i);
     assert.equal(resolveConfiguredEngramBinary({ env: { ENGRAM_BIN: nativeBin }, platform: "win32" }), nativeBin);
-    assert.throws(() => resolveConfiguredEngramBinary({ env: { ENGRAM_BIN: cmdShim }, platform: "win32" }), /native|\.exe|cmd|bat/i);
+    for (const path of rejectedBins) {
+      assert.throws(
+        () => resolveConfiguredEngramBinary({ env: { ENGRAM_BIN: path }, platform: "win32" }),
+        /native|\.exe|cmd|bat|ps1/i,
+        `Windows must reject non-native executable path ${path}`,
+      );
+    }
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
   }

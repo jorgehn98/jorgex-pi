@@ -69,15 +69,37 @@
       }
     },
     "installation": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["state", "matches"],
-      "properties": {
-        "state": { "enum": ["unregistered", "registered", "invalid"] },
-        "matches": { "type": "integer", "minimum": 0 },
-        "path": { "type": "string" },
-        "reason": { "type": "string" }
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "matches"],
+          "properties": {
+            "state": { "const": "unregistered" },
+            "matches": { "const": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "matches"],
+          "properties": {
+            "state": { "const": "registered" },
+            "matches": { "const": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "matches", "path", "reason"],
+          "properties": {
+            "state": { "const": "invalid" },
+            "matches": { "type": "integer", "minimum": 0 },
+            "path": { "type": "string" },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
     },
     "engram": {
       "type": "object",
