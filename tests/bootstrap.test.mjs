@@ -125,13 +125,14 @@ test("companion tools stay session-gated until permissions are ready and headles
   services.set("session-a", { ready: true });
   await pi.emitEvent("permissions:ready", { sessionId: "session-a" });
   await pi.emitLifecycle("before_agent_start", {}, { hasUI: true, sessionId: "session-a" });
-  assert.deepEqual(pi.activeTools(), ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"]);
+  assert.deepEqual(pi.activeTools(), [], "readiness after a pre-health prompt must not auto-restore hidden companion tools");
   assert.deepEqual(
     await pi.emitToolCall({ toolName: "bash", input: { command: "echo permission-decides" } }, { sessionId: "session-a" }),
     { block: true, reason: "permission handler decision" },
     "after health the bootstrap guard must defer to the permission-system handler",
   );
 
+  pi.api.setActiveTools(companionToolNames);
   await pi.emitLifecycle("before_agent_start", {}, { hasUI: false, sessionId: "session-a" });
   assert.deepEqual(pi.activeTools(), ["fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"], "headless sessions must not expose ask_user_question or synthesize an answer");
 
@@ -176,6 +177,27 @@ test("first permission readiness preserves the current companion selection witho
   await defaultPi.emitEvent("permissions:ready", { sessionId: defaultContext.sessionId });
   await defaultPi.emitLifecycle("before_agent_start", {}, defaultContext);
   assert.deepEqual(defaultPi.activeTools(), companionToolNames, "normal readiness before the first prompt must preserve already-active tools");
+});
+
+test("a selection changed after a pre-health prompt remains authoritative at first readiness", async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const pi = createPiHarness();
+  const services = new Map();
+  await createBootstrap({
+    loadCompanion: async (id) => companionFactory(id),
+    getPermissionsService: (sessionId) => services.get(sessionId),
+  })(pi.api);
+  const context = { hasUI: true, sessionId: "changed-after-hide" };
+  await pi.emitLifecycle("session_start", {}, context);
+  await pi.emitLifecycle("before_agent_start", {}, context);
+  assert.deepEqual(pi.activeTools(), [], "the pre-health prompt must hide companion tools");
+
+  const withoutWebSearch = companionToolNames.filter((name) => name !== "web_search");
+  pi.api.setActiveTools(withoutWebSearch);
+  services.set(context.sessionId, { ready: true });
+  await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
+  await pi.emitLifecycle("before_agent_start", {}, context);
+  assert.deepEqual(pi.activeTools(), withoutWebSearch, "first readiness must not restore a tool disabled after the pre-health hide");
 });
 
 for (const directInstall of [
@@ -228,6 +250,47 @@ for (const directInstall of [
     }
   });
 }
+
+test("a detected direct-install conflict stays latched until the bootstrap is reloaded", async () => {
+  const { createBootstrap, detectWebAccessConflict } = await import("../extensions/bootstrap.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-web-conflict-latch-"));
+  const globalSettingsPath = join(sandbox, "agent", "settings.json");
+  const projectSettingsPath = join(sandbox, "project", ".pi", "settings.json");
+  const conflictingBytes = JSON.stringify({ packages: ["npm:pi-web-access@0.24.1"] }, null, 2) + "\n";
+  const cleanBytes = JSON.stringify({ packages: ["npm:foreign-global@1.0.0"] }, null, 2) + "\n";
+  mkdirSync(dirname(globalSettingsPath), { recursive: true });
+  mkdirSync(dirname(projectSettingsPath), { recursive: true });
+  writeFileSync(globalSettingsPath, conflictingBytes);
+  writeFileSync(projectSettingsPath, '{"packages":[]}\n');
+
+  try {
+    const detector = () => detectWebAccessConflict({ globalSettingsPath, projectSettingsPath });
+    const pi = createPiHarness();
+    await createBootstrap({
+      loadCompanion: async (id) => companionFactory(id),
+      getPermissionsService: () => ({ ready: true }),
+      detectWebAccessConflict: detector,
+    })(pi.api);
+    const notifications = [];
+    const firstContext = { sessionId: "conflict-a", ui: { notify: (message, type) => notifications.push({ message, type }) } };
+    await pi.emitLifecycle("session_start", {}, firstContext);
+    assertEarlyGuard(await pi.emitToolCall({ toolName: "web_search", input: { query: "blocked-a" } }, firstContext));
+    assert.equal(notifications.length, 1, "the initial conflict must be diagnosed once");
+
+    writeFileSync(globalSettingsPath, cleanBytes);
+    pi.api.setActiveTools(companionToolNames);
+    const secondContext = { sessionId: "conflict-b", ui: firstContext.ui };
+    await pi.emitLifecycle("session_start", {}, secondContext);
+    await pi.emitEvent("permissions:ready", { sessionId: secondContext.sessionId });
+    await pi.emitLifecycle("before_agent_start", {}, secondContext);
+    assertEarlyGuard(await pi.emitToolCall({ toolName: "web_search", input: { query: "blocked-b" } }, secondContext));
+    assert.deepEqual(pi.activeTools(), [], "cleaning settings in-process must not release tools after a latched conflict");
+    assert.equal(notifications.length, 1, "the latched conflict must retain the original single diagnostic");
+    assert.equal(readFileSync(globalSettingsPath, "utf8"), cleanBytes, "latching must not rewrite the user's cleaned settings");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
 
 function companionFactory(id, initOrder = []) {
   return (pi) => {

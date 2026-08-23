@@ -43,15 +43,17 @@ export function createBootstrap({
         reconciledSessions.delete(sessionId);
         hiddenSelections.delete(sessionId);
       }
-      try {
-        webAccessConflict = conflictDetector?.();
-      } catch (error) {
-        webAccessConflict = {
-          packageName: "pi-web-access",
-          scope: "settings",
-          source: "unknown",
-          error,
-        };
+      if (!webAccessConflict) {
+        try {
+          webAccessConflict = conflictDetector?.();
+        } catch (error) {
+          webAccessConflict = {
+            packageName: "pi-web-access",
+            scope: "settings",
+            source: "unknown",
+            error,
+          };
+        }
       }
       if (bootstrapFailure && !failureNotified) {
         ctx?.ui?.notify?.(formatFailure(bootstrapFailure), "error");
@@ -61,7 +63,6 @@ export function createBootstrap({
         ctx?.ui?.notify?.(formatWebAccessConflict(webAccessConflict), "error");
         conflictNotified = true;
       }
-      if (!webAccessConflict) conflictNotified = false;
       if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
     });
 
@@ -122,7 +123,7 @@ export function createBootstrap({
       } else {
         if (!reconciledSessions.has(activeSession)) {
           const selection = hiddenSelections.get(activeSession);
-          if (selection) restoreCompanionSelection(pi, companionTools, selection);
+          if (selection) reconcileCompanionSelection(pi, companionTools, selection);
           hiddenSelections.delete(activeSession);
           reconciledSessions.add(activeSession);
         }
@@ -163,9 +164,9 @@ function selectedCompanionTools(pi, companionTools) {
   return pi.getActiveTools().filter((name) => companionTools.has(name));
 }
 
-function restoreCompanionSelection(pi, companionTools, selection) {
-  const otherTools = pi.getActiveTools().filter((name) => !companionTools.has(name));
-  pi.setActiveTools([...otherTools, ...selection]);
+function reconcileCompanionSelection(pi, companionTools, selection) {
+  const captured = new Set(selection);
+  pi.setActiveTools(pi.getActiveTools().filter((name) => !companionTools.has(name) || captured.has(name)));
 }
 
 function createWebAccessApi(pi, companionTools, readWebAccessConfig) {
@@ -305,9 +306,9 @@ function formatFailure({ phase, companion, error }) {
 function formatWebAccessConflict({ scope, source, error }) {
   if (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return `pi-web-access settings detection failed closed (${scope}: ${source}): ${message}`;
+    return `pi-web-access settings detection failed closed (${scope}: ${source}): ${message}. Correct the settings and reload Pi explicitly.`;
   }
-  return `Direct duplicate pi-web-access package detected in ${scope} Pi settings (${source}); remove the direct entry and keep jorgex-pi as the owner.`;
+  return `Direct duplicate pi-web-access package detected in ${scope} Pi settings (${source}); remove the direct entry, keep jorgex-pi as the owner, and reload Pi explicitly.`;
 }
 
 export default createBootstrap();

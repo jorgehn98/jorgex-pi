@@ -60,7 +60,8 @@ test("web tools stay dynamically health-gated and route through safe JorgeX wrap
   services.set(context.sessionId, { ready: true });
   await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
   await pi.emitLifecycle("before_agent_start", {}, context);
-  assert.deepEqual(pi.activeTools(), ["ask_user_question", ...expected.tools, "subagent", "subagent_wait"].sort());
+  assert.deepEqual(pi.activeTools(), [], "readiness after a pre-health prompt must not auto-restore Web Access tools");
+  pi.api.setActiveTools(["ask_user_question", ...expected.tools, "subagent", "subagent_wait"]);
 
   await pi.executeTool("web_search", { query: "safe defaults" }, context);
   assert.equal(upstreamCalls.at(-1).params.workflow, "none", "missing config and params must disable the curator");
@@ -136,8 +137,9 @@ test("custom-named web tools are captured and wrapped by their upstream labels",
   services.set(context.sessionId, { ready: true });
   await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
   await pi.emitLifecycle("before_agent_start", {}, context);
-  assert.equal(pi.activeTools().includes("team_web_search"), true, "custom search must activate after permission health");
-  assert.equal(pi.activeTools().includes("team_fetch_content"), true, "custom fetch must activate after permission health");
+  assert.equal(pi.activeTools().includes("team_web_search"), false, "custom search must not auto-restore after a pre-health hide");
+  assert.equal(pi.activeTools().includes("team_fetch_content"), false, "custom fetch must not auto-restore after a pre-health hide");
+  pi.api.setActiveTools(["team_web_search", "team_fetch_content"]);
   await pi.executeTool("team_web_search", { query: "custom" }, context);
   assert.equal(calls.at(-1).params.workflow, "none");
   await assert.rejects(
