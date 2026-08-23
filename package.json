@@ -12,7 +12,11 @@
     "jorgex"
   ],
   "files": [
+    "agents",
     "contract",
+    "deferred/agents",
+    "extensions",
+    "primary",
     "skills",
     "snapshot/agents",
     "LICENSE",
@@ -20,17 +24,52 @@
   ],
   "scripts": {
     "build": "pnpm test",
+    "runtime-agents:generate": "node scripts/generate-runtime-agents.mjs",
     "snapshot:generate": "node scripts/generate-snapshot.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "pi": {
-    "extensions": [],
-    "skills": [],
+    "extensions": [
+      "./extensions/bootstrap.ts"
+    ],
+    "skills": [
+      "./skills/agent-delegation",
+      "./skills/deploy-to-vercel",
+      "./skills/diagnose",
+      "./skills/find-skills",
+      "./skills/lean-code",
+      "./skills/mcp-builder",
+      "./skills/orchestrator",
+      "./skills/react-doctor",
+      "./skills/skill-creator",
+      "./skills/supabase",
+      "./skills/supabase-postgres-best-practices",
+      "./skills/tdd",
+      "./skills/to-issues",
+      "./skills/to-prd",
+      "./skills/work-lifecycle",
+      "./skills/xreview"
+    ],
     "prompts": [],
     "themes": []
   },
+  "pi-subagents": {
+    "agents": [
+      "./agents"
+    ]
+  },
+  "bundledDependencies": [
+    "@gotgenes/pi-permission-system",
+    "@juicesharp/rpiv-ask-user-question",
+    "pi-subagents"
+  ],
   "packageManager": "pnpm@11.22.0",
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.84.2"
+  },
+  "dependencies": {
+    "@gotgenes/pi-permission-system": "27.0.0",
+    "@juicesharp/rpiv-ask-user-question": "2.7.0",
+    "pi-subagents": "0.54.0"
   }
 }

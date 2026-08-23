@@ -1,0 +1,323 @@
+{
+  "schemaVersion": 1,
+  "dependency": {
+    "name": "pi-subagents",
+    "version": "0.54.0",
+    "integrity": "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww==",
+    "bundledClosure": [
+      {
+        "name": "acorn",
+        "version": "8.18.0",
+        "integrity": "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ=="
+      },
+      {
+        "name": "jiti",
+        "version": "2.7.0",
+        "integrity": "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ=="
+      },
+      {
+        "name": "pi-subagents",
+        "version": "0.54.0",
+        "integrity": "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww=="
+      },
+      {
+        "name": "typebox",
+        "version": "1.1.38",
+        "integrity": "sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA=="
+      },
+      {
+        "name": "yaml",
+        "version": "2.8.3",
+        "integrity": "sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg=="
+      }
+    ]
+  },
+  "primary": {
+    "name": "orchestrator",
+    "sourcePath": "snapshot/agents/orchestrator.md",
+    "targetPath": "primary/orchestrator.md",
+    "tier": "strong",
+    "status": "dormant",
+    "tools": [
+      "read",
+      "grep",
+      "find",
+      "ls",
+      "bash",
+      "edit",
+      "write"
+    ]
+  },
+  "agents": [
+    {
+      "name": "backend-analyst",
+      "sourcePath": "snapshot/agents/backend-analyst.md",
+      "targetPath": "agents/backend-analyst.md",
+      "tier": "standard",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "code-reviewer",
+      "sourcePath": "snapshot/agents/code-reviewer.md",
+      "targetPath": "agents/code-reviewer.md",
+      "tier": "strong",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "code-simplifier",
+      "sourcePath": "snapshot/agents/code-simplifier.md",
+      "targetPath": "agents/code-simplifier.md",
+      "tier": "standard",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "comment-fixer",
+      "sourcePath": "snapshot/agents/comment-fixer.md",
+      "targetPath": "agents/comment-fixer.md",
+      "tier": "cheap",
+      "status": "runnable",
+      "maxSubagentDepth": 0,
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "edit",
+        "write",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "docs-maintainer",
+      "sourcePath": "snapshot/agents/docs-maintainer.md",
+      "targetPath": "agents/docs-maintainer.md",
+      "tier": "cheap",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "edit",
+        "write",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "engram",
+      "sourcePath": "snapshot/agents/engram.md",
+      "targetPath": "deferred/agents/engram.md",
+      "tier": "cheap",
+      "status": "deferred",
+      "requiredCapability": "engram-runtime-tools-v1",
+      "reason": "engram-runtime-tools-unavailable",
+      "maxSubagentDepth": 0,
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls"
+      ]
+    },
+    {
+      "name": "frontend-analyst",
+      "sourcePath": "snapshot/agents/frontend-analyst.md",
+      "targetPath": "agents/frontend-analyst.md",
+      "tier": "standard",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "implementer",
+      "sourcePath": "snapshot/agents/implementer.md",
+      "targetPath": "agents/implementer.md",
+      "tier": "standard",
+      "status": "runnable",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "bash",
+        "edit",
+        "write",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "security-auditor",
+      "sourcePath": "snapshot/agents/security-auditor.md",
+      "targetPath": "agents/security-auditor.md",
+      "tier": "strong",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "silent-failure-hunter",
+      "sourcePath": "snapshot/agents/silent-failure-hunter.md",
+      "targetPath": "agents/silent-failure-hunter.md",
+      "tier": "strong",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "test-analyzer",
+      "sourcePath": "snapshot/agents/test-analyzer.md",
+      "targetPath": "agents/test-analyzer.md",
+      "tier": "standard",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "tester",
+      "sourcePath": "snapshot/agents/tester.md",
+      "targetPath": "agents/tester.md",
+      "tier": "standard",
+      "status": "runnable",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "bash",
+        "edit",
+        "write",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "translator",
+      "sourcePath": "snapshot/agents/translator.md",
+      "targetPath": "agents/translator.md",
+      "tier": "cheap",
+      "status": "runnable",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "bash",
+        "edit",
+        "write",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "type-design-analyzer",
+      "sourcePath": "snapshot/agents/type-design-analyzer.md",
+      "targetPath": "agents/type-design-analyzer.md",
+      "tier": "standard",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    }
+  ],
+  "skills": [
+    "agent-delegation",
+    "deploy-to-vercel",
+    "diagnose",
+    "find-skills",
+    "lean-code",
+    "mcp-builder",
+    "orchestrator",
+    "react-doctor",
+    "skill-creator",
+    "supabase",
+    "supabase-postgres-best-practices",
+    "tdd",
+    "to-issues",
+    "to-prd",
+    "work-lifecycle",
+    "xreview"
+  ]
+}

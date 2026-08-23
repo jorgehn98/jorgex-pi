@@ -1,25 +1,34 @@
 # JorgeX Pi
 
-`jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their Pi-specific representation and lifecycle.
+`jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle.
 
-This private development package is not an end-user release. It publishes the PR01 foundation contract plus a dormant, versioned snapshot of the reviewed JorgeX Stack assets, but implements no runtime capabilities yet.
+This private development package is not an end-user release. PR03 activates the JorgeX skills and subagent runtime behind one fail-closed bootstrap while retaining a pinned, versioned snapshot of the JorgeX Stack sources.
 
 ## Current boundary
 
 | Area | Current state |
 | --- | --- |
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
-| Pi resources | `extensions`, `skills`, `prompts`, and `themes` are declared as empty arrays. |
+| Pi resources | One bootstrap extension and 16 reviewed JorgeX skills are active. Prompts and themes remain empty. |
 | Canonical snapshot | 15 agents and 17 complete skill trees (96 files) from JorgeX Stack commit `6d2b98b1728e275bf97920f9712dd4b7928de6a7`. |
-| Package assets | `contract/assets.v1.json` owns the parity manifest, skills, and agent snapshot; it declares no external writes. |
-| Companions | Supply-chain metadata is audited, but no companion is installed, bundled, or activated. |
-| Runtime commands | The package publishes neither a runner nor command schemas. Their behavior and schemas are designed together in PR06. |
+| Runtime agents | 13 runnable subagents, a dormant primary orchestrator, and Engram deferred behind the stable `engram-runtime-tools-v1` capability. |
+| Package assets | `contract/assets.v1.json` owns the bootstrap, runtime agents, snapshot, skills, and contracts; it declares no JorgeX-managed external writes and preserves five companion-owned state paths. |
+| Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, and `pi-subagents@0.54.0`. |
+| Model policy | Provider, model, and thinking level are inherited from the Pi session. JorgeX tiers remain contract metadata only. |
 
-Component status is deliberate:
+The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive.
 
-- `planned` identifies an approved candidate without a completed package audit.
-- `audited` records an exact version, license, and npm integrity digest. It does not make the component executable or installed.
-- `active` is reserved for a later PR that deliberately wires a component into the package and verifies its lifecycle.
+`contract/jorgex-pi.v1.json` advertises the active versioned capabilities (`foundation-contract-v1`, `stack-snapshot-v1`, `runtime-agents-v1`, `permission-gated-tools-v1`, and `structured-questions-v1`) and links `runtimeAgents.contractPath` to `contract/runtime-agents.v1.json`. That runtime contract records the translation from the 15 canonical agents. The 13 runnable files live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent, and `deferred/agents/engram.md` remains inert until the stable `engram-runtime-tools-v1` capability is available. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
+
+The Pi projection preserves the canonical bash boundary per agent. `none` exposes no shell capability; `git-read` replaces bash with the child-only `git_read` tool, which executes only `git diff` and `git log` through validated argv without a shell; `full` exposes bash and remains governed by the user's permission policy. This dedicated tool avoids relying on `permission.bash`, which `pi-subagents@0.54.0` does not support.
+
+## Bootstrap and safety boundary
+
+`extensions/bootstrap.ts` is the only root extension. Pi's resource loader discovers and initializes it before runtime actions are bound, but that loading phase only registers handlers and companion tools; calls that require runner actions, including changes to the active tool set, occur only after `bindCore` and the corresponding lifecycle event. The bootstrap loads permission, ask, and subagents in that order, but hides `ask_user_question`, `subagent`, and `subagent_wait` until the current session emits `permissions:ready` and has a keyed permissions service. A bootstrap guard is registered before companion loading and blocks all tool calls with termination until that health boundary is satisfied. Load or factory failures retain that fail-closed guard, keep partial companion tools hidden, and surface one diagnostic identifying the phase, companion, and original cause at the next session start.
+
+Health is session-scoped and cleared on session start or shutdown. Repeated ready events do not re-enable tools the user disabled. In headless sessions, `ask_user_question` stays unavailable instead of fabricating an answer; subagent delegation remains available after permission health.
+
+This atomic safety guarantee applies to the tool-call flow. Pi's public API does not let the bootstrap roll back or pre-guard slash commands, companion event channels, or the event/RPC bridges registered internally by `pi-subagents`. Those surfaces retain their upstream lifecycle and error handling; this package does not claim otherwise.
 
 ## Development
 
@@ -50,7 +59,15 @@ Run the explicit cross-repository parity check against the same checkout:
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" node --test tests/cross-repo/snapshot-parity.test.mjs
 ```
 
-Skills are preserved byte-for-byte. Agent sources are normalized to LF for portable output, so the parity manifest records separate source and output SHA-256 hashes. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical skills; the hashes in `contract/parity.v1.json` are the parity authority. The development-only generator and transaction modules under `scripts/` are excluded from the published tarball.
+Skills are preserved byte-for-byte. Agent sources are normalized to LF for portable output, so the parity manifest records separate source and output SHA-256 hashes. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical skills; the hashes in `contract/parity.v1.json` are the parity authority.
+
+Regenerate the Pi-native agent projection after refreshing the snapshot:
+
+```bash
+pnpm runtime-agents:generate
+```
+
+This publishes `agents`, `deferred/agents`, `primary`, and `contract/runtime-agents.v1.json` transactionally; a failure restores the previous generation. `pnpm test` verifies deterministic output, containment, the bundled closure, and the isolated Pi lifecycle. `pnpm pack` creates the candidate tarball with the bootstrap, resources, pinned companions, audited closure, and required WASM files. Development generators and transaction modules under `scripts/` are excluded.
 
 The package is currently `private` with the development version `0.0.0-development`. There is therefore no valid installation command for users yet. After a reviewed release is published, installation will use Pi's package manager with an exact version:
 
@@ -58,16 +75,24 @@ The package is currently `private` with the development version `0.0.0-developme
 pi install npm:jorgex-pi@<published-version>
 ```
 
-That `pi install` invocation is the narrow package-manager exception: Pi must register and resolve its own package. It does not permit npm for repository development, release preparation, or unrelated dependency management.
+That command is the narrow package-manager exception: Pi uses npm internally to register and resolve its own package. Repository development, dependency management, and release preparation continue to use pnpm exclusively.
 
-## Paths and ownership
+## Paths, state, and ownership
 
-Pi may relocate its agent directory through `PI_CODING_AGENT_DIR`. Future lifecycle code must honor the value selected by Pi instead of assuming a fixed user path. The current package does not write there or anywhere outside the package.
+Pi may relocate its agent directory through `PI_CODING_AGENT_DIR`; the package relies on Pi and its companions to resolve that location rather than assuming a fixed user path.
 
-The ownership boundary is `contract/assets.v1.json`. Only paths explicitly declared as package-owned may later be synchronized or removed; user files and resources owned by other packages remain outside that boundary. The current manifest owns `contract/parity.v1.json`, `skills`, and `snapshot/agents`, while `externalWrites` remains empty.
+The ownership boundary is `contract/assets.v1.json`. Only its package paths belong to JorgeX, and `managedExternalWrites` is empty. Permission-system and ask configuration is user-owned: the bootstrap does not seed, replace, or remove it. The manifest records five `preservedExternalState` paths that must survive JorgeX install, reinstall, and removal:
+
+- `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/config.json`
+- `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/logs`
+- `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/sessions/permission-forwarding`
+- `@juicesharp/rpiv-ask-user-question`: `XDG_CONFIG_HOME/rpiv-ask-user-question/config.json`
+- `@juicesharp/rpiv-ask-user-question`: `HOME/.config/rpiv-ask-user-question/config.json` (default and legacy fallback when the preferred XDG file is unavailable)
+
+The XDG and HOME ask paths may resolve to the same file; lifecycle consumers preserve both declarations and deduplicate resolved paths. These paths may be created or managed by their named companions during normal operation; declaring them preserved does not transfer their ownership to JorgeX.
 
 ## Supply chain and security
 
-`contract/components.v1.json` records the reviewed companion candidates with exact versions and npm `sha512` integrity values. No version floats, no companion dependency is present, and installation performs no live GitHub download. A later PR must separately activate and verify each selected component.
+`contract/components.v1.json` distinguishes the three active companions from the audited future roadmap. Runtime and bundled dependencies are exact pins, the lockfile records audited npm `sha512` integrity values, and installation performs no live GitHub download. The tarball carries the complete companion closure for the tested offline Pi lifecycle.
 
-The repository contains no keys, tokens, credentials, or secret placeholders. The snapshot adds no runner, command schemas, network integration, hooks, project bootstrap, permission policy, Engram setup, model policy, active subagents, web access, goals, custom theme, or startup branding. Activation begins in the next capability PR; this snapshot PR only packages reviewed, hash-verifiable bytes.
+The repository contains no keys, tokens, credentials, or secret placeholders. PR03 adds no web access, MCP setup, Engram runtime, goals, custom theme, startup branding, or project bootstrap. It does not impose a permission configuration: policy remains an explicit user concern.
