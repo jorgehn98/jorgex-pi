@@ -150,6 +150,7 @@
       "targetPath": "agents/engram.md",
       "tier": "cheap",
       "status": "runnable",
+      "requiredCapability": "engram-runtime-tools-v1",
       "maxSubagentDepth": 0,
       "tools": [
         "mem_search",

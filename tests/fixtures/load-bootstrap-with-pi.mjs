@@ -73,9 +73,12 @@ const guard = await runner.emitToolCall({
   input: { command: "echo must-not-run" },
 });
 
-const realToolNames = runner.getAllRegisteredTools().map(({ definition }) => definition.name).sort();
 const realCommandNames = runner.getRegisteredCommands().map(({ name }) => name).sort();
 await runner.emit({ type: "session_start", reason: "startup" });
+for (let attempt = 0; attempt < 20 && !runner.getAllRegisteredTools().some(({ definition }) => definition.name.startsWith("mem_")); attempt += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+const realToolNames = runner.getAllRegisteredTools().map(({ definition }) => definition.name).sort();
 const goalCommand = runner.getCommand("goal");
 if (!goalCommand) throw new Error("real /goal command was not registered");
 await goalCommand.handler("verify real Goal routing", runner.createCommandContext());
@@ -89,11 +92,13 @@ const managedRunEvents = [];
 eventBus.on("pi-goal:event:loader-rpc", (event) => managedRunEvents.push(event));
 eventBus.emit("pi-goal:start", { runId: "loader-rpc", objective: "must remain disabled" });
 await new Promise((resolve) => setImmediate(resolve));
+await runner.emit({ type: "session_shutdown" });
 
 writeFileSync(1, `${JSON.stringify({
   errors: loaded.errors,
   extensionCount: loaded.extensions.length,
   guard,
+  engramToolNames: realToolNames.filter((name) => name.startsWith("mem_")),
   realGoal: {
     commandNames: realCommandNames,
     toolNames: realToolNames,

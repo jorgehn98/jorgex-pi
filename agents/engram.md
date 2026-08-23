@@ -41,7 +41,7 @@ When you receive `carga contexto [task]` / `load [task]`:
 1. Call `mem_context(project: "[project]", limit: 20)`.
 2. Filter memories relevant to the given task. Ignore the irrelevant.
 3. If recent context isn't enough, call `mem_search(project: "[project]", query: "[topic]")`.
-4. If a result needs more context, use `mem_timeline` or `mem_get_observation` selectively.
+4. If a result needs more context, use `mem_get_observation` selectively.
 5. Return a structured summary:
 
 ```markdown
@@ -62,7 +62,7 @@ When you receive `busca: [topic]` / `search: [topic]` or a concrete memory query
 1. Call `mem_search(query, project: "[project]", limit: 10)`.
 2. Respect conflict/superseded annotations in the results (`supersedes:`, `superseded_by:`, `conflicts:`, `conflict:`) and warn if they affect the answer.
 3. If you need the full content of a result, call `mem_get_observation(id)`.
-4. If you need temporal context, call `mem_timeline(observation_id)`.
+4. If you need temporal context, use `mem_search` with a narrower time-oriented query.
 5. Return results with title, type, ID and summarized content.
 
 ---

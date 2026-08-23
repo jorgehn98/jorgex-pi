@@ -78,6 +78,26 @@ test("missing or failed Engram resolution leaves an empty isolated adapter confi
   assert.match(failed.reason ?? "", /resolver failed/);
 });
 
+test("managed Engram resolves only an absolute native ENGRAM_BIN and never searches PATH", async () => {
+  const { resolveConfiguredEngramBinary } = await import("../extensions/mcp-engram.ts");
+  assert.equal(typeof resolveConfiguredEngramBinary, "function", "binary policy must expose a deterministic platform seam");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-engram-resolution-"));
+  const nativeBin = join(sandbox, "engram.exe");
+  const cmdShim = join(sandbox, "engram.cmd");
+  writeFileSync(nativeBin, "native fixture\n");
+  writeFileSync(cmdShim, "@echo off\n");
+  chmodSync(nativeBin, 0o755);
+  chmodSync(cmdShim, 0o755);
+  try {
+    assert.equal(resolveConfiguredEngramBinary({ env: { PATH: sandbox }, platform: "linux" }), undefined, "PATH fallback is outside the managed bridge contract");
+    assert.throws(() => resolveConfiguredEngramBinary({ env: { ENGRAM_BIN: "engram" }, platform: "linux" }), /absolute/i);
+    assert.equal(resolveConfiguredEngramBinary({ env: { ENGRAM_BIN: nativeBin }, platform: "win32" }), nativeBin);
+    assert.throws(() => resolveConfiguredEngramBinary({ env: { ENGRAM_BIN: cmdShim }, platform: "win32" }), /native|\.exe|cmd|bat/i);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("the pinned adapter metadata seam yields exactly the 17 reviewed direct Engram tools", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const adapterEntry = import.meta.resolve(expected.adapter.name);
@@ -161,6 +181,12 @@ test("one compaction produces one ordered Engram recovery instruction", async ()
   assert.ok(first.systemPrompt.indexOf("mem_session_summary") < first.systemPrompt.indexOf("mem_context"));
   const second = await lifecycle.get("before_agent_start")[0]({ systemPrompt: "Base" }, { sessionId: "one" });
   assert.doesNotMatch(second.systemPrompt, /FIRST ACTION REQUIRED/i, "the recovery instruction must be consumed exactly once");
+
+  await lifecycle.get("session_compact")[0]({ summary: "must be discarded" }, { sessionId: "shutdown" });
+  assert.equal((lifecycle.get("session_shutdown") ?? []).length, 1, "pending compaction state needs an explicit shutdown cleanup handler");
+  await lifecycle.get("session_shutdown")[0]({}, { sessionId: "shutdown" });
+  const afterShutdown = await lifecycle.get("before_agent_start")[0]({ systemPrompt: "Base" }, { sessionId: "shutdown" });
+  assert.doesNotMatch(afterShutdown.systemPrompt, /FIRST ACTION REQUIRED/i, "a closed session must not leak recovery state into a reused id");
 });
 
 function readJson(path) {

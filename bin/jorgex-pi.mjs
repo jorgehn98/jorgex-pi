@@ -6,13 +6,15 @@ import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const manifest = readJson(join(root, "package.json"));
-const packageInfo = { name: manifest.name, version: manifest.version, root };
+let manifest;
+let packageInfo = { name: "jorgex-pi", version: "unknown", root };
 const commands = new Set(["status", "doctor", "models", "sync", "cleanup"]);
 const exitCodes = { success: 0, unhealthy: 1, usage: 2, internal: 3 };
 const maxStdoutBytes = 65536;
 
 try {
+  manifest = readJson(join(root, "package.json"));
+  packageInfo = { name: manifest.name, version: manifest.version, root };
   const args = process.argv.slice(2);
   const command = args[0];
   const validArgs = args.length === 1 || (args.length === 2 && args[1] === "--json");
@@ -35,7 +37,7 @@ try {
       const checks = [
         {
           id: "package",
-          status: state.installation.state === "invalid" ? "error" : "ok",
+          status: state.installation.state === "registered" ? "ok" : "error",
         },
         {
           id: "engram",
@@ -47,7 +49,11 @@ try {
         phase: "doctor",
         code: "UNHEALTHY",
         message: "One or more required runtime checks failed.",
-        remedy: state.engram.state === "missing" ? "Set ENGRAM_BIN to the existing Engram executable and retry." : undefined,
+        remedy: state.installation.state !== "registered"
+          ? `Register exactly npm:${manifest.name}@${manifest.version} in Pi settings and retry.`
+          : state.engram.state === "missing"
+            ? "Set ENGRAM_BIN to the existing Engram executable and retry."
+            : undefined,
       }, healthy ? exitCodes.success : exitCodes.unhealthy);
     }
   }
@@ -73,7 +79,10 @@ function inspectInstallation() {
     settings = readJson(settingsPath);
   } catch (error) {
     if (error?.code === "ENOENT") return { state: "unregistered", matches: 0 };
-    return { state: "invalid", matches: 0 };
+    const reason = error instanceof SyntaxError
+      ? `Invalid JSON in Pi settings: ${error.message}`
+      : `Unable to read Pi settings: ${error instanceof Error ? error.message : String(error)}`;
+    return { state: "invalid", matches: 0, path: settingsPath, reason };
   }
   if (typeof settings !== "object" || settings === null || Array.isArray(settings)) {
     return { state: "invalid", matches: 0 };
@@ -94,6 +103,9 @@ function inspectEngram() {
     if (!isAbsolute(configured)) {
       return { state: "invalid", ownership: "user", reason: "ENGRAM_BIN must be an absolute path" };
     }
+    if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(configured)) {
+      return { state: "invalid", ownership: "user", path: configured, source: "environment", reason: "ENGRAM_BIN must point to a native executable, not a .cmd or .bat shim" };
+    }
     return isExecutable(configured)
       ? { state: "ready", ownership: "user", path: configured, source: "environment" }
       : { state: "missing", ownership: "user", path: configured, source: "environment" };
@@ -112,6 +124,7 @@ function findOnPath(name) {
   for (const directory of directories) {
     for (const extension of extensions) {
       const candidate = join(directory, `${name}${extension}`);
+      if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(candidate)) continue;
       if (isExecutable(candidate)) return candidate;
     }
   }
@@ -128,6 +141,14 @@ function isExecutable(path) {
 }
 
 function stateError(state) {
+  if (state.installation.state === "invalid") {
+    return {
+      phase: "status",
+      code: "INVALID_SETTINGS",
+      message: state.installation.reason,
+      remedy: `Correct the Pi settings JSON at ${state.installation.path} and retry.`,
+    };
+  }
   if (state.engram.state === "invalid") {
     return {
       phase: "engram",
@@ -139,7 +160,8 @@ function stateError(state) {
   return {
     phase: "status",
     code: "INVALID_STATE",
-    message: "Pi settings are invalid or contain duplicate JorgeX registrations.",
+    message: "Pi settings contain duplicate JorgeX registrations.",
+    remedy: "Keep exactly one package entry for this jorgex-pi version and retry.",
   };
 }
 

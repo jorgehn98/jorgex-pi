@@ -35,6 +35,7 @@ test("the read-only Engram specialist exposes only non-mutating ProfileAgent too
   const expectedEngram = expected.agents.find(({ name }) => name === "engram");
   const actualEngram = contract.agents.find(({ name }) => name === "engram");
   assert.equal(actualEngram.status, "runnable");
+  assert.equal(actualEngram.requiredCapability, "engram-runtime-tools-v1", "Engram availability must remain machine-readable when the runtime bridge is unhealthy");
   assert.deepEqual(actualEngram.tools, expectedEngram.tools);
   assert.deepEqual(actualEngram.tools, [
     "mem_search",
@@ -58,8 +59,15 @@ test("the read-only Engram specialist exposes only non-mutating ProfileAgent too
     "mem_unpin",
     "mem_capture_passive",
   ]) assert.equal(actualEngram.tools.includes(mutatingTool), false, `read-only Engram must not expose ${mutatingTool}`);
-  assert.equal("requiredCapability" in actualEngram, false);
   assert.equal("deferredUntil" in actualEngram, false, "published contracts must not expose internal PR sequencing");
+});
+
+test("Engram agent instructions mention only tools present in its active profile", () => {
+  const generated = readFileSync(join(root, "agents/engram.md"), "utf8");
+  assert.doesNotMatch(generated, /\bmem_timeline\b/, "generated Engram instructions must not mention a tool excluded from the active profile");
+  for (const operation of ["mem_context", "mem_search", "mem_get_observation"]) {
+    assert.match(generated, new RegExp(`\\b${operation}\\b`), `generated Engram instructions must retain available operation ${operation}`);
+  }
 });
 
 test("pi-subagents 0.54.0 discovers all fourteen runnable package agents without diagnostics", () => {
@@ -262,7 +270,11 @@ function assertTranslatedAgent(sourcePath, targetPath, expectedAgent) {
   }
   if (expectedAgent.maxSubagentDepth === 0) assert.equal(target.frontmatter.maxSubagentDepth, 0, `${targetPath} must preserve spawn: false`);
   else assert.equal(Object.hasOwn(target.frontmatter, "maxSubagentDepth"), false, `${targetPath} must retain default delegation depth`);
-  assert.equal(target.body, source.body, `${targetPath} must preserve the canonical persona byte-for-byte after LF normalization`);
+  if (expectedAgent.name === "engram") {
+    assert.doesNotMatch(target.body, /\bmem_timeline\b/, `${targetPath} must translate unavailable runtime-specific Engram operations`);
+  } else {
+    assert.equal(target.body, source.body, `${targetPath} must preserve the canonical persona byte-for-byte after LF normalization`);
+  }
 }
 
 function createGeneratorPackage(target) {

@@ -1,5 +1,5 @@
 import { accessSync, constants, statSync } from "node:fs";
-import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEngramChildSpec } from "./engram-mcp-wrapper.mjs";
 
@@ -12,7 +12,7 @@ const recoveryInstruction = [
 export { buildEngramChildSpec };
 
 export async function resolveMcpEngramConfig({
-  resolveEngramBinary = () => findEngramBinary(process.env),
+  resolveEngramBinary = () => resolveConfiguredEngramBinary(),
   nodePath = process.execPath,
   wrapperPath: managedWrapperPath = wrapperPath,
 } = {}) {
@@ -44,11 +44,12 @@ export async function resolveMcpEngramConfig({
 export async function installMcpEngram(pi, {
   resolveEngramBinary,
 } = {}) {
-  const adapterEntry = import.meta.resolve("pi-mcp-adapter");
-  const { createMcpAdapter } = await import(adapterEntry);
   const resolution = await resolveMcpEngramConfig({
     resolveEngramBinary,
   });
+  if (resolution.state !== "managed") return resolution;
+  const adapterEntry = import.meta.resolve("pi-mcp-adapter");
+  const { createMcpAdapter } = await import(adapterEntry);
   createMcpAdapter({ config: resolution.config })(pi);
   registerEngramCompactionRecovery(pi, { isAvailable: () => resolution.state === "managed" });
   return resolution;
@@ -66,6 +67,10 @@ export function registerEngramCompactionRecovery(pi, { isAvailable }) {
     if (!sessionId || !pending.delete(sessionId)) return { systemPrompt: base };
     return { systemPrompt: base ? `${base}\n\n${recoveryInstruction}` : recoveryInstruction };
   });
+  pi.on("session_shutdown", (_event, ctx) => {
+    const sessionId = readSessionId(ctx);
+    if (sessionId) pending.delete(sessionId);
+  });
 }
 
 function readSessionId(ctx) {
@@ -73,29 +78,24 @@ function readSessionId(ctx) {
   return typeof value === "string" && value ? value : undefined;
 }
 
-function findEngramBinary(env) {
+export function resolveConfiguredEngramBinary({
+  env = process.env,
+  platform = process.platform,
+} = {}) {
   const configured = env.ENGRAM_BIN;
-  if (typeof configured === "string" && configured) {
-    if (!isAbsolute(configured)) throw new Error("ENGRAM_BIN must be absolute");
-    return isExecutable(configured) ? configured : undefined;
+  if (typeof configured !== "string" || !configured) return undefined;
+  if (!isAbsolute(configured)) throw new Error("ENGRAM_BIN must be absolute");
+  if (platform === "win32" && /\.(?:cmd|bat)$/i.test(configured)) {
+    throw new Error("ENGRAM_BIN must point to a native executable, not a .cmd or .bat shim");
   }
-  const suffixes = process.platform === "win32"
-    ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
-    : [""];
-  for (const directory of (env.PATH ?? "").split(delimiter).filter(isAbsolute)) {
-    for (const suffix of suffixes) {
-      const candidate = join(directory, `engram${suffix}`);
-      if (isExecutable(candidate)) return candidate;
-    }
-  }
-  return undefined;
+  return isExecutable(configured, platform) ? configured : undefined;
 }
 
-function isExecutable(path) {
+function isExecutable(path, platform = process.platform) {
   try {
     const stat = statSync(path);
     if (!stat.isFile()) return false;
-    if (process.platform !== "win32") accessSync(path, constants.X_OK);
+    if (platform !== "win32") accessSync(path, constants.X_OK);
     return true;
   } catch {
     return false;

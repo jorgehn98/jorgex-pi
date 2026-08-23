@@ -67,7 +67,7 @@
     { "name": "code-simplifier", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "comment-fixer", "tier": "cheap", "status": "runnable", "maxSubagentDepth": 0, "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "edit", "write", "contact_supervisor"] },
     { "name": "docs-maintainer", "tier": "cheap", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "edit", "write", "contact_supervisor"] },
-    { "name": "engram", "tier": "cheap", "status": "runnable", "maxSubagentDepth": 0, "tools": ["mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor"] },
+    { "name": "engram", "tier": "cheap", "status": "runnable", "requiredCapability": "engram-runtime-tools-v1", "maxSubagentDepth": 0, "tools": ["mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor"] },
     { "name": "frontend-analyst", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "implementer", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"] },
     { "name": "security-auditor", "tier": "strong", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },

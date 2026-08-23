@@ -69,7 +69,19 @@ function translateAgent(name) {
   if (source.name !== name) throw new Error(`${sourcePath} name does not match its file name`);
   const status = source.mode === "primary" ? "dormant" : "runnable";
   const targetPath = source.mode === "primary" ? `primary/${name}.md` : `agents/${name}.md`;
-  if (name === "engram") return { source, sourcePath, targetPath, status, tools: engramTools };
+  if (name === "engram") {
+    const body = source.body
+      .replace("use `mem_timeline` or `mem_get_observation` selectively", "use `mem_get_observation` selectively")
+      .replace("call `mem_timeline(observation_id)`", "use `mem_search` with a narrower time-oriented query");
+    return {
+      source: { ...source, body },
+      sourcePath,
+      targetPath,
+      status,
+      requiredCapability: "engram-runtime-tools-v1",
+      tools: engramTools,
+    };
+  }
   const tools = ["read", "grep", "find", "ls"];
   if (source.bash === "git-read") tools.push("git_read");
   if (source.bash === "full") tools.push("bash");
@@ -123,6 +135,7 @@ function contractEntry(agent) {
     targetPath: agent.targetPath,
     tier: agent.source.tier,
     status: agent.status,
+    ...(agent.requiredCapability ? { requiredCapability: agent.requiredCapability } : {}),
     ...(agent.source.spawn === "false" ? { maxSubagentDepth: 0 } : {}),
     ...(agent.source.bash === "git-read" ? { subagentOnlyExtensions: ["../extensions/git-read.ts"] } : {}),
     tools: agent.tools,

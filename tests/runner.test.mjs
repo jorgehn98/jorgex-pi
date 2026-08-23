@@ -57,6 +57,9 @@ test("the package exposes one versioned JSON-only runner contract", () => {
   assert.equal(schema.additionalProperties, false);
   assert.deepEqual(schema.required, ["schemaVersion", "command", "ok", "package", "result"]);
   assert.deepEqual(schema.properties?.command?.enum, [...expected.commands, expected.errorCommand]);
+  assert.ok(Array.isArray(schema.oneOf) && schema.oneOf.length >= 2, "schema must discriminate successful and error envelopes");
+  assert.ok(schema.oneOf.some((branch) => branch.properties?.ok?.const === true), "schema must define the successful envelope");
+  assert.ok(schema.oneOf.some((branch) => branch.properties?.ok?.const === false), "schema must require an error envelope when ok=false");
 });
 
 test("status, models, doctor, and usage use the bounded machine envelope and stable exits", () => {
@@ -108,6 +111,61 @@ test("status recognizes one exact Pi registration without mutating foreign setti
     assert.equal(status.json.result.installation.state, "registered");
     assert.equal(status.json.result.installation.matches, 1);
     assert.equal(readFileSync(settingsPath, "utf8"), bytes);
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("doctor requires both exact package registration and a ready Engram binary", () => {
+  const sandbox = createSandbox("doctor-installation");
+  const engramBin = join(sandbox.root, process.platform === "win32" ? "engram.exe" : "engram");
+  createFakeExecutable(engramBin);
+  try {
+    const doctor = runRunner("doctor", { ...sandbox.env, ENGRAM_BIN: engramBin }, sandbox.project, ["--json"]);
+    assert.equal(doctor.status, expected.exitCodes.unhealthy, "unregistered package must remain unhealthy even when Engram is ready");
+    assert.equal(doctor.json.ok, false);
+    assert.equal(doctor.json.result.checks.find(({ id }) => id === "package")?.status, "error");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("invalid Pi settings retain a stable path, reason, and remedy in machine output", () => {
+  const sandbox = createSandbox("invalid-settings");
+  const settingsPath = join(sandbox.agentDir, "settings.json");
+  writeFileSync(settingsPath, "{invalid json\n");
+  try {
+    const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+    assert.equal(status.status, expected.exitCodes.unhealthy);
+    assert.equal(status.json.result.installation.state, "invalid");
+    assert.equal(status.json.result.installation.path, settingsPath);
+    assert.match(status.json.result.installation.reason, /json|parse|invalid/i);
+    assert.match(status.json.error?.remedy ?? "", /correct|settings|json/i);
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("an unreadable package manifest still returns one JSON internal-error record", () => {
+  const sandbox = createSandbox("bad-package-manifest");
+  const packageRoot = join(sandbox.root, "package");
+  mkdirSync(join(packageRoot, "bin"), { recursive: true });
+  copyFileSync(runnerEntry, join(packageRoot, "bin", "jorgex-pi.mjs"));
+  writeFileSync(join(packageRoot, "package.json"), "{invalid json\n");
+  try {
+    const result = spawnSync(process.execPath, [join(packageRoot, "bin", "jorgex-pi.mjs"), "status", "--json"], {
+      cwd: sandbox.project,
+      env: sandbox.env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 10_000,
+    });
+    assert.equal(result.status, expected.exitCodes.internal);
+    assertSingleJsonRecord(result);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.ok, false);
+    assert.equal(json.error?.phase, "runner");
+    assert.equal(json.error?.code, "INTERNAL");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
   }
@@ -202,6 +260,14 @@ function assertEnvelope(result, command) {
   assert.equal(json.package?.version, "0.0.0-development");
   assert.equal(typeof json.package?.root, "string");
   assert.ok(json.result && typeof json.result === "object" && !Array.isArray(json.result));
+  assert.equal(json.ok ? json.error === undefined : typeof json.error === "object", true, "ok must discriminate success from error envelopes");
+  if (command === "status") assert.deepEqual(Object.keys(json.result).sort(), ["engram", "installation"]);
+  if (command === "doctor") {
+    assert.equal(typeof json.result.healthy, "boolean");
+    assert.ok(Array.isArray(json.result.checks));
+  }
+  if (command === "models") assert.deepEqual(Object.keys(json.result).sort(), ["mode", "tiers"]);
+  if (["sync", "cleanup"].includes(command)) assert.deepEqual(Object.keys(json.result).sort(), ["actions", "changed"]);
 }
 
 function assertSingleJsonRecord(result) {
