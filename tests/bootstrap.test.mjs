@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = JSON.parse(readFileSync(join(testDir, "fixtures", "bootstrap.expected.json"), "utf8"));
+const companionToolNames = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
 test("the root manifest activates only the JorgeX bootstrap and sixteen reviewed skills", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -111,11 +113,12 @@ test("companion tools stay session-gated until permissions are ready and headles
 
   await bootstrap(pi.api);
   assert.deepEqual(initOrder, expected.companions.map(({ id }) => id), "all companions must register session handlers during bootstrap");
-  assert.deepEqual(pi.toolNames(), ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"], "the fixture must register the complete upstream companion tool set");
+  assert.deepEqual(pi.toolNames(), companionToolNames, "the fixture must register the complete upstream companion tool set");
   await pi.emitLifecycle("session_start", {}, { hasUI: true, sessionId: "session-a", ui: { notify() {} } });
-  assert.deepEqual(pi.activeTools(), [], "session start must hide every companion tool before session health");
   assertEarlyGuard(await pi.emitToolCall({ toolName: "bash", input: { command: "echo must-not-run" } }, { sessionId: "session-a" }));
 
+  await pi.emitLifecycle("before_agent_start", {}, { hasUI: true, sessionId: "session-a" });
+  assert.deepEqual(pi.activeTools(), [], "the first prompt without permission health must hide every companion tool");
   await pi.emitEvent("permissions:ready", { sessionId: "session-a" });
   await pi.emitLifecycle("before_agent_start", {}, { hasUI: true, sessionId: "session-a" });
   assert.deepEqual(pi.activeTools(), [], "a ready event without its keyed service must fail closed");
@@ -141,6 +144,90 @@ test("companion tools stay session-gated until permissions are ready and headles
   assert.deepEqual(pi.activeTools(), [], "session shutdown must hide companion tools again");
   assertEarlyGuard(await pi.emitToolCall({ toolName: "bash", input: { command: "echo must-not-run" } }, { sessionId: "session-a" }));
 });
+
+test("first permission readiness preserves the current companion selection without union-reactivating tools", async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+
+  const selectedPi = createPiHarness();
+  const selectedServices = new Map();
+  await createBootstrap({
+    loadCompanion: async (id) => companionFactory(id),
+    getPermissionsService: (sessionId) => selectedServices.get(sessionId),
+  })(selectedPi.api);
+  const selectedContext = { hasUI: true, sessionId: "selected" };
+  await selectedPi.emitLifecycle("session_start", {}, selectedContext);
+  const withoutWebSearch = companionToolNames.filter((name) => name !== "web_search");
+  selectedPi.api.setActiveTools(withoutWebSearch);
+  selectedServices.set(selectedContext.sessionId, { ready: true });
+  await selectedPi.emitEvent("permissions:ready", { sessionId: selectedContext.sessionId });
+  await selectedPi.emitLifecycle("before_agent_start", {}, selectedContext);
+  assert.deepEqual(selectedPi.activeTools(), withoutWebSearch, "first readiness must not re-add a companion tool disabled by the user");
+
+  const defaultPi = createPiHarness();
+  const defaultServices = new Map();
+  await createBootstrap({
+    loadCompanion: async (id) => companionFactory(id),
+    getPermissionsService: (sessionId) => defaultServices.get(sessionId),
+  })(defaultPi.api);
+  const defaultContext = { hasUI: true, sessionId: "default" };
+  assert.deepEqual(defaultPi.activeTools(), companionToolNames, "companion factories must register the normal initial tool selection");
+  await defaultPi.emitLifecycle("session_start", {}, defaultContext);
+  defaultServices.set(defaultContext.sessionId, { ready: true });
+  await defaultPi.emitEvent("permissions:ready", { sessionId: defaultContext.sessionId });
+  await defaultPi.emitLifecycle("before_agent_start", {}, defaultContext);
+  assert.deepEqual(defaultPi.activeTools(), companionToolNames, "normal readiness before the first prompt must preserve already-active tools");
+});
+
+for (const directInstall of [
+  { label: "global pinned string", scope: "global", entry: "npm:pi-web-access@0.24.1" },
+  { label: "project unpinned string", scope: "project", entry: "npm:pi-web-access" },
+  { label: "project object source", scope: "project", entry: { source: "npm:pi-web-access@0.24.1", extensions: ["index.ts"] } },
+]) {
+  test(`direct pi-web-access conflict fails closed for ${directInstall.label}`, async () => {
+    const { createBootstrap, detectWebAccessConflict } = await import("../extensions/bootstrap.ts");
+    assert.equal(typeof detectWebAccessConflict, "function", "bootstrap must export its production settings detector seam");
+    const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-web-conflict-"));
+    const globalSettingsPath = join(sandbox, "agent", "settings.json");
+    const projectSettingsPath = join(sandbox, "project", ".pi", "settings.json");
+    const globalBytes = JSON.stringify({ packages: [directInstall.scope === "global" ? directInstall.entry : "npm:foreign-global@1.0.0"], foreign: { keep: true } }, null, 2) + "\n";
+    const projectBytes = JSON.stringify({ packages: [directInstall.scope === "project" ? directInstall.entry : "npm:foreign-project@1.0.0"], local: { keep: true } }, null, 2) + "\n";
+    mkdirSync(dirname(globalSettingsPath), { recursive: true });
+    mkdirSync(dirname(projectSettingsPath), { recursive: true });
+    writeFileSync(globalSettingsPath, globalBytes);
+    writeFileSync(projectSettingsPath, projectBytes);
+
+    try {
+      const detector = () => detectWebAccessConflict({ globalSettingsPath, projectSettingsPath });
+      const conflict = detector();
+      assert.equal(conflict?.packageName, "pi-web-access");
+      assert.equal(conflict?.scope, directInstall.scope);
+
+      const pi = createPiHarness();
+      await createBootstrap({
+        loadCompanion: async (id) => companionFactory(id),
+        getPermissionsService: () => ({ ready: true }),
+        detectWebAccessConflict: detector,
+      })(pi.api);
+      const notifications = [];
+      const context = { sessionId: `conflict-${directInstall.scope}`, ui: { notify: (message, type) => notifications.push({ message, type }) } };
+      await pi.emitLifecycle("session_start", {}, context);
+      await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
+      await pi.emitLifecycle("before_agent_start", {}, context);
+      assert.deepEqual(pi.activeTools(), [], "a direct duplicate install must keep companion tools hidden even after permission readiness");
+      assertEarlyGuard(await pi.emitToolCall({ toolName: "web_search", input: { query: "must not run" } }, context));
+      assert.equal(notifications.length, 1, "the direct-install conflict must be diagnosed once");
+      assert.equal(notifications[0].type, "error");
+      assert.match(notifications[0].message, /direct|duplicate|settings/i);
+      assert.match(notifications[0].message, /pi-web-access/);
+      await pi.emitLifecycle("session_start", {}, context);
+      assert.equal(notifications.length, 1, "later session starts must not duplicate the conflict diagnostic");
+      assert.equal(readFileSync(globalSettingsPath, "utf8"), globalBytes, "conflict detection must not rewrite global settings");
+      assert.equal(readFileSync(projectSettingsPath, "utf8"), projectBytes, "conflict detection must not rewrite project settings");
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+}
 
 function companionFactory(id, initOrder = []) {
   return (pi) => {

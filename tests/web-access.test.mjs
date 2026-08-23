@@ -53,8 +53,9 @@ test("web tools stay dynamically health-gated and route through safe JorgeX wrap
 
   const context = { hasUI: true, sessionId: "web-session", ui: { notify() {} } };
   await pi.emitLifecycle("session_start", {}, context);
-  assert.deepEqual(pi.activeTools(), [], "session start must hide every dynamically captured companion tool");
   assertEarlyGuard(await pi.emitToolCall({ toolName: "web_search", input: { query: "safe defaults" } }, context));
+  await pi.emitLifecycle("before_agent_start", {}, context);
+  assert.deepEqual(pi.activeTools(), [], "the first prompt without health must hide every dynamically captured companion tool");
 
   services.set(context.sessionId, { ready: true });
   await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
@@ -83,9 +84,10 @@ test("web tools stay dynamically health-gated and route through safe JorgeX wrap
 test("web workflow respects valid read-only user config and fails safe on unreadable config", async () => {
   const { createBootstrap } = await import("../extensions/bootstrap.ts");
   for (const scenario of [
-    { label: "valid config", read: () => ({ workflow: "auto-summary" }), expectedWorkflow: "auto-summary" },
-    { label: "invalid workflow", read: () => ({ workflow: "surprise-browser" }), expectedWorkflow: "none" },
-    { label: "unreadable config", read: () => { throw new Error("EACCES"); }, expectedWorkflow: "none" },
+    { label: "explicit workflow wins", params: { workflow: "none" }, read: () => ({ workflow: "auto-summary" }), expectedWorkflow: "none" },
+    { label: "valid config", params: {}, read: () => ({ workflow: "auto-summary" }), expectedWorkflow: "auto-summary" },
+    { label: "invalid workflow", params: {}, read: () => ({ workflow: "surprise-browser" }), expectedWorkflow: "none" },
+    { label: "unreadable config", params: {}, read: () => { throw new Error("EACCES"); }, expectedWorkflow: "none" },
   ]) {
     const calls = [];
     const pi = createPiHarness();
@@ -94,7 +96,7 @@ test("web workflow respects valid read-only user config and fails safe on unread
       getPermissionsService: () => ({ ready: true }),
       readWebAccessConfig: scenario.read,
     })(pi.api);
-    await pi.executeTool("web_search", { query: scenario.label }, { sessionId: scenario.label });
+    await pi.executeTool("web_search", { query: scenario.label, ...scenario.params }, { sessionId: scenario.label });
     assert.equal(calls.at(-1).params.workflow, scenario.expectedWorkflow, scenario.label);
   }
 });
@@ -102,6 +104,7 @@ test("web workflow respects valid read-only user config and fails safe on unread
 test("custom-named web tools are captured and wrapped by their upstream labels", async () => {
   const { createBootstrap } = await import("../extensions/bootstrap.ts");
   const calls = [];
+  const services = new Map();
   const pi = createPiHarness();
   await createBootstrap({
     loadCompanion: async (id) => {
@@ -119,17 +122,26 @@ test("custom-named web tools are captured and wrapped by their upstream labels",
         });
       };
     },
-    getPermissionsService: () => ({ ready: true }),
+    getPermissionsService: (sessionId) => services.get(sessionId),
     readWebAccessConfig: () => ({}),
   })(pi.api);
 
   assert.ok(pi.toolNames().includes("team_web_search") && pi.toolNames().includes("team_fetch_content"));
-  await pi.emitLifecycle("session_start", {}, { sessionId: "custom" });
-  assert.equal(pi.activeTools().includes("team_web_search"), false, "dynamically named tools must remain health-gated");
-  await pi.executeTool("team_web_search", { query: "custom" }, { sessionId: "custom" });
+  const context = { sessionId: "custom" };
+  await pi.emitLifecycle("session_start", {}, context);
+  assertEarlyGuard(await pi.emitToolCall({ toolName: "team_web_search", input: { query: "must not run" } }, context));
+  await pi.emitLifecycle("before_agent_start", {}, context);
+  assert.equal(pi.activeTools().includes("team_web_search"), false, "custom search must remain hidden before health");
+  assert.equal(pi.activeTools().includes("team_fetch_content"), false, "custom fetch must remain hidden before health");
+  services.set(context.sessionId, { ready: true });
+  await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
+  await pi.emitLifecycle("before_agent_start", {}, context);
+  assert.equal(pi.activeTools().includes("team_web_search"), true, "custom search must activate after permission health");
+  assert.equal(pi.activeTools().includes("team_fetch_content"), true, "custom fetch must activate after permission health");
+  await pi.executeTool("team_web_search", { query: "custom" }, context);
   assert.equal(calls.at(-1).params.workflow, "none");
   await assert.rejects(
-    pi.executeTool("team_fetch_content", { url: "../private.txt" }, { sessionId: "custom" }),
+    pi.executeTool("team_fetch_content", { url: "../private.txt" }, context),
     /HTTP\(S\)|local|unsupported/i,
   );
 });
@@ -156,6 +168,17 @@ test("routing always explains Web Access and reveals Playwright only from an inj
   for (const phrase of expected.routing.webAccess) assert.match(readyPrompt, new RegExp(escapeRegExp(phrase), "i"));
   for (const phrase of expected.routing.playwright) assert.match(readyPrompt, new RegExp(escapeRegExp(phrase), "i"));
   assert.match(readyPrompt, /\/managed\/bin\/playwright-cli/);
+  assert.match(readyPrompt, /only when (?:the )?task requires browser interaction/i, "Playwright routing must establish necessity before use");
+  assert.match(
+    readyPrompt,
+    /explicit (?:user )?approval[^.]*browser profiles[^.]*authenticated sessions[^.]*cookies[^.]*stored (?:browser )?(?:state|storage)/i,
+    "Playwright routing must require explicit approval before accessing browser identity or stored state",
+  );
+  assert.match(
+    readyPrompt,
+    /(?:page )?DOM[^.]*downloads[^.]*dialogs[^.]*untrusted/i,
+    "Playwright routing must classify browser-controlled DOM, downloads, and dialogs as untrusted",
+  );
 });
 
 function companionFactory(id, { initOrder, upstreamCalls }) {
