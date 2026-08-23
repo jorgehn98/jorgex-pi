@@ -1,4 +1,6 @@
 allowBuilds:
   '@google/genai': false
   protobufjs: false
+  tree-sitter-bash: false
 autoInstallPeers: false
+nodeLinker: hoisted

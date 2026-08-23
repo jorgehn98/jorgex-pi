@@ -9,15 +9,14 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "snapshot-parity.expected.json"), "snapshot parity fixture");
 
-test("the dormant Stack snapshot is complete, deterministic, and inactive", () => {
+test("the Stack snapshot stays complete and deterministic after runtime activation", () => {
   const packageManifest = readJson(join(root, "package.json"), "package manifest");
-  for (const kind of ["extensions", "skills", "prompts", "themes"]) {
-    assert.deepEqual(packageManifest.pi?.[kind], [], `package.json pi.${kind} must remain inactive in snapshot S1`);
+  for (const kind of ["prompts", "themes"]) {
+    assert.deepEqual(packageManifest.pi?.[kind], [], `snapshot resources must not activate pi.${kind}`);
   }
-  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+  for (const field of ["optionalDependencies", "peerDependencies"]) {
     assert.deepEqual(packageManifest[field] ?? {}, {}, `snapshot S1 must not activate ${field}`);
   }
-  assert.deepEqual(packageManifest.bundledDependencies ?? [], [], "snapshot S1 must not bundle companion dependencies");
 
   const parity = readJson(join(root, expected.parityPath), "snapshot parity manifest");
   assert.equal(parity.schemaVersion, expected.schemaVersion);

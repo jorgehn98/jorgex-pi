@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdtempSync,
   mkdirSync,
+  realpathSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -18,6 +19,7 @@ import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
+const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"));
 
 test("the packed foundation survives install, reload, repeat, and remove on its contract-tested Pi", () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-lifecycle-"));
@@ -28,6 +30,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
   const packDir = join(sandbox, "pack");
   const foreignPackageDir = join(sandbox, "foreign-package");
   const settingsPath = join(agentDir, "settings.json");
+  const permissionConfigPath = join(agentDir, "extensions", "pi-permission-system", "config.json");
+  const askConfigPath = join(agentDir, "extensions", "rpiv-ask-user-question", "config.json");
 
   for (const path of [agentDir, homeDir, cwd, npmCache, packDir, foreignPackageDir]) {
     mkdirSync(path, { recursive: true });
@@ -43,6 +47,12 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     packages: [foreignPackageDir],
     foreignState,
   });
+  const foreignPermissionConfig = '{"permissions":{"*":"ask"},"owner":"user"}\n';
+  const foreignAskConfig = '{"collapseKey":"ctrl+}"}\n';
+  mkdirSync(dirname(permissionConfigPath), { recursive: true });
+  mkdirSync(dirname(askConfigPath), { recursive: true });
+  writeFileSync(permissionConfigPath, foreignPermissionConfig);
+  writeFileSync(askConfigPath, foreignAskConfig);
 
   const isolatedEnv = {
     ...allowedHostEnv(),
@@ -94,11 +104,18 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.deepEqual(afterFirstInstall.foreignState, foreignState, "install must preserve foreign settings");
     assert.equal(count(afterFirstInstall.packages, foreignPackageDir), 1, "install must preserve the foreign package entry");
     assert.equal(count(afterFirstInstall.packages, source), 1, "install must persist exactly one JorgeX package entry");
+    assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "install must not seed or modify permission config");
+    assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "install must not seed or modify ask config");
 
     const installedPackageDir = join(agentDir, "npm", "node_modules", "jorgex-pi");
     const installedManifest = readJson(join(installedPackageDir, "package.json"));
     assert.equal(installedManifest.name, "jorgex-pi");
-    assert.deepEqual(installedManifest.pi, { extensions: [], skills: [], prompts: [], themes: [] });
+    assert.deepEqual(installedManifest.pi, {
+      extensions: [bootstrapExpected.extension],
+      skills: bootstrapExpected.skills,
+      prompts: [],
+      themes: [],
+    });
     const firstPackageDigest = digestTree(installedPackageDir);
     const firstSettingsBytes = readFileSync(settingsPath, "utf8");
 
@@ -112,12 +129,16 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.deepEqual(afterSecondInstall.foreignState, foreignState, "repeated install must preserve foreign settings");
     assert.equal(readFileSync(settingsPath, "utf8"), firstSettingsBytes, "repeated install must leave settings byte-for-byte stable");
     assert.equal(digestTree(installedPackageDir), firstPackageDigest, "repeated install must leave the published package contents stable");
+    assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "repeated install must preserve permission config");
+    assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "repeated install must preserve ask config");
 
     runPi(pi, ["remove", source, "--no-approve"], isolatedEnv, cwd);
     const afterRemove = readJson(settingsPath);
     assert.deepEqual(afterRemove.foreignState, foreignState, "remove must preserve foreign settings");
     assert.deepEqual(afterRemove.packages, [foreignPackageDir], "remove must delete only the JorgeX-owned package entry");
     assert.equal(existsSync(installedPackageDir), false, "remove must delete the managed JorgeX package files");
+    assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "remove must preserve permission config");
+    assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "remove must preserve ask config");
     runPi(pi, ["--list-models", "__jorgex_foundation_smoke_no_match__", "--no-approve", "--offline", "--no-context-files"], isolatedEnv, cwd);
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
@@ -173,6 +194,7 @@ function count(values, expected) {
 function digestTree(rootDir) {
   const hash = createHash("sha256");
   const resolvedRoot = `${resolve(rootDir)}${sep}`;
+  const nodeModulesRoot = `${resolve(rootDir, "node_modules")}${sep}`;
   const visit = (dir) => {
     for (const name of readdirSync(dir).sort()) {
       const path = join(dir, name);
@@ -180,8 +202,20 @@ function digestTree(rootDir) {
       const relativePath = relative(rootDir, path).replaceAll("\\", "/");
       assert.ok(resolvedPath.startsWith(resolvedRoot), `package path escapes its root: ${relativePath}`);
       const stat = lstatSync(path);
-      assert.equal(stat.isSymbolicLink(), false, `published package must not contain symlinks: ${relativePath}`);
       hash.update(relativePath);
+      if (stat.isSymbolicLink()) {
+        assert.ok(
+          relativePath.startsWith("node_modules/.bin/"),
+          `JorgeX-owned assets must not contain symlinks: ${relativePath}`,
+        );
+        const target = realpathSync(path);
+        assert.ok(
+          target.startsWith(nodeModulesRoot),
+          `package-manager symlink must resolve inside installed package/node_modules: ${relativePath}`,
+        );
+        hash.update(readFileSync(path));
+        continue;
+      }
       if (stat.isDirectory()) visit(path);
       else hash.update(readFileSync(path));
     }

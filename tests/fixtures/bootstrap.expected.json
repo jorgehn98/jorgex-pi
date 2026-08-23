@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "extension": "./extensions/bootstrap.ts",
+  "skills": [
+    "./skills/agent-delegation",
+    "./skills/deploy-to-vercel",
+    "./skills/diagnose",
+    "./skills/find-skills",
+    "./skills/lean-code",
+    "./skills/mcp-builder",
+    "./skills/orchestrator",
+    "./skills/react-doctor",
+    "./skills/skill-creator",
+    "./skills/supabase",
+    "./skills/supabase-postgres-best-practices",
+    "./skills/tdd",
+    "./skills/to-issues",
+    "./skills/to-prd",
+    "./skills/work-lifecycle",
+    "./skills/xreview"
+  ],
+  "companions": [
+    {
+      "id": "permission",
+      "name": "@gotgenes/pi-permission-system",
+      "version": "27.0.0",
+      "integrity": "sha512-5WpP2z0Ohxipi2Myfg4ArchXgtMX15HbJl7b2YMK3iB2sRIm57hDXt86e0zsVX+sGOVrDLCkKtLoqMkrPS1rwQ==",
+      "entryPath": "src/index.ts"
+    },
+    {
+      "id": "ask",
+      "name": "@juicesharp/rpiv-ask-user-question",
+      "version": "2.7.0",
+      "integrity": "sha512-5amOEZ8RfSZJUTahYSajsulHGGKHaYwEQAd+J/f7gNPq7MkzgxOUCZzvwM9V8hTmFISHWNQFq1pv0ZIky8aTNw==",
+      "entryPath": "index.ts"
+    },
+    {
+      "id": "subagents",
+      "name": "pi-subagents",
+      "version": "0.54.0",
+      "integrity": "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww==",
+      "entryPath": "index.ts"
+    }
+  ],
+  "bundledClosure": [
+    { "name": "@gotgenes/pi-permission-system", "version": "27.0.0", "integrity": "sha512-5WpP2z0Ohxipi2Myfg4ArchXgtMX15HbJl7b2YMK3iB2sRIm57hDXt86e0zsVX+sGOVrDLCkKtLoqMkrPS1rwQ==" },
+    { "name": "@juicesharp/rpiv-ask-user-question", "version": "2.7.0", "integrity": "sha512-5amOEZ8RfSZJUTahYSajsulHGGKHaYwEQAd+J/f7gNPq7MkzgxOUCZzvwM9V8hTmFISHWNQFq1pv0ZIky8aTNw==" },
+    { "name": "@juicesharp/rpiv-config", "version": "2.7.0", "integrity": "sha512-S6+O9nub/n6WoTrs2egEai2MpymbeD9+Ut+aCgnaDu3OYA6nbAz4ZiFHLz9HVj7dALj8RuUaj5xtnX50J8MPRQ==" },
+    { "name": "acorn", "version": "8.18.0", "integrity": "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==" },
+    { "name": "jiti", "version": "2.7.0", "integrity": "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==" },
+    { "name": "node-addon-api", "version": "8.9.2", "integrity": "sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==" },
+    { "name": "node-gyp-build", "version": "4.8.4", "integrity": "sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==" },
+    { "name": "pi-subagents", "version": "0.54.0", "integrity": "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww==" },
+    { "name": "tree-sitter-bash", "version": "0.25.1", "integrity": "sha512-7hMytuYIMoXOq24yRulgIxthE9YmggZIOHCyPTTuJcu6EU54tYD+4G39cUb28kxC6jMf/AbPfWGLQtgPTdh3xw==" },
+    { "name": "typebox", "version": "1.1.38", "integrity": "sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA==" },
+    { "name": "typebox", "version": "1.3.7", "integrity": "sha512-meKuifc33Pccx0O6PdIzYMq3Og8zvP4TIi/a+Bw3AEMZMxOD0+RHGQvpglEe6Zdy3wZ8nqn/j95h8LUZLk/6Hg==" },
+    { "name": "web-tree-sitter", "version": "0.26.12", "integrity": "sha512-fvqTNZQBGUgUgfP0mHw+iHf9Yf6bRQrp0A3pSf2v/hSKxkT1beCoIWoLVmlPL7O6dmySfSb/t1aJoJvrgTRStw==" },
+    { "name": "yaml", "version": "2.8.3", "integrity": "sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==" },
+    { "name": "zod", "version": "4.4.3", "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==" }
+  ],
+  "wasmSuffixes": [
+    "/tree-sitter-bash.wasm",
+    "/web-tree-sitter.wasm",
+    "/debug/web-tree-sitter.wasm"
+  ]
+}

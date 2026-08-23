@@ -7,16 +7,32 @@
     "schemaVersion": 1,
     "manifestVersion": 1,
     "ownership": "package",
-    "resources": ["contract/parity.v1.json", "skills", "snapshot/agents"],
+    "resources": [
+      "agents",
+      "contract/parity.v1.json",
+      "contract/runtime-agents.v1.json",
+      "deferred/agents",
+      "extensions",
+      "primary",
+      "skills",
+      "snapshot/agents"
+    ],
     "externalWrites": []
   },
   "packageName": "jorgex-pi",
   "sourcePrefix": "npm:jorgex-pi@",
   "requiredPiResourceKinds": ["extensions", "skills", "prompts", "themes"],
-  "foundationResources": [],
   "foundationSchemas": {},
-  "forbiddenTarPaths": ["package/scripts/generate-snapshot.mjs"],
-  "requiredComponentStatus": "audited",
+  "forbiddenTarPaths": [
+    "package/scripts/generate-runtime-agents.mjs",
+    "package/scripts/generate-snapshot.mjs",
+    "package/scripts/snapshot-transaction.mjs"
+  ],
+  "activeComponents": [
+    "pi-subagents",
+    "@juicesharp/rpiv-ask-user-question",
+    "@gotgenes/pi-permission-system"
+  ],
   "requiredComponents": [
     "pi-subagents",
     "pi-mcp-adapter",

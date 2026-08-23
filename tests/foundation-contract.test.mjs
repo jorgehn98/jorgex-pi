@@ -11,19 +11,22 @@ import { gunzipSync } from "node:zlib";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "foundation-contract.expected.json"), "foundation contract fixture");
+const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
 
-test("package manifest reserves empty Pi resource arrays for later capability PRs", () => {
+test("package manifest exposes only the activated bootstrap and reviewed JorgeX skills", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest required by the published Pi package");
   assert.equal(manifest.name, expected.packageName);
   assert.match(manifest.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
   assert.ok(manifest.pi && typeof manifest.pi === "object", "package.json must declare a pi manifest");
+  const expectedResources = {
+    extensions: [bootstrapExpected.extension],
+    skills: bootstrapExpected.skills,
+    prompts: [],
+    themes: [],
+  };
   for (const kind of expected.requiredPiResourceKinds) {
     assert.ok(Array.isArray(manifest.pi[kind]), `package.json pi.${kind} must be an array`);
-    assert.deepEqual(
-      manifest.pi[kind],
-      expected.foundationResources,
-      `package.json pi.${kind} must stay empty in PR01; its resources belong to a later capability PR`,
-    );
+    assert.deepEqual(manifest.pi[kind], expectedResources[kind], `package.json pi.${kind} must match the T09 activation boundary`);
   }
   assert.ok(Array.isArray(manifest.files) && manifest.files.includes("contract"), "package.json files must publish the contract directory");
 });
@@ -66,7 +69,7 @@ test("foundation asset ownership is explicit and closed", () => {
   );
 });
 
-test("component inventory records the approved roadmap without activating future companions", () => {
+test("component inventory activates only the T09 companions and preserves the audited roadmap", () => {
   const inventory = readJson(join(root, expected.componentInventoryPath), "core component inventory");
   assert.equal(inventory.schemaVersion, expected.schemaVersion);
   assert.ok(Array.isArray(inventory.components), "component inventory must contain components[]");
@@ -75,7 +78,8 @@ test("component inventory records the approved roadmap without activating future
   assert.deepEqual([...byName.keys()].sort(), [...expected.requiredComponents].sort(), "component inventory must contain exactly the approved core companions");
   for (const name of expected.requiredComponents) {
     const component = byName.get(name);
-    assert.equal(component.status, expected.requiredComponentStatus, `${name} must remain audited and inactive in PR01`);
+    const expectedStatus = expected.activeComponents.includes(name) ? "active" : "audited";
+    assert.equal(component.status, expectedStatus, `${name} must match its T09 activation state`);
     assertAuditedComponent(component, name);
   }
 });

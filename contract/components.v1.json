@@ -3,7 +3,7 @@
   "components": [
     {
       "name": "pi-subagents",
-      "status": "audited",
+      "status": "active",
       "version": "0.54.0",
       "license": "MIT",
       "integrity": "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww==",
@@ -19,7 +19,7 @@
     },
     {
       "name": "@juicesharp/rpiv-ask-user-question",
-      "status": "audited",
+      "status": "active",
       "version": "2.7.0",
       "license": "MIT",
       "integrity": "sha512-5amOEZ8RfSZJUTahYSajsulHGGKHaYwEQAd+J/f7gNPq7MkzgxOUCZzvwM9V8hTmFISHWNQFq1pv0ZIky8aTNw==",
@@ -27,7 +27,7 @@
     },
     {
       "name": "@gotgenes/pi-permission-system",
-      "status": "audited",
+      "status": "active",
       "version": "27.0.0",
       "license": "MIT",
       "integrity": "sha512-5WpP2z0Ohxipi2Myfg4ArchXgtMX15HbJl7b2YMK3iB2sRIm57hDXt86e0zsVX+sGOVrDLCkKtLoqMkrPS1rwQ==",
