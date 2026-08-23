@@ -32,6 +32,30 @@ export function createBootstrap({
     let currentSessionId;
     const companionTools = new Set(staticCompanionTools);
 
+    try {
+      goalConflict = goalConflictDetector?.();
+    } catch (error) {
+      goalConflict = {
+        packageName: "@narumitw/pi-goal",
+        scope: "settings",
+        source: "unknown",
+        error,
+      };
+    }
+    if (!goalConflict) {
+      try {
+        const config = readGoalConfig?.();
+        if (config?.kind === "invalid") throw new Error(config.reason ?? "invalid settings shape");
+      } catch (error) {
+        goalConfigFailure = {
+          packageName: "@narumitw/pi-goal",
+          scope: "config",
+          source: "pi-goal.json",
+          error,
+        };
+      }
+    }
+
     pi.on("tool_call", (_event, ctx) => {
       const sessionId = readSessionId(ctx);
       return sessionId && readySessions.has(sessionId)
@@ -42,6 +66,12 @@ export function createBootstrap({
             reason: "JorgeX companions are unavailable until the session permission service is ready.",
           };
     });
+
+    if (goalConfigFailure) {
+      pi.events.on("pi-goal:start", (payload) => {
+        emitGoalUnavailable(pi.events, payload, "Goal is unavailable because pi-goal.json is invalid or unreadable; correct it and reload Pi.");
+      });
+    }
 
     pi.on("session_start", (_event, ctx) => {
       const sessionId = readSessionId(ctx);
@@ -63,53 +93,24 @@ export function createBootstrap({
           };
         }
       }
-      if (!goalConflict) {
-        try {
-          goalConflict = goalConflictDetector?.();
-        } catch (error) {
-          goalConflict = {
-            packageName: "@narumitw/pi-goal",
-            scope: "settings",
-            source: "unknown",
-            error,
-          };
-        }
-      }
-      if (!goalConfigFailure) {
-        try {
-          const config = readGoalConfig?.();
-          if (config?.kind === "invalid") throw new Error(config.reason ?? "invalid settings shape");
-        } catch (error) {
-          goalConfigFailure = {
-            packageName: "@narumitw/pi-goal",
-            scope: "config",
-            source: "pi-goal.json",
-            error,
-          };
-        }
-      }
       if (bootstrapFailure && !failureNotified) {
-        ctx?.ui?.notify?.(formatFailure(bootstrapFailure), "error");
-        failureNotified = true;
+        failureNotified = notifyError(ctx, formatFailure(bootstrapFailure));
       }
       if (webAccessConflict && !conflictNotified) {
-        ctx?.ui?.notify?.(formatPackageConflict(webAccessConflict), "error");
-        conflictNotified = true;
+        conflictNotified = notifyError(ctx, formatPackageConflict(webAccessConflict));
       }
       if (goalConflict && !goalConflictNotified) {
-        ctx?.ui?.notify?.(formatPackageConflict(goalConflict), "error");
-        goalConflictNotified = true;
+        goalConflictNotified = notifyError(ctx, formatGoalConflict(goalConflict));
       }
       if (goalConfigFailure && !goalConfigFailureNotified) {
-        ctx?.ui?.notify?.(formatPackageConflict(goalConfigFailure), "error");
-        goalConfigFailureNotified = true;
+        goalConfigFailureNotified = notifyError(ctx, formatPackageConflict(goalConfigFailure));
       }
-      if (bootstrapFailure || webAccessConflict || goalConflict || goalConfigFailure) hideCompanionTools(pi, companionTools);
+      if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
     });
 
     pi.events.on("permissions:ready", (event) => {
       const sessionId = typeof event?.sessionId === "string" ? event.sessionId : undefined;
-      if (!companionsHealthy || bootstrapFailure || webAccessConflict || goalConflict || goalConfigFailure || !sessionId || !locateService?.(sessionId)) return;
+      if (!companionsHealthy || bootstrapFailure || webAccessConflict || !sessionId || !locateService?.(sessionId)) return;
 
       readySessions.add(sessionId);
     });
@@ -135,6 +136,7 @@ export function createBootstrap({
       }
       const factories = [];
       for (const companion of companionIds) {
+        if (companion === "goal" && (goalConflict || goalConfigFailure)) continue;
         try {
           factories.push({ companion, factory: await loadCompanion(companion) });
         } catch (error) {
@@ -160,8 +162,8 @@ export function createBootstrap({
 
     pi.on("before_agent_start", (agentEvent, ctx) => {
       const activeSession = readSessionId(ctx);
-      if (bootstrapFailure || webAccessConflict || goalConflict || goalConfigFailure || !activeSession || !readySessions.has(activeSession)) {
-        if (!bootstrapFailure && !webAccessConflict && !goalConflict && !goalConfigFailure && activeSession && !hiddenSelections.has(activeSession)) {
+      if (bootstrapFailure || webAccessConflict || !activeSession || !readySessions.has(activeSession)) {
+        if (!bootstrapFailure && !webAccessConflict && activeSession && !hiddenSelections.has(activeSession)) {
           hiddenSelections.set(activeSession, selectedCompanionTools(pi, companionTools));
         }
         hideCompanionTools(pi, companionTools);
@@ -245,7 +247,7 @@ function createGoalApi(pi, companionTools, unavailableReason) {
     get(target, property, receiver) {
       if (property === "on") {
         return (name, handler) => target.on(name, name === "pi-goal:start"
-          ? guardGoalHandler(handler, unavailableReason)
+          ? guardGoalRpcHandler(handler, unavailableReason, target)
           : handler);
       }
       const value = Reflect.get(target, property, receiver);
@@ -292,9 +294,32 @@ function createGoalApi(pi, companionTools, unavailableReason) {
 }
 
 function guardGoalHandler(handler, unavailableReason) {
-  const guarded = (...args) => unavailableReason() ? undefined : handler(...args);
+  const guarded = (...args) => unavailableReason(args[1]) ? undefined : handler(...args);
   if (handler.owner !== undefined) guarded.owner = handler.owner;
   return guarded;
+}
+
+function guardGoalRpcHandler(handler, unavailableReason, events) {
+  const guarded = (payload) => {
+    const reason = unavailableReason();
+    return reason ? emitGoalUnavailable(events, payload, reason) : handler(payload);
+  };
+  if (handler.owner !== undefined) guarded.owner = handler.owner;
+  return guarded;
+}
+
+function emitGoalUnavailable(events, payload, message) {
+  const runId = typeof payload?.runId === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(payload.runId)
+    ? payload.runId
+    : undefined;
+  if (!runId) return;
+  if (typeof events.emit !== "function") return;
+  events.emit(`pi-goal:event:${runId}`, {
+    type: "error",
+    runId,
+    operation: "start",
+    error: { code: "ACTIVATION_FAILED", message },
+  });
 }
 
 function wrapWebTool(tool, readWebAccessConfig) {
@@ -459,6 +484,25 @@ function normalizeFailure(failure) {
 function formatFailure({ phase, companion, error }) {
   const message = error instanceof Error ? error.message : String(error);
   return `JorgeX companion ${companion} ${phase} failure: ${message}`;
+}
+
+function notifyError(ctx, message) {
+  const notify = ctx?.ui?.notify;
+  if (typeof notify !== "function") return false;
+  try {
+    notify.call(ctx.ui, message, "error");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function formatGoalConflict({ scope, source, error }) {
+  if (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `Bundled @narumitw/pi-goal was not loaded because direct-package detection failed (${scope}: ${source}): ${message}. Correct Pi settings and reload Pi explicitly.`;
+  }
+  return `A direct @narumitw/pi-goal package was detected in ${scope} Pi settings (${source}). That external Goal is unmanaged and outside JorgeX Goal safety; remove the direct entry and reload Pi to activate the bundled Goal.`;
 }
 
 function formatPackageConflict({ packageName, scope, source, error }) {
