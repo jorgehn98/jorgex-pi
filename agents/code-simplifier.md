@@ -1,15 +1,11 @@
 ---
 name: code-simplifier
 description: Read-only code simplifier. Use it AFTER code is written or changed to propose simplifications that improve readability and reduce complexity while preserving exact behavior. Returns proposed refinements only — never writes or edits code. Not for implementing features, finding bugs (that's code-reviewer) or broad rewrites.
-tools: read, grep, find, ls, bash, contact_supervisor
+tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Code Simplifier

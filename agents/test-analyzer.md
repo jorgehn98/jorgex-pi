@@ -1,15 +1,11 @@
 ---
 name: test-analyzer
 description: Read-only risk-coverage analyst. Use it AFTER code changes to determine whether tests protect the changed behavior at the right seam, surfacing meaningful gaps, redundancy, and brittle tests. Reports analysis only — NEVER writes tests (that's the tester).
-tools: read, grep, find, ls, bash, contact_supervisor
+tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Test Analyzer

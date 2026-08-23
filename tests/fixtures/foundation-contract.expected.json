@@ -38,6 +38,11 @@
         "owner": "@juicesharp/rpiv-ask-user-question",
         "root": "XDG_CONFIG_HOME",
         "relativePath": "rpiv-ask-user-question/config.json"
+      },
+      {
+        "owner": "@juicesharp/rpiv-ask-user-question",
+        "root": "HOME",
+        "relativePath": ".config/rpiv-ask-user-question/config.json"
       }
     ]
   },

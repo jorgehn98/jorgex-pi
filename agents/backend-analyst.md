@@ -1,15 +1,11 @@
 ---
 name: backend-analyst
 description: Read-only backend analyst. Use it BEFORE implementing to map services, database, APIs, server functions or data-access patterns, and to surface performance/security/consistency risks. Returns analysis and recommendations only — never writes code or applies changes. Not for implementing features or fixing bugs.
-tools: read, grep, find, ls, bash, contact_supervisor
+tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Backend Analyst

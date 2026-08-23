@@ -1,15 +1,11 @@
 ---
 name: comment-fixer
 description: Comment fixer. Use it AFTER code is written or changed to fix the comments in the diff DIRECTLY — corrects inaccurate ones, removes worthless ones, adds missing critical ones. Edits comments and docstrings only, never executable code. Not for code changes, docs files or translations.
-tools: read, grep, find, ls, bash, edit, write, contact_supervisor
+tools: read, grep, find, ls, git_read, edit, write, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 maxSubagentDepth: 0
 ---
 

@@ -1,15 +1,11 @@
 ---
 name: frontend-analyst
 description: Read-only frontend analyst. Use it BEFORE implementing or reviewing to map components, hooks, state, rendering and UI patterns, and to surface re-render, hydration, coupling or complexity risks. Returns analysis and recommendations only — never writes code. Not for implementing features or fixing bugs.
-tools: read, grep, find, ls, bash, contact_supervisor
+tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Frontend Analyst

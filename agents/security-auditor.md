@@ -1,15 +1,11 @@
 ---
 name: security-auditor
 description: Read-only security auditor. Use it AFTER code changes to audit for security and privacy risks — auth, authorization, secrets, sensitive data, input validation, webhooks, or other security-critical flows. Reviews the diff and reports findings only — never writes or fixes code. Not for implementing features or general code review.
-tools: read, grep, find, ls, bash, contact_supervisor
+tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Security Auditor

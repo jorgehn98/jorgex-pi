@@ -55,12 +55,15 @@
       "targetPath": "agents/backend-analyst.md",
       "tier": "standard",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "contact_supervisor"
       ]
     },
@@ -70,12 +73,15 @@
       "targetPath": "agents/code-reviewer.md",
       "tier": "strong",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "contact_supervisor"
       ]
     },
@@ -85,12 +91,15 @@
       "targetPath": "agents/code-simplifier.md",
       "tier": "standard",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "contact_supervisor"
       ]
     },
@@ -101,12 +110,15 @@
       "tier": "cheap",
       "status": "runnable",
       "maxSubagentDepth": 0,
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "edit",
         "write",
         "contact_supervisor"
@@ -118,12 +130,15 @@
       "targetPath": "agents/docs-maintainer.md",
       "tier": "cheap",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "edit",
         "write",
         "contact_supervisor"
@@ -151,12 +166,15 @@
       "targetPath": "agents/frontend-analyst.md",
       "tier": "standard",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "contact_supervisor"
       ]
     },
@@ -183,12 +201,15 @@
       "targetPath": "agents/security-auditor.md",
       "tier": "strong",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "contact_supervisor"
       ]
     },
@@ -198,12 +219,15 @@
       "targetPath": "agents/silent-failure-hunter.md",
       "tier": "strong",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "contact_supervisor"
       ]
     },
@@ -213,12 +237,15 @@
       "targetPath": "agents/test-analyzer.md",
       "tier": "standard",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "contact_supervisor"
       ]
     },
@@ -262,12 +289,15 @@
       "targetPath": "agents/type-design-analyzer.md",
       "tier": "standard",
       "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
       "tools": [
         "read",
         "grep",
         "find",
         "ls",
-        "bash",
+        "git_read",
         "contact_supervisor"
       ]
     }

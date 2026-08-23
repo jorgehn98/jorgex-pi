@@ -1,15 +1,11 @@
 ---
 name: silent-failure-hunter
 description: Read-only error-handling auditor. Use it AFTER code changes to hunt silent failures, inadequate error handling and inappropriate fallback behavior in the diff. Reports findings only — never writes or fixes code. Not for implementing features or general code review.
-tools: read, grep, find, ls, bash, contact_supervisor
+tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Silent Failure Hunter

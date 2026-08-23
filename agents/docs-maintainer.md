@@ -1,15 +1,11 @@
 ---
 name: docs-maintainer
 description: Evidence-first documentation specialist. Use it AFTER behavior or APIs change to keep the repo's /docs folder and any public docs site (website, app, docs portal) accurate and in sync — content, navigation and metadata. Writes docs only — not for product logic, features or bug fixes.
-tools: read, grep, find, ls, bash, edit, write, contact_supervisor
+tools: read, grep, find, ls, git_read, edit, write, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Docs Maintainer

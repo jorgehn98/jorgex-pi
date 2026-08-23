@@ -19,13 +19,7 @@
       ],
       "full": ["implementer", "orchestrator", "tester", "translator"]
     },
-    "gitReadPermission": {
-      "bash": {
-        "*": "deny",
-        "git diff*": "allow",
-        "git log*": "allow"
-      }
-    }
+    "gitReadExtension": "../extensions/git-read.ts"
   },
   "dependency": {
     "name": "pi-subagents",
@@ -68,20 +62,20 @@
     "tools": ["read", "grep", "find", "ls", "bash", "edit", "write"]
   },
   "agents": [
-    { "name": "backend-analyst", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "contact_supervisor"] },
-    { "name": "code-reviewer", "tier": "strong", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "contact_supervisor"] },
-    { "name": "code-simplifier", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "contact_supervisor"] },
-    { "name": "comment-fixer", "tier": "cheap", "status": "runnable", "maxSubagentDepth": 0, "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"] },
-    { "name": "docs-maintainer", "tier": "cheap", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"] },
+    { "name": "backend-analyst", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
+    { "name": "code-reviewer", "tier": "strong", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
+    { "name": "code-simplifier", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
+    { "name": "comment-fixer", "tier": "cheap", "status": "runnable", "maxSubagentDepth": 0, "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "edit", "write", "contact_supervisor"] },
+    { "name": "docs-maintainer", "tier": "cheap", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "edit", "write", "contact_supervisor"] },
     { "name": "engram", "tier": "cheap", "status": "deferred", "requiredCapability": "engram-runtime-tools-v1", "reason": "engram-runtime-tools-unavailable", "maxSubagentDepth": 0, "tools": ["read", "grep", "find", "ls"] },
-    { "name": "frontend-analyst", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "contact_supervisor"] },
+    { "name": "frontend-analyst", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "implementer", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"] },
-    { "name": "security-auditor", "tier": "strong", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "contact_supervisor"] },
-    { "name": "silent-failure-hunter", "tier": "strong", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "contact_supervisor"] },
-    { "name": "test-analyzer", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "contact_supervisor"] },
+    { "name": "security-auditor", "tier": "strong", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
+    { "name": "silent-failure-hunter", "tier": "strong", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
+    { "name": "test-analyzer", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "tester", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"] },
     { "name": "translator", "tier": "cheap", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"] },
-    { "name": "type-design-analyzer", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "contact_supervisor"] }
+    { "name": "type-design-analyzer", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] }
   ],
   "skills": [
     "agent-delegation",

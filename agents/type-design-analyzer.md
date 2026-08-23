@@ -1,15 +1,11 @@
 ---
 name: type-design-analyzer
 description: Read-only type design analyst. Use it AFTER code changes to evaluate type invariants, type safety and encapsulation quality in the diff. Reports analysis and recommendations only — never writes or edits code. Not for implementing features or general code review.
-tools: read, grep, find, ls, bash, contact_supervisor
+tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Type Design Analyzer

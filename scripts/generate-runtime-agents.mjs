@@ -66,7 +66,8 @@ function translateAgent(name) {
   const status = source.mode === "primary" ? "dormant" : name === "engram" ? "deferred" : "runnable";
   const targetPath = source.mode === "primary" ? `primary/${name}.md` : status === "deferred" ? `deferred/agents/${name}.md` : `agents/${name}.md`;
   const tools = ["read", "grep", "find", "ls"];
-  if (source.bash !== "none") tools.push("bash");
+  if (source.bash === "git-read") tools.push("git_read");
+  if (source.bash === "full") tools.push("bash");
   if (source.readonly === "false") tools.push("edit", "write");
   if (source.mode === "subagent" && name !== "engram") tools.push("contact_supervisor");
   return { source, sourcePath, targetPath, status, tools };
@@ -104,15 +105,7 @@ function writeRuntimeAgent(agent) {
     "inheritProjectContext: true",
     "inheritSkills: false",
   ];
-  if (agent.source.bash === "git-read") {
-    lines.push(
-      "permission:",
-      "  bash:",
-      '    "*": deny',
-      '    "git diff*": allow',
-      '    "git log*": allow',
-    );
-  }
+  if (agent.source.bash === "git-read") lines.push("subagentOnlyExtensions: ../extensions/git-read.ts");
   if (agent.source.spawn === "false") lines.push("maxSubagentDepth: 0");
   lines.push("---", agent.source.body);
   writeText(join(stage, agent.targetPath), `${lines.join("\n").replace(/\n*$/, "")}\n`);
@@ -127,6 +120,7 @@ function contractEntry(agent) {
     status: agent.status,
     ...(agent.status === "deferred" ? { requiredCapability: "engram-runtime-tools-v1", reason: "engram-runtime-tools-unavailable" } : {}),
     ...(agent.source.spawn === "false" ? { maxSubagentDepth: 0 } : {}),
+    ...(agent.source.bash === "git-read" ? { subagentOnlyExtensions: ["../extensions/git-read.ts"] } : {}),
     tools: agent.tools,
   };
 }

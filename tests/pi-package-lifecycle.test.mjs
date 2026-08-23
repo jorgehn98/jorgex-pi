@@ -29,9 +29,11 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
   const npmCache = join(sandbox, "npm-cache");
   const packDir = join(sandbox, "pack");
   const foreignPackageDir = join(sandbox, "foreign-package");
+  const xdgConfigDir = join(sandbox, "xdg-config");
   const settingsPath = join(agentDir, "settings.json");
   const permissionConfigPath = join(agentDir, "extensions", "pi-permission-system", "config.json");
-  const askConfigPath = join(agentDir, "extensions", "rpiv-ask-user-question", "config.json");
+  const askConfigPath = join(xdgConfigDir, "rpiv-ask-user-question", "config.json");
+  const askLegacyConfigPath = join(homeDir, ".config", "rpiv-ask-user-question", "config.json");
 
   for (const path of [agentDir, homeDir, cwd, npmCache, packDir, foreignPackageDir]) {
     mkdirSync(path, { recursive: true });
@@ -49,10 +51,13 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
   });
   const foreignPermissionConfig = '{"permissions":{"*":"ask"},"owner":"user"}\n';
   const foreignAskConfig = '{"collapseKey":"ctrl+}"}\n';
+  const foreignLegacyAskConfig = '{"collapseKey":"ctrl+[","legacy":true}\n';
   mkdirSync(dirname(permissionConfigPath), { recursive: true });
   mkdirSync(dirname(askConfigPath), { recursive: true });
+  mkdirSync(dirname(askLegacyConfigPath), { recursive: true });
   writeFileSync(permissionConfigPath, foreignPermissionConfig);
   writeFileSync(askConfigPath, foreignAskConfig);
+  writeFileSync(askLegacyConfigPath, foreignLegacyAskConfig);
 
   const isolatedEnv = {
     ...allowedHostEnv(),
@@ -61,7 +66,7 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     TMP: sandbox,
     TMPDIR: sandbox,
     XDG_CACHE_HOME: join(sandbox, "xdg-cache"),
-    XDG_CONFIG_HOME: join(sandbox, "xdg-config"),
+    XDG_CONFIG_HOME: xdgConfigDir,
     XDG_DATA_HOME: join(sandbox, "xdg-data"),
     PI_CODING_AGENT_DIR: agentDir,
     PI_OFFLINE: "1",
@@ -106,6 +111,7 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(count(afterFirstInstall.packages, source), 1, "install must persist exactly one JorgeX package entry");
     assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "install must not seed or modify permission config");
     assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "install must not seed or modify ask config");
+    assert.equal(readFileSync(askLegacyConfigPath, "utf8"), foreignLegacyAskConfig, "install must preserve legacy ask config");
 
     const installedPackageDir = join(agentDir, "npm", "node_modules", "jorgex-pi");
     const installedManifest = readJson(join(installedPackageDir, "package.json"));
@@ -131,6 +137,7 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(digestTree(installedPackageDir), firstPackageDigest, "repeated install must leave the published package contents stable");
     assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "repeated install must preserve permission config");
     assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "repeated install must preserve ask config");
+    assert.equal(readFileSync(askLegacyConfigPath, "utf8"), foreignLegacyAskConfig, "repeated install must preserve legacy ask config");
 
     runPi(pi, ["remove", source, "--no-approve"], isolatedEnv, cwd);
     const afterRemove = readJson(settingsPath);
@@ -139,13 +146,15 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(existsSync(installedPackageDir), false, "remove must delete the managed JorgeX package files");
     assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "remove must preserve permission config");
     assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "remove must preserve ask config");
+    assert.equal(readFileSync(askLegacyConfigPath, "utf8"), foreignLegacyAskConfig, "remove must preserve legacy ask config");
     runPi(pi, ["--list-models", "__jorgex_foundation_smoke_no_match__", "--no-approve", "--offline", "--no-context-files"], isolatedEnv, cwd);
 
     const absentAgentDir = join(sandbox, "absent-agent");
     const absentHomeDir = join(sandbox, "absent-home");
     const absentSettingsPath = join(absentAgentDir, "settings.json");
     const absentPermissionConfig = join(absentAgentDir, "extensions", "pi-permission-system", "config.json");
-    const absentAskConfig = join(absentAgentDir, "extensions", "rpiv-ask-user-question", "config.json");
+    const absentAskConfig = join(sandbox, "absent-xdg-config", "rpiv-ask-user-question", "config.json");
+    const absentLegacyAskConfig = join(absentHomeDir, ".config", "rpiv-ask-user-question", "config.json");
     const foreignTree = join(absentAgentDir, "extensions", "user-owned");
     const foreignMarker = join(foreignTree, "keep.json");
     mkdirSync(foreignTree, { recursive: true });
@@ -166,11 +175,13 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
       runPi(pi, ["install", source, "--no-approve"], absentEnv, cwd);
       assert.equal(existsSync(absentPermissionConfig), false, `${phase} must not seed permission config when absent`);
       assert.equal(existsSync(absentAskConfig), false, `${phase} must not seed ask config when absent`);
+      assert.equal(existsSync(absentLegacyAskConfig), false, `${phase} must not seed legacy ask config when absent`);
       assert.equal(digestTree(foreignTree), foreignTreeDigest, `${phase} must preserve the foreign extension tree`);
     }
     runPi(pi, ["remove", source, "--no-approve"], absentEnv, cwd);
     assert.equal(existsSync(absentPermissionConfig), false, "remove must not create permission config when absent");
     assert.equal(existsSync(absentAskConfig), false, "remove must not create ask config when absent");
+    assert.equal(existsSync(absentLegacyAskConfig), false, "remove must not create legacy ask config when absent");
     assert.equal(digestTree(foreignTree), foreignTreeDigest, "remove must preserve the foreign extension tree");
     assert.deepEqual(readJson(absentSettingsPath), { packages: [foreignPackageDir], foreignState });
   } finally {

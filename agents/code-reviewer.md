@@ -1,15 +1,11 @@
 ---
 name: code-reviewer
 description: Read-only code reviewer. Use it AFTER writing or changing code to review against the project guidelines, catch real bugs and flag quality issues. Reviews git diff by default and reports issues with confidence scores. Returns review feedback only — never writes or fixes code. Not for implementing features or refactors, and not for readability/style simplifications (that's code-simplifier).
-tools: read, grep, find, ls, bash, contact_supervisor
+tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-permission:
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
+subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 
 # Code Reviewer

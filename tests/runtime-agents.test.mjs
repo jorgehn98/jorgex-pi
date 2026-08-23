@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
@@ -30,6 +30,52 @@ test("deferred Engram names a stable required capability instead of an internal 
   const actualEngram = contract.agents.find(({ name }) => name === "engram");
   assert.equal(actualEngram.requiredCapability, expectedEngram.requiredCapability);
   assert.equal("deferredUntil" in actualEngram, false, "published contracts must not expose internal PR sequencing");
+});
+
+test("pi-subagents 0.54.0 discovers all thirteen runnable package agents without diagnostics", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-agent-discovery-"));
+  try {
+    const agentDir = join(sandbox, "agent");
+    const installedPackage = join(agentDir, "npm", "node_modules", "jorgex-pi");
+    mkdirSync(installedPackage, { recursive: true });
+    cpSync(join(root, "package.json"), join(installedPackage, "package.json"));
+    cpSync(join(root, "agents"), join(installedPackage, "agents"), { recursive: true });
+    cpSync(join(root, "extensions"), join(installedPackage, "extensions"), { recursive: true });
+    const names = expected.agents.filter(({ status }) => status === "runnable").map(({ name }) => name);
+    const env = {
+      HOME: join(sandbox, "home"),
+      PATH: process.env.PATH ?? "",
+      PI_CODING_AGENT_DIR: agentDir,
+      PI_SUBAGENTS_TEMP_ROOT: join(sandbox, "pi-subagents-temp"),
+      XDG_CACHE_HOME: join(sandbox, "xdg-cache"),
+      XDG_CONFIG_HOME: join(sandbox, "xdg-config"),
+      XDG_DATA_HOME: join(sandbox, "xdg-data"),
+    };
+    const output = execFileSync(process.execPath, [join(testDir, "fixtures", "discover-runtime-agents.mjs"), JSON.stringify(names)], {
+      cwd: sandbox,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const results = JSON.parse(output);
+    assert.equal(results.length, 13);
+    assert.deepEqual(results.map(({ requestedName }) => requestedName), names);
+    assert.deepEqual(
+      results.filter(({ ok, discoveredName, requestedName }) => !ok || discoveredName !== requestedName),
+      [],
+      `pi-subagents discovery rejected package agents: ${results.filter(({ ok }) => !ok).map(({ message }) => message).join(" | ")}`,
+    );
+    for (const result of results) {
+      const policy = expectedBashPolicy(result.requestedName);
+      if (policy === "git-read") {
+        assert.equal(result.configuredExtensions?.length, 1);
+        assert.equal(resolve(result.configuredExtensions[0]), join(installedPackage, "extensions", "git-read.ts"));
+        assert.equal(existsSync(result.configuredExtensions[0]), true, `${result.requestedName} child-only extension must exist in the installed package`);
+      } else assert.deepEqual(result.configuredExtensions, []);
+    }
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
 });
 
 test("the runtime contract translates one primary and fourteen canonical subagents without model policy", () => {
@@ -124,6 +170,7 @@ test("the real tarball contains the closed runtime assets and audited dependency
     ].sort();
     const packedRuntimeFiles = [...archive.keys()].filter((path) => /^package\/(?:agents|deferred\/agents|primary)\/.+\.md$/.test(path)).sort();
     assert.deepEqual(packedRuntimeFiles, expectedRuntimeFiles, "tarball must expose 13 runnable agents while retaining primary and deferred Engram separately");
+    assert.ok(archive.has("package/extensions/git-read.ts"), "tarball must contain the child-only provider referenced by git-read agents");
     assertAllBashPolicies(new Map(packedRuntimeFiles.map((path) => {
       const name = path.slice(path.lastIndexOf("/") + 1, -".md".length);
       return [name, { path, frontmatter: parseAgentDocument(archive.get(path).toString("utf8")).frontmatter }];
@@ -240,18 +287,26 @@ function assertBashPolicy(frontmatter, name, path) {
   const policy = expectedBashPolicy(name);
   const tools = splitList(frontmatter.tools);
   const bashPermission = frontmatter.permission?.bash;
+  const childExtensions = splitList(frontmatter.subagentOnlyExtensions);
   if (policy === "none") {
     assert.equal(tools.includes("bash"), false, `${path} must not expose the bash tool`);
+    assert.equal(tools.includes("git_read"), false, `${path} must not expose git_read`);
     assert.equal(bashPermission, undefined, `${path} must not add a bash permission map`);
+    assert.deepEqual(childExtensions, [], `${path} must not load a child-only git extension`);
     return;
   }
-  assert.equal(tools.includes("bash"), true, `${path} must expose the bash tool for ${policy}`);
   if (policy === "git-read") {
-    assert.deepEqual(frontmatter.permission, expected.bashPolicies.gitReadPermission, `${path} must deny bash by default and allow only canonical read-only git commands`);
+    assert.equal(tools.includes("bash"), false, `${path} must not expose unrestricted bash for git-read`);
+    assert.equal(tools.includes("git_read"), true, `${path} must expose the dedicated git_read tool`);
+    assert.equal(frontmatter.permission, undefined, `${path} must not declare unsupported permission.bash frontmatter`);
+    assert.deepEqual(childExtensions, [expected.bashPolicies.gitReadExtension], `${path} must load only the reviewed child-only git extension`);
     return;
   }
   assert.equal(policy, "full", `${path} declares an unknown bash policy`);
+  assert.equal(tools.includes("bash"), true, `${path} must expose bash for full access`);
+  assert.equal(tools.includes("git_read"), false, `${path} must not add the constrained git tool to full access`);
   assert.equal(bashPermission, undefined, `${path} must not add a per-agent bash restriction for full access`);
+  assert.deepEqual(childExtensions, [], `${path} must not load a child-only git extension for full access`);
 }
 
 function assertLockIntegrity(lock, dependency) {
