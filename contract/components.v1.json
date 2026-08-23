@@ -43,7 +43,7 @@
     },
     {
       "name": "@narumitw/pi-goal",
-      "status": "audited",
+      "status": "active",
       "version": "0.53.0",
       "license": "MIT",
       "integrity": "sha512-cmWowqAzlkgRLKYp2hFnUZvEEs6G6aGjEOazBWNW88T7LB9cd/AzOFOGYvA1QxxsGtIdOuFRZJVhfAJDGsAcjw==",

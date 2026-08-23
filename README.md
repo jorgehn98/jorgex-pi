@@ -2,7 +2,7 @@
 
 `jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle.
 
-This private development package is not an end-user release. PR04 adds pinned Web Access to the JorgeX skills and subagent runtime behind one fail-closed bootstrap while retaining a versioned snapshot of the JorgeX Stack sources.
+This private development package is not an end-user release. PR05 adds pinned Goal continuation behind the existing fail-closed bootstrap while retaining a versioned snapshot of the JorgeX Stack sources.
 
 ## Current boundary
 
@@ -12,25 +12,33 @@ This private development package is not an end-user release. PR04 adds pinned We
 | Pi resources | One bootstrap extension and 16 reviewed JorgeX skills are active. Prompts and themes remain empty. |
 | Canonical snapshot | 15 agents and 17 complete skill trees (96 files) from JorgeX Stack commit `6d2b98b1728e275bf97920f9712dd4b7928de6a7`. |
 | Runtime agents | 13 runnable subagents, a dormant primary orchestrator, and Engram deferred behind the stable `engram-runtime-tools-v1` capability. |
-| Package assets | `contract/assets.v1.json` owns the bootstrap, runtime agents, snapshot, skills, and contracts; it declares no JorgeX-managed external writes and preserves eleven companion-owned state paths. |
-| Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, and `pi-web-access@0.24.1`. |
+| Package assets | `contract/assets.v1.json` owns the bootstrap, runtime agents, snapshot, skills, and contracts; it declares no JorgeX-managed external writes and preserves thirteen companion-owned state paths. |
+| Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, and `@narumitw/pi-goal@0.53.0`. |
 | Model policy | Provider, model, and thinking level are inherited from the Pi session. JorgeX tiers remain contract metadata only. |
 
 The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive.
 
-`contract/jorgex-pi.v1.json` advertises the active versioned capabilities (`foundation-contract-v1`, `stack-snapshot-v1`, `runtime-agents-v1`, `permission-gated-tools-v1`, `structured-questions-v1`, and `web-access-v1`) and links `runtimeAgents.contractPath` to `contract/runtime-agents.v1.json`. That runtime contract records the translation from the 15 canonical agents. The 13 runnable files live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent, and `deferred/agents/engram.md` remains inert until the stable `engram-runtime-tools-v1` capability is available. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
+`contract/jorgex-pi.v1.json` advertises the active versioned capabilities (`foundation-contract-v1`, `stack-snapshot-v1`, `runtime-agents-v1`, `permission-gated-tools-v1`, `structured-questions-v1`, `web-access-v1`, and `goal-continuation-v1`) and links `runtimeAgents.contractPath` to `contract/runtime-agents.v1.json`. That runtime contract records the translation from the 15 canonical agents. The 13 runnable files live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent, and `deferred/agents/engram.md` remains inert until the stable `engram-runtime-tools-v1` capability is available. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
 
 The Pi projection preserves the canonical bash boundary per agent. `none` exposes no shell capability; `git-read` replaces bash with the child-only `git_read` tool, which executes only `git diff` and `git log` through validated argv without a shell; `full` exposes bash and remains governed by the user's permission policy. This dedicated tool avoids relying on `permission.bash`, which `pi-subagents@0.54.0` does not support.
 
 ## Bootstrap and safety boundary
 
-`extensions/bootstrap.ts` is the only root extension. Pi's resource loader discovers and initializes it before runtime actions are bound, but that loading phase only registers handlers and companion tools; calls that require runner actions, including changes to the active tool set, occur only after `bindCore` and the corresponding lifecycle event. The bootstrap loads permission, ask, subagents, and Web Access in that order and dynamically captures the tools registered by Web Access. A bootstrap guard is registered before companion loading and blocks all tool calls with termination until the current session emits `permissions:ready` and has a keyed permissions service. Load or factory failures retain that fail-closed guard, keep partial companion tools hidden, and surface one diagnostic identifying the phase, companion, and original cause at the next session start.
+`extensions/bootstrap.ts` is the only root extension. Pi's resource loader discovers and initializes it before runtime actions are bound, but that loading phase only registers handlers and companion tools; calls that require runner actions, including changes to the active tool set, occur only after `bindCore` and the corresponding lifecycle event. The bootstrap loads permission, ask, subagents, Web Access, and—only after its preflight succeeds—Goal in that order, dynamically capturing the tools registered by Web Access and Goal. A bootstrap guard is registered before companion loading and blocks all tool calls with termination until the current session emits `permissions:ready` and has a keyed permissions service. Load or factory failures retain that fail-closed guard, keep partial companion tools hidden, and surface a diagnostic identifying the phase, companion, and original cause at the next session start.
 
 Health is session-scoped and cleared on session start or shutdown. A normal session start does not mutate Pi's current tool selection: the guard supplies the pre-health boundary. If a prompt starts before health, the bootstrap records the selected companion tools and hides them. Once health arrives, it reconciles that snapshot against the current active tools and never adds a missing tool, so a selection disabled during the wait cannot be revived from stale state. If health arrives before the first prompt, the current selection remains untouched. Later ready events also never re-enable disabled tools. In headless sessions, `ask_user_question` stays unavailable instead of fabricating an answer; subagent delegation remains available after permission health.
 
-The bootstrap reads Pi settings only to prevent loading Web Access twice. It checks global `PI_CODING_AGENT_DIR/settings.json` (default `~/.pi/agent/settings.json`) and project `.pi/settings.json` for pinned or unpinned `npm:pi-web-access` package entries, including object entries with `source`. A direct duplicate, malformed settings, or a read failure is latched for the lifetime of that loaded bootstrap: later settings changes cannot unblock it in-process. Companion tools stay hidden, one diagnostic requires an explicit Pi reload after correction, and detection never rewrites either settings file. JorgeX Stack PR07 will add the install/sync preflight and ownership-safe migration; this runtime gate remains the fail-closed last line of defense.
+The bootstrap reads Pi settings only to prevent loading Web Access or its bundled Goal twice. It checks global `PI_CODING_AGENT_DIR/settings.json` (default `~/.pi/agent/settings.json`) and project `.pi/settings.json` for pinned or unpinned npm entries, including object entries with `source`. Each detector latches and reports its own issue only after a UI notification is actually delivered. Web Access detection retains the existing global fail-closed boundary. A Goal duplicate or unreadable Goal preflight skips only the bundled Goal; permission health, Web Access, and subagents remain available. Detection never rewrites settings. JorgeX Stack PR07 will add install/sync preflight and ownership-safe migration for npm, local, and Git package identities; the runtime detector intentionally recognizes only npm identities.
 
-This atomic safety guarantee applies to the tool-call flow. Pi's public API does not let the bootstrap roll back or pre-guard slash commands, companion event channels, or the event/RPC bridges registered internally by `pi-subagents`. Those surfaces retain their upstream lifecycle and error handling; this package does not claim otherwise.
+This atomic safety guarantee applies to the tool-call flow. A bundled healthy Goal is additionally gated at its command, managed-run start, prompt, settled-continuation, and message-delivery boundaries so it cannot start provider work before permission health. A valid managed-run request rejected by that gate receives the upstream-compatible terminal `ACTIVATION_FAILED` error instead of disappearing silently. Other companion slash commands and the event/RPC bridges registered internally by `pi-subagents` retain their upstream lifecycle and error handling; this package does not claim to guard those surfaces.
+
+## Goal continuation and orchestrator policy
+
+In the managed configuration, bundled `@narumitw/pi-goal@0.53.0` is the sole producer of automatic continuation. It owns `/goal`, the `goal_complete`, `goal_blocked`, and `goal_wait` tools, session persistence, settled-idle continuation, and its disabled-by-default managed-run RPC channel. JorgeX does not add a second loop, queue, command, or RPC producer. The orchestrator skill remains policy: it governs phases, delegation, the durable `work/{name}/plan.md` board, verification, and delivery, while Goal only keeps the active objective moving between settled turns.
+
+An absent `PI_CODING_AGENT_DIR/pi-goal.json` uses the pinned upstream defaults without creating a file: Goal tools appear after the first accepted goal, RPC is off, automatic work pauses after 25 responses, and the no-progress guard pauses after three repeated runs. The former experimental queue is removed upstream. JorgeX neither seeds nor overrides these settings, including with unlimited values. An invalid or unreadable existing config latches Goal unhealthy for the loaded bootstrap and omits the bundled Goal entirely; the rest of the foundation remains healthy. Correct the config and reload Pi explicitly to enable Goal.
+
+Goal's active prompt is appended before JorgeX browser routing, so Goal supplies continuation state while the JorgeX guidance remains the final capability policy. If a direct npm Goal is detected, JorgeX does not load its bundled copy. The external Goal remains unmanaged and outside the Goal-specific safety bridge; remove it and reload Pi to return to the supported managed configuration. Current managed Goal state lives in Pi's session entries; the user-owned config and legacy `pi-goal-state.json` are preserved across JorgeX lifecycle operations.
 
 ## Web Access and browser routing
 
@@ -95,7 +103,7 @@ That command is the narrow package-manager exception: Pi uses npm internally to 
 
 Pi may relocate its agent directory through `PI_CODING_AGENT_DIR`; the package relies on Pi and its companions to resolve that location rather than assuming a fixed user path.
 
-The ownership boundary is `contract/assets.v1.json`. Only its package paths belong to JorgeX, and `managedExternalWrites` is empty. Permission-system, ask, and Web Access state is companion- or user-owned: the bootstrap does not seed, replace, or remove it. The manifest records eleven `preservedExternalState` paths that must survive JorgeX install, reinstall, and removal:
+The ownership boundary is `contract/assets.v1.json`. Only its package paths belong to JorgeX, and `managedExternalWrites` is empty. Permission-system, ask, Web Access, and Goal state is companion- or user-owned: the bootstrap does not seed, replace, or remove it. The manifest records thirteen `preservedExternalState` paths that must survive JorgeX install, reinstall, and removal:
 
 - `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/config.json`
 - `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/logs`
@@ -108,11 +116,13 @@ The ownership boundary is `contract/assets.v1.json`. Only its package paths belo
 - `pi-web-access`: `XDG_CONFIG_HOME/pi/web-search-cache`
 - `pi-web-access`: `HOME/.pi/web-search.json`
 - `pi-web-access`: `HOME/.pi/web-search-cache`
+- `@narumitw/pi-goal`: `PI_CODING_AGENT_DIR/pi-goal.json`
+- `@narumitw/pi-goal`: `PI_CODING_AGENT_DIR/pi-goal-state.json` (legacy state retained for ownership-safe migration and clear behavior)
 
 The XDG and HOME ask paths may resolve to the same file; lifecycle consumers preserve both declarations and deduplicate resolved paths. These paths may be created or managed by their named companions during normal operation; declaring them preserved does not transfer their ownership to JorgeX.
 
 ## Supply chain and security
 
-`contract/components.v1.json` distinguishes the four active companions from the audited future roadmap. Runtime and bundled dependencies are exact pins, the lockfile records audited npm `sha512` integrity values, and installation performs no live GitHub download. The tarball carries the complete companion closure for the tested offline Pi lifecycle.
+`contract/components.v1.json` distinguishes the five active companions from the audited future roadmap. Runtime and bundled dependencies are exact pins, the lockfile records audited npm `sha512` integrity values, and installation performs no live GitHub download. Goal's bundled closure resolves `@narumitw/pi-tui-kit` to the audited lock version alongside its exact transitive packages. The tarball carries the complete companion closure for the tested offline Pi lifecycle.
 
-The repository contains no keys, tokens, credentials, or secret placeholders. PR04 adds Web Access but no API keys or browser credentials, MCP setup, Engram runtime, goals, custom theme, startup branding, or project bootstrap. It does not impose a permission configuration: policy remains an explicit user concern.
+The repository contains no keys, tokens, credentials, or secret placeholders. PR05 adds Goal without API keys, browser credentials, MCP setup, Engram runtime, custom theme, startup branding, or project bootstrap. It does not impose a permission or Goal configuration: policy remains an explicit user concern.

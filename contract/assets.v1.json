@@ -68,6 +68,16 @@
       "owner": "pi-web-access",
       "root": "HOME",
       "relativePath": ".pi/web-search-cache"
+    },
+    {
+      "owner": "@narumitw/pi-goal",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "pi-goal.json"
+    },
+    {
+      "owner": "@narumitw/pi-goal",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "pi-goal-state.json"
     }
   ]
 }

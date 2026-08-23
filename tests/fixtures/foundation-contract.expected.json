@@ -73,6 +73,16 @@
         "owner": "pi-web-access",
         "root": "HOME",
         "relativePath": ".pi/web-search-cache"
+      },
+      {
+        "owner": "@narumitw/pi-goal",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "pi-goal.json"
+      },
+      {
+        "owner": "@narumitw/pi-goal",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "pi-goal-state.json"
       }
     ]
   },
@@ -82,7 +92,8 @@
     "runtime-agents-v1",
     "permission-gated-tools-v1",
     "structured-questions-v1",
-    "web-access-v1"
+    "web-access-v1",
+    "goal-continuation-v1"
   ],
   "runtimeAgents": {
     "contractPath": "contract/runtime-agents.v1.json"
@@ -100,7 +111,8 @@
     "pi-subagents",
     "@juicesharp/rpiv-ask-user-question",
     "@gotgenes/pi-permission-system",
-    "pi-web-access"
+    "pi-web-access",
+    "@narumitw/pi-goal"
   ],
   "requiredComponents": [
     "pi-subagents",

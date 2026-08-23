@@ -44,6 +44,21 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     assert.equal(loaded.extensionCount, 1, "the root package manifest must load exactly one bootstrap extension");
     assert.equal(loaded.guard?.block, true, "the real Pi runner must see the JorgeX guard before session health");
     assert.equal(loaded.guard?.terminate, true, "the pre-health guard must terminate the blocked tool batch");
+    assert.equal(loaded.realGoal.commandNames.filter((name) => name === "goal").length, 1, "the real packaged companion must register exactly one /goal command");
+    assert.deepEqual(
+      loaded.realGoal.toolNames.filter((name) => name.startsWith("goal_")),
+      ["goal_blocked", "goal_complete", "goal_wait"],
+      "the real packaged companion must register exactly the reviewed Goal tools",
+    );
+    assert.ok(loaded.realGoal.sentUserMessageCount >= 1, "starting the real Goal must enqueue its owned continuation without a provider");
+    assert.match(loaded.realGoal.prompt, /<goal_id>/i, "the real active Goal must contribute its system prompt");
+    assert.match(loaded.realGoal.prompt, /Use Web Access/i, "JorgeX routing must remain in the real prompt chain");
+    assert.ok(loaded.realGoal.prompt.indexOf("<goal_id>") < loaded.realGoal.prompt.indexOf("Use Web Access"), "Goal state must precede final JorgeX routing");
+    assert.deepEqual(
+      loaded.realGoal.managedRunEvents,
+      [{ type: "error", runId: "loader-rpc", operation: "start", error: { code: "RPC_DISABLED", message: "Managed run RPC is disabled." } }],
+      "the real missing-config default must leave managed-run RPC disabled and responsive",
+    );
     assert.deepEqual(loaded.isolation, { ...isolation, piPackageDirConfigured: false });
   } finally {
     rmSync(sandbox, { recursive: true, force: true });

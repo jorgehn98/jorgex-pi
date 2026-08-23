@@ -48,7 +48,7 @@ test("web tools stay dynamically health-gated and route through safe JorgeX wrap
   });
 
   await bootstrap(pi.api);
-  assert.deepEqual(initOrder, ["permission", "ask", "subagents", "web"]);
+  assert.deepEqual(initOrder, ["permission", "ask", "subagents", "web", "goal"]);
   assert.deepEqual(pi.toolNames(), ["ask_user_question", ...expected.tools, "subagent", "subagent_wait"].sort());
 
   const context = { hasUI: true, sessionId: "web-session", ui: { notify() {} } };

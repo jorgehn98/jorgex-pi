@@ -18,8 +18,11 @@ const webAccessExpected = readJson(join(testDir, "fixtures", "web-access.expecte
 
 test("pi-subagents is pinned with its audited bundled closure", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest");
-  assert.deepEqual(manifest.dependencies, Object.fromEntries(bootstrapExpected.companions.map(({ name, version }) => [name, version])));
-  assert.deepEqual(manifest.bundledDependencies, bootstrapExpected.companions.map(({ name }) => name));
+  assert.deepEqual(
+    manifest.dependencies,
+    Object.fromEntries(bootstrapExpected.companions.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right))),
+  );
+  assert.deepEqual([...manifest.bundledDependencies].sort(), bootstrapExpected.companions.map(({ name }) => name).sort());
   assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 13 runnable package agents may be discoverable by pi-subagents");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   for (const dependency of expected.dependency.bundledClosure) assertLockIntegrity(lock, dependency);
@@ -186,11 +189,11 @@ test("the real tarball contains the closed runtime assets and audited dependency
     const packedClosure = dependencyManifests
       .map(({ name, version }) => ({ name, version }))
       .sort((left, right) => left.name.localeCompare(right.name) || left.version.localeCompare(right.version));
-    assert.equal(packedClosure.length, webAccessExpected.packedClosure.count, "tarball bundled closure count must match the audited PR04 resolution");
+    assert.equal(packedClosure.length, webAccessExpected.packedClosure.count, "tarball bundled closure count must match the audited active-companion resolution");
     assert.equal(
       sha256(Buffer.from(packedClosure.map(({ name, version }) => `${name}@${version}`).join("\n"))),
       webAccessExpected.packedClosure.identitySha256,
-      "tarball bundled package identities must match the audited PR04 resolution",
+      "tarball bundled package identities must match the audited active-companion resolution",
     );
     const upstreamManifest = dependencyManifests.find(({ name }) => name === "pi-subagents");
     assert.ok(upstreamManifest.pi?.skills?.length > 0 && upstreamManifest.pi?.prompts?.length > 0, "the audited upstream resources must be physically bundled");

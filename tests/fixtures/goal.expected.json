@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "companion": {
+    "id": "goal",
+    "name": "@narumitw/pi-goal",
+    "version": "0.53.0",
+    "integrity": "sha512-cmWowqAzlkgRLKYp2hFnUZvEEs6G6aGjEOazBWNW88T7LB9cd/AzOFOGYvA1QxxsGtIdOuFRZJVhfAJDGsAcjw==",
+    "entryPath": "dist/index.ts"
+  },
+  "tools": ["goal_blocked", "goal_complete", "goal_wait"],
+  "directClosure": [
+    { "name": "@narumitw/pi-goal", "version": "0.53.0", "integrity": "sha512-cmWowqAzlkgRLKYp2hFnUZvEEs6G6aGjEOazBWNW88T7LB9cd/AzOFOGYvA1QxxsGtIdOuFRZJVhfAJDGsAcjw==" },
+    { "name": "@narumitw/pi-tui-kit", "version": "0.57.1", "integrity": "sha512-nQAL9Gie3e6JslPk1o5bKoH/2EVthsbnhI666f4sD2lWbLKpAzoPg2ySw653IOiBWbSgk2joTQA8H1h/bamJew==" },
+    { "name": "grok-mermaid", "version": "0.2.3", "integrity": "sha512-/4KopAbsjvuRP9MdPtlDjOHUmUVEohOX73JNcsWpzAtFxh+bq5+Dhb6gzvRieLDwIPQIR3/vy8V1NNTuz4Zsmg==" },
+    { "name": "highlight.js", "version": "11.12.0", "integrity": "sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg==" }
+  ],
+  "preservedExternalState": [
+    { "root": "PI_CODING_AGENT_DIR", "relativePath": "pi-goal.json" },
+    { "root": "PI_CODING_AGENT_DIR", "relativePath": "pi-goal-state.json" }
+  ],
+  "routing": {
+    "goal": "The active goal is the sole continuation authority",
+    "jorgex": "Use Web Access"
+  }
+}

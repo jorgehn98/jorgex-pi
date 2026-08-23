@@ -34,6 +34,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
   const permissionConfigPath = join(agentDir, "extensions", "pi-permission-system", "config.json");
   const askConfigPath = join(xdgConfigDir, "rpiv-ask-user-question", "config.json");
   const askLegacyConfigPath = join(homeDir, ".config", "rpiv-ask-user-question", "config.json");
+  const goalConfigPath = join(agentDir, "pi-goal.json");
+  const legacyGoalStatePath = join(agentDir, "pi-goal-state.json");
   const webStatePaths = [
     join(agentDir, "web-search.json"),
     join(agentDir, "web-search-cache", "keep.json"),
@@ -60,12 +62,16 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
   const foreignPermissionConfig = '{"permissions":{"*":"ask"},"owner":"user"}\n';
   const foreignAskConfig = '{"collapseKey":"ctrl+}"}\n';
   const foreignLegacyAskConfig = '{"collapseKey":"ctrl+[","legacy":true}\n';
+  const foreignGoalConfig = '{"rpc":{"enabled":false},"owner":"user"}\n';
+  const foreignLegacyGoalState = '{"owner":"user","legacy":true}\n';
   mkdirSync(dirname(permissionConfigPath), { recursive: true });
   mkdirSync(dirname(askConfigPath), { recursive: true });
   mkdirSync(dirname(askLegacyConfigPath), { recursive: true });
   writeFileSync(permissionConfigPath, foreignPermissionConfig);
   writeFileSync(askConfigPath, foreignAskConfig);
   writeFileSync(askLegacyConfigPath, foreignLegacyAskConfig);
+  writeFileSync(goalConfigPath, foreignGoalConfig);
+  writeFileSync(legacyGoalStatePath, foreignLegacyGoalState);
   const foreignWebState = new Map(webStatePaths.map((path, index) => [path, `{"owner":"user","slot":${index}}\n`]));
   for (const [path, bytes] of foreignWebState) {
     mkdirSync(dirname(path), { recursive: true });
@@ -125,6 +131,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "install must not seed or modify permission config");
     assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "install must not seed or modify ask config");
     assert.equal(readFileSync(askLegacyConfigPath, "utf8"), foreignLegacyAskConfig, "install must preserve legacy ask config");
+    assert.equal(readFileSync(goalConfigPath, "utf8"), foreignGoalConfig, "install must preserve user-owned goal config");
+    assert.equal(readFileSync(legacyGoalStatePath, "utf8"), foreignLegacyGoalState, "install must preserve user-owned legacy goal state");
     assertPreservedFiles(foreignWebState, "install must preserve web config and cache across PI, XDG, and HOME roots");
 
     const installedPackageDir = join(agentDir, "npm", "node_modules", "jorgex-pi");
@@ -152,6 +160,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "repeated install must preserve permission config");
     assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "repeated install must preserve ask config");
     assert.equal(readFileSync(askLegacyConfigPath, "utf8"), foreignLegacyAskConfig, "repeated install must preserve legacy ask config");
+    assert.equal(readFileSync(goalConfigPath, "utf8"), foreignGoalConfig, "repeated install must preserve user-owned goal config");
+    assert.equal(readFileSync(legacyGoalStatePath, "utf8"), foreignLegacyGoalState, "repeated install must preserve user-owned legacy goal state");
     assertPreservedFiles(foreignWebState, "repeated install must preserve web config and cache across PI, XDG, and HOME roots");
 
     runPi(pi, ["remove", source, "--no-approve"], isolatedEnv, cwd);
@@ -162,6 +172,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "remove must preserve permission config");
     assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "remove must preserve ask config");
     assert.equal(readFileSync(askLegacyConfigPath, "utf8"), foreignLegacyAskConfig, "remove must preserve legacy ask config");
+    assert.equal(readFileSync(goalConfigPath, "utf8"), foreignGoalConfig, "remove must preserve user-owned goal config");
+    assert.equal(readFileSync(legacyGoalStatePath, "utf8"), foreignLegacyGoalState, "remove must preserve user-owned legacy goal state");
     assertPreservedFiles(foreignWebState, "remove must preserve web config and cache across PI, XDG, and HOME roots");
     runPi(pi, ["--list-models", "__jorgex_foundation_smoke_no_match__", "--no-approve", "--offline", "--no-context-files"], isolatedEnv, cwd);
 
@@ -171,6 +183,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     const absentPermissionConfig = join(absentAgentDir, "extensions", "pi-permission-system", "config.json");
     const absentAskConfig = join(sandbox, "absent-xdg-config", "rpiv-ask-user-question", "config.json");
     const absentLegacyAskConfig = join(absentHomeDir, ".config", "rpiv-ask-user-question", "config.json");
+    const absentGoalConfig = join(absentAgentDir, "pi-goal.json");
+    const absentLegacyGoalState = join(absentAgentDir, "pi-goal-state.json");
     const absentWebState = [
       join(absentAgentDir, "web-search.json"),
       join(absentAgentDir, "web-search-cache"),
@@ -200,6 +214,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
       assert.equal(existsSync(absentPermissionConfig), false, `${phase} must not seed permission config when absent`);
       assert.equal(existsSync(absentAskConfig), false, `${phase} must not seed ask config when absent`);
       assert.equal(existsSync(absentLegacyAskConfig), false, `${phase} must not seed legacy ask config when absent`);
+      assert.equal(existsSync(absentGoalConfig), false, `${phase} must not seed goal config when absent`);
+      assert.equal(existsSync(absentLegacyGoalState), false, `${phase} must not seed legacy goal state when absent`);
       for (const path of absentWebState) assert.equal(existsSync(path), false, `${phase} must not seed web state at ${relative(sandbox, path)}`);
       assert.equal(digestTree(foreignTree), foreignTreeDigest, `${phase} must preserve the foreign extension tree`);
     }
@@ -207,6 +223,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(existsSync(absentPermissionConfig), false, "remove must not create permission config when absent");
     assert.equal(existsSync(absentAskConfig), false, "remove must not create ask config when absent");
     assert.equal(existsSync(absentLegacyAskConfig), false, "remove must not create legacy ask config when absent");
+    assert.equal(existsSync(absentGoalConfig), false, "remove must not create goal config when absent");
+    assert.equal(existsSync(absentLegacyGoalState), false, "remove must not create legacy goal state when absent");
     for (const path of absentWebState) assert.equal(existsSync(path), false, `remove must not seed web state at ${relative(sandbox, path)}`);
     assert.equal(digestTree(foreignTree), foreignTreeDigest, "remove must preserve the foreign extension tree");
     assert.deepEqual(readJson(absentSettingsPath), { packages: [foreignPackageDir], foreignState });

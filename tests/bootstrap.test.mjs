@@ -26,9 +26,9 @@ test("the root manifest activates only the JorgeX bootstrap and sixteen reviewed
 
 test("the active companions and their audited closure are exactly pinned and bundled", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  const dependencies = Object.fromEntries(expected.companions.map(({ name, version }) => [name, version]));
+  const dependencies = Object.fromEntries(expected.companions.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right)));
   assert.deepEqual(manifest.dependencies, dependencies);
-  assert.deepEqual(manifest.bundledDependencies, expected.companions.map(({ name }) => name));
+  assert.deepEqual([...manifest.bundledDependencies].sort(), expected.companions.map(({ name }) => name).sort());
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   for (const dependency of expected.bundledClosure) assertLockIntegrity(lock, dependency);
 });
@@ -80,7 +80,11 @@ test("bootstrap keeps its guard alive and companion tools hidden after load or f
     getPermissionsService: () => ({ ready: true }),
   });
   await bootstrap(pi.api);
-  assert.deepEqual(initOrder, companionIds, "factory initialization must preserve the reviewed companion order");
+  assert.deepEqual(
+    initOrder,
+    companionIds.slice(0, companionIds.indexOf("web") + 1),
+    "factory initialization must stop at the injected failing companion",
+  );
   assert.ok(pi.toolNames().includes("ask_user_question"), "the fixture must reach a partial companion registration before the injected throw");
   const notifications = [];
   const failedContext = {

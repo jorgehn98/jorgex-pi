@@ -18,7 +18,8 @@
     "runtime-agents-v1",
     "permission-gated-tools-v1",
     "structured-questions-v1",
-    "web-access-v1"
+    "web-access-v1",
+    "goal-continuation-v1"
   ],
   "assets": {
     "manifestVersion": 1,

@@ -20,8 +20,8 @@
     { "name": "unpdf", "version": "1.8.1", "integrity": "sha512-xkURhy2SoGpOIH0a1gLHNkASPIQYonadDJs2AQwPEfUakafeD9EA1WTWWsaR++gfTCXJpV27W7tU1nXuk82UKQ==" }
   ],
   "packedClosure": {
-    "count": 128,
-    "identitySha256": "d8ebaa0403f36ad471b17af5603c45a8ccabd1e7da1c28a219b691e7dba2e345"
+    "count": 132,
+    "identitySha256": "dffd0c7f08917777d733203b5cc28f69d3cfa8369e235cebdb9dfd614dc315ee"
   },
   "preservedExternalState": [
     { "root": "PI_CODING_AGENT_DIR", "relativePath": "web-search.json" },
