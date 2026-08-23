@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jorgex.dev/schemas/pi/runner-response.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "command",
+    "ok",
+    "package",
+    "result"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "command": {
+      "enum": [
+        "status",
+        "doctor",
+        "models",
+        "sync",
+        "cleanup",
+        "unknown"
+      ]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "root"
+      ],
+      "properties": {
+        "name": {
+          "const": "jorgex-pi"
+        },
+        "version": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      }
+    },
+    "result": {
+      "type": "object"
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "code",
+        "message"
+      ],
+      "properties": {
+        "phase": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "remedy": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

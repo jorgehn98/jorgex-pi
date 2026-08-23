@@ -31,5 +31,10 @@
   "runtimeAgents": {
     "contractPath": "contract/runtime-agents.v1.json"
   },
-  "schemas": {}
+  "runner": {
+    "contractPath": "contract/runner.v1.json"
+  },
+  "schemas": {
+    "runnerResponse": "contract/schemas/runner-response.v1.schema.json"
+  }
 }

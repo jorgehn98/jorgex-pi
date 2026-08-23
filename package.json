@@ -5,6 +5,9 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "jorgex-pi": "./bin/jorgex-pi.mjs"
+  },
   "keywords": [
     "pi-package",
     "pi",
@@ -13,6 +16,7 @@
   ],
   "files": [
     "agents",
+    "bin",
     "contract",
     "deferred/agents",
     "extensions",
