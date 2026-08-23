@@ -12,21 +12,17 @@ const recoveryInstruction = [
 export { buildEngramChildSpec };
 
 export async function resolveMcpEngramConfig({
-  loadMcpConfig,
   resolveEngramBinary = () => findEngramBinary(process.env),
   nodePath = process.execPath,
   wrapperPath: managedWrapperPath = wrapperPath,
 } = {}) {
-  const ambient = structuredClone(await loadMcpConfig());
-  ambient.mcpServers ??= {};
-  if (Object.hasOwn(ambient.mcpServers, "engram")) return { state: "collision", config: ambient };
+  const config = { mcpServers: {} };
   try {
     const binary = await resolveEngramBinary();
-    if (!binary) return { state: "missing", config: ambient };
+    if (!binary) return { state: "missing", config };
     if (!isAbsolute(nodePath) || !isAbsolute(managedWrapperPath) || !isAbsolute(binary)) {
       throw new Error("Managed Engram command paths must be absolute");
     }
-    const config = structuredClone(ambient);
     config.mcpServers.engram = {
       command: nodePath,
       args: [managedWrapperPath, binary],
@@ -39,7 +35,7 @@ export async function resolveMcpEngramConfig({
   } catch (error) {
     return {
       state: "failed",
-      config: ambient,
+      config,
       reason: error instanceof Error ? error.message : String(error),
     };
   }
@@ -47,15 +43,10 @@ export async function resolveMcpEngramConfig({
 
 export async function installMcpEngram(pi, {
   resolveEngramBinary,
-  cwd = process.cwd(),
 } = {}) {
   const adapterEntry = import.meta.resolve("pi-mcp-adapter");
-  const [{ createMcpAdapter }, { loadMcpConfig }] = await Promise.all([
-    import(adapterEntry),
-    import(new URL("./config.ts", adapterEntry).href),
-  ]);
+  const { createMcpAdapter } = await import(adapterEntry);
   const resolution = await resolveMcpEngramConfig({
-    loadMcpConfig: () => loadMcpConfig(undefined, cwd),
     resolveEngramBinary,
   });
   createMcpAdapter({ config: resolution.config })(pi);

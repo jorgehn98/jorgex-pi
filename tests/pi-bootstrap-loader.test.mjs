@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -17,11 +17,19 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
       agentDir: join(sandbox, "agent"),
       xdgConfig: join(sandbox, "xdg-config"),
       tempRoot: join(sandbox, "pi-subagents-temp"),
+      emptyBin: join(sandbox, "empty-bin"),
+      engramBin: join(sandbox, "fake-engram"),
     };
-    for (const path of Object.values(isolation)) mkdirSync(path, { recursive: true });
+    for (const path of [isolation.home, isolation.agentDir, isolation.xdgConfig, isolation.tempRoot, isolation.emptyBin]) {
+      mkdirSync(path, { recursive: true });
+    }
+    writeFileSync(isolation.engramBin, `#!${process.execPath}\nprocess.exit(0);\n`);
+    chmodSync(isolation.engramBin, 0o755);
     const env = {
       ...allowedHostEnv(),
+      ENGRAM_BIN: isolation.engramBin,
       HOME: isolation.home,
+      PATH: isolation.emptyBin,
       PI_CODING_AGENT_DIR: isolation.agentDir,
       PI_SUBAGENTS_TEMP_ROOT: isolation.tempRoot,
       XDG_CACHE_HOME: join(sandbox, "xdg-cache"),
@@ -59,7 +67,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
       [{ type: "error", runId: "loader-rpc", operation: "start", error: { code: "RPC_DISABLED", message: "Managed run RPC is disabled." } }],
       "the real missing-config default must leave managed-run RPC disabled and responsive",
     );
-    assert.deepEqual(loaded.isolation, { ...isolation, piPackageDirConfigured: false });
+    assert.deepEqual(loaded.isolation, { ...isolation, path: isolation.emptyBin, piPackageDirConfigured: false });
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
   }
@@ -67,7 +75,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
 
 function allowedHostEnv() {
   const allowed = {};
-  for (const key of ["PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec", "WINDIR", "windir"]) {
+  for (const key of ["PATHEXT", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec", "WINDIR", "windir"]) {
     if (process.env[key] !== undefined) allowed[key] = process.env[key];
   }
   return allowed;

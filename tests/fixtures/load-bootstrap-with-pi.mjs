@@ -106,6 +106,9 @@ writeFileSync(1, `${JSON.stringify({
     agentDir: process.env.PI_CODING_AGENT_DIR,
     xdgConfig: process.env.XDG_CONFIG_HOME,
     tempRoot: process.env.PI_SUBAGENTS_TEMP_ROOT,
+    emptyBin: process.env.PATH,
+    engramBin: process.env.ENGRAM_BIN,
+    path: process.env.PATH,
     piPackageDirConfigured: Object.hasOwn(process.env, "PI_PACKAGE_DIR"),
   },
 })}\n`);

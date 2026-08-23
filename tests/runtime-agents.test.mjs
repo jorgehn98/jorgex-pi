@@ -30,14 +30,34 @@ test("pi-subagents is pinned with its audited bundled closure", () => {
   for (const dependency of expected.dependency.bundledClosure) assertLockIntegrity(lock, dependency);
 });
 
-test("active Engram exposes only the pinned ProfileAgent tool set without passive capture", () => {
+test("the read-only Engram specialist exposes only non-mutating ProfileAgent tools", () => {
   const contract = readJson(join(root, expected.contractPath), "runtime agent contract");
   const expectedEngram = expected.agents.find(({ name }) => name === "engram");
   const actualEngram = contract.agents.find(({ name }) => name === "engram");
   assert.equal(actualEngram.status, "runnable");
-  assert.deepEqual(actualEngram.tools, mcpEngramExpected.engramProfile.tools);
-  assert.equal(actualEngram.tools.length, 17);
-  assert.equal(actualEngram.tools.includes("mem_capture_passive"), false);
+  assert.deepEqual(actualEngram.tools, expectedEngram.tools);
+  assert.deepEqual(actualEngram.tools, [
+    "mem_search",
+    "mem_context",
+    "mem_get_observation",
+    "mem_suggest_topic_key",
+    "mem_current_project",
+    "mem_doctor",
+  ]);
+  for (const mutatingTool of [
+    "mem_save",
+    "mem_session_summary",
+    "mem_session_start",
+    "mem_session_end",
+    "mem_save_prompt",
+    "mem_update",
+    "mem_judge",
+    "mem_compare",
+    "mem_review",
+    "mem_pin",
+    "mem_unpin",
+    "mem_capture_passive",
+  ]) assert.equal(actualEngram.tools.includes(mutatingTool), false, `read-only Engram must not expose ${mutatingTool}`);
   assert.equal("requiredCapability" in actualEngram, false);
   assert.equal("deferredUntil" in actualEngram, false, "published contracts must not expose internal PR sequencing");
 });

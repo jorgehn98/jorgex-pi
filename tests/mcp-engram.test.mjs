@@ -11,7 +11,7 @@ const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "mcp-engram.expected.json"));
 const jiti = createJiti(import.meta.url, { moduleCache: false });
 
-test("the exact MCP adapter and its reviewed deep config seam are package-local", async () => {
+test("the exact MCP adapter exposes its package-local programmatic factory", async () => {
   const manifest = readJson(join(root, "package.json"));
   const component = readJson(join(root, "contract", "components.v1.json")).components
     .find(({ name }) => name === expected.adapter.name);
@@ -22,13 +22,12 @@ test("the exact MCP adapter and its reviewed deep config seam are package-local"
     { status: "active", version: expected.adapter.version, integrity: expected.adapter.integrity },
   );
   const adapterEntry = import.meta.resolve(expected.adapter.name);
-  const deepConfig = new URL(`./${expected.adapter.deepConfigPath}`, adapterEntry);
-  assert.equal(existsSync(fileURLToPath(deepConfig)), true, "the pinned tarball must retain config.ts beside its entrypoint");
-  const deepModule = await jiti.import(deepConfig.href);
-  assert.equal(typeof deepModule.loadMcpConfig, "function", "JorgeX must merge the adapter's reviewed ambient snapshot instead of reimplementing discovery");
+  assert.equal(existsSync(fileURLToPath(adapterEntry)), true, "the pinned adapter entrypoint must remain package-local");
+  const adapter = await jiti.import(adapterEntry);
+  assert.equal(typeof adapter.createMcpAdapter, "function", "JorgeX must use the adapter's public programmatic config factory");
 });
 
-test("managed Engram merges one lazy direct server without mutating ambient MCP config", async () => {
+test("managed Engram gives the adapter an isolated programmatic config containing only Engram", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-merge-"));
   const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
@@ -37,33 +36,28 @@ test("managed Engram merges one lazy direct server without mutating ambient MCP 
   mkdirSync(dirname(fakeBin), { recursive: true });
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
-  const ambient = {
-    mcpServers: { foreign: { command: "/foreign/bin", args: ["serve"], env: { KEEP: "yes" } } },
-    imports: ["codex"],
-    settings: { scriptMode: false, hostConfigDiscovery: "off" },
-  };
-  const before = structuredClone(ambient);
   try {
     const result = await resolveMcpEngramConfig({
-      loadMcpConfig: () => ambient,
       resolveEngramBinary: () => fakeBin,
       nodePath,
       wrapperPath,
       env: { HOME: "/safe/home", NODE_OPTIONS: "--require hostile", ENGRAM_CLOUD_TOKEN: "must-not-pass" },
     });
     assert.equal(result.state, "managed");
-    assert.deepEqual(ambient, before, "the adapter-owned ambient snapshot must remain immutable");
-    assert.deepEqual(result.config.imports, before.imports);
-    assert.deepEqual(result.config.settings, before.settings);
-    assert.deepEqual(result.config.mcpServers.foreign, before.mcpServers.foreign);
-    assert.deepEqual(result.config.mcpServers.engram, {
-      command: nodePath,
-      args: [wrapperPath, fakeBin],
-      lifecycle: expected.server.lifecycle,
-      directTools: expected.server.directTools,
-      toolPrefix: expected.server.toolPrefix,
-      excludeTools: expected.engramProfile.excludedTools,
+    assert.deepEqual(result.config, {
+      mcpServers: {
+        engram: {
+          command: nodePath,
+          args: [wrapperPath, fakeBin],
+          lifecycle: expected.server.lifecycle,
+          directTools: expected.server.directTools,
+          toolPrefix: expected.server.toolPrefix,
+          excludeTools: expected.engramProfile.excludedTools,
+        },
+      },
     });
+    assert.deepEqual(Object.keys(result.config), ["mcpServers"], "programmatic config must not carry imports or ambient adapter settings");
+    assert.deepEqual(Object.keys(result.config.mcpServers), ["engram"], "the managed adapter must never discover or adopt ambient servers");
     assert.equal(isAbsolute(result.config.mcpServers.engram.command), true);
     assert.equal(isAbsolute(result.config.mcpServers.engram.args[0]), true);
     assert.equal(isAbsolute(result.config.mcpServers.engram.args[1]), true);
@@ -72,25 +66,15 @@ test("managed Engram merges one lazy direct server without mutating ambient MCP 
   }
 });
 
-test("missing or colliding Engram leaves the complete ambient MCP snapshot authoritative", async () => {
+test("missing or failed Engram resolution leaves an empty isolated adapter config", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
-  const foreign = { command: "/user/engram", args: ["custom"], env: { OWNER: "user" } };
-  const collision = { mcpServers: { engram: foreign, other: { url: "https://example.invalid/mcp" } }, settings: { scriptMode: false } };
-  const collisionBefore = structuredClone(collision);
-  const collided = await resolveMcpEngramConfig({ loadMcpConfig: () => collision, resolveEngramBinary: () => "/managed/engram" });
-  assert.equal(collided.state, "collision");
-  assert.deepEqual(collided.config, collisionBefore);
-  assert.deepEqual(collision, collisionBefore);
-
-  const ambient = { mcpServers: { other: { command: "/other" } }, imports: ["codex"] };
-  const missing = await resolveMcpEngramConfig({ loadMcpConfig: () => ambient, resolveEngramBinary: () => undefined });
+  const missing = await resolveMcpEngramConfig({ resolveEngramBinary: () => undefined });
   assert.equal(missing.state, "missing");
-  assert.deepEqual(missing.config, ambient);
-  assert.equal(Object.hasOwn(missing.config.mcpServers, "engram"), false);
+  assert.deepEqual(missing.config, { mcpServers: {} });
 
-  const failed = await resolveMcpEngramConfig({ loadMcpConfig: () => ambient, resolveEngramBinary: () => { throw new Error("resolver failed"); } });
+  const failed = await resolveMcpEngramConfig({ resolveEngramBinary: () => { throw new Error("resolver failed"); } });
   assert.equal(failed.state, "failed");
-  assert.deepEqual(failed.config, ambient);
+  assert.deepEqual(failed.config, { mcpServers: {} });
   assert.match(failed.reason ?? "", /resolver failed/);
 });
 
@@ -102,7 +86,6 @@ test("the pinned adapter metadata seam yields exactly the 17 reviewed direct Eng
     jiti.import(new URL("./metadata-cache.ts", adapterEntry).href),
   ]);
   const managed = await resolveMcpEngramConfig({
-    loadMcpConfig: () => ({ mcpServers: {} }),
     resolveEngramBinary: () => resolve(process.execPath),
     nodePath: resolve(process.execPath),
     wrapperPath: join(root, "extensions", "engram-mcp-wrapper.mjs"),

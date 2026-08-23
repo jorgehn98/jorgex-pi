@@ -24,9 +24,7 @@ const skills = [
   "skill-creator", "supabase", "supabase-postgres-best-practices", "tdd", "to-issues", "to-prd", "work-lifecycle", "xreview",
 ];
 const engramTools = [
-  "mem_save", "mem_search", "mem_context", "mem_session_summary", "mem_session_start", "mem_session_end",
-  "mem_get_observation", "mem_suggest_topic_key", "mem_save_prompt", "mem_update", "mem_current_project",
-  "mem_judge", "mem_compare", "mem_doctor", "mem_review", "mem_pin", "mem_unpin",
+  "mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor",
 ];
 
 try {
