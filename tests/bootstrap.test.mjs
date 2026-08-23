@@ -22,7 +22,7 @@ test("the root manifest activates only the JorgeX bootstrap and sixteen reviewed
   assert.ok(manifest.files.includes("extensions"), "the published file allowlist must include the bootstrap extension");
 });
 
-test("the three companions and their audited closure are exactly pinned and bundled", () => {
+test("the active companions and their audited closure are exactly pinned and bundled", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const dependencies = Object.fromEntries(expected.companions.map(({ name, version }) => [name, version]));
   assert.deepEqual(manifest.dependencies, dependencies);
@@ -69,16 +69,16 @@ test("bootstrap keeps its guard alive and companion tools hidden after load or f
 
   const pi = createPiHarness();
   const initOrder = [];
-  const injected = new Error("injected subagents factory failure");
+  const injected = new Error("injected web factory failure");
   const bootstrap = createBootstrap({
     async loadCompanion(id) {
-      if (id === "subagents") return () => { initOrder.push(id); throw injected; };
+      if (id === "web") return () => { initOrder.push(id); throw injected; };
       return companionFactory(id, initOrder);
     },
     getPermissionsService: () => ({ ready: true }),
   });
   await bootstrap(pi.api);
-  assert.deepEqual(initOrder, ["permission", "ask", "subagents"], "factory initialization must preserve permission → ask → subagents order");
+  assert.deepEqual(initOrder, companionIds, "factory initialization must preserve the reviewed companion order");
   assert.ok(pi.toolNames().includes("ask_user_question"), "the fixture must reach a partial companion registration before the injected throw");
   const notifications = [];
   const failedContext = {
@@ -90,8 +90,8 @@ test("bootstrap keeps its guard alive and companion tools hidden after load or f
   assert.equal(notifications.length, 1, "the session must expose the retained bootstrap failure exactly once");
   assert.equal(notifications[0].type, "error", "a companion bootstrap failure must be surfaced as an error");
   assert.match(notifications[0].message, /factory/i, "the diagnostic must identify the factory phase");
-  assert.match(notifications[0].message, /subagents/i, "the diagnostic must identify the failing companion");
-  assert.match(notifications[0].message, /injected subagents factory failure/, "the diagnostic must retain the original cause");
+  assert.match(notifications[0].message, /web/i, "the diagnostic must identify the failing companion");
+  assert.match(notifications[0].message, /injected web factory failure/, "the diagnostic must retain the original cause");
   await pi.emitLifecycle("session_start", {}, failedContext);
   assert.equal(notifications.length, 1, "later session starts must not duplicate the retained bootstrap failure");
   assertEarlyGuard(await pi.emitToolCall({ toolName: "bash", input: { command: "echo still-must-not-run" } }, { sessionId: "failed" }));
@@ -110,8 +110,8 @@ test("companion tools stay session-gated until permissions are ready and headles
   });
 
   await bootstrap(pi.api);
-  assert.deepEqual(initOrder, ["permission", "ask", "subagents"], "all companions must register session handlers during bootstrap");
-  assert.deepEqual(pi.toolNames(), ["ask_user_question", "subagent", "subagent_wait"], "the fixture must register the complete upstream companion tool set");
+  assert.deepEqual(initOrder, expected.companions.map(({ id }) => id), "all companions must register session handlers during bootstrap");
+  assert.deepEqual(pi.toolNames(), ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"], "the fixture must register the complete upstream companion tool set");
   await pi.emitLifecycle("session_start", {}, { hasUI: true, sessionId: "session-a", ui: { notify() {} } });
   assert.deepEqual(pi.activeTools(), [], "session start must hide every companion tool before session health");
   assertEarlyGuard(await pi.emitToolCall({ toolName: "bash", input: { command: "echo must-not-run" } }, { sessionId: "session-a" }));
@@ -122,7 +122,7 @@ test("companion tools stay session-gated until permissions are ready and headles
   services.set("session-a", { ready: true });
   await pi.emitEvent("permissions:ready", { sessionId: "session-a" });
   await pi.emitLifecycle("before_agent_start", {}, { hasUI: true, sessionId: "session-a" });
-  assert.deepEqual(pi.activeTools(), ["ask_user_question", "subagent", "subagent_wait"]);
+  assert.deepEqual(pi.activeTools(), ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"]);
   assert.deepEqual(
     await pi.emitToolCall({ toolName: "bash", input: { command: "echo permission-decides" } }, { sessionId: "session-a" }),
     { block: true, reason: "permission handler decision" },
@@ -130,7 +130,7 @@ test("companion tools stay session-gated until permissions are ready and headles
   );
 
   await pi.emitLifecycle("before_agent_start", {}, { hasUI: false, sessionId: "session-a" });
-  assert.deepEqual(pi.activeTools(), ["subagent", "subagent_wait"], "headless sessions must not expose ask_user_question or synthesize an answer");
+  assert.deepEqual(pi.activeTools(), ["fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"], "headless sessions must not expose ask_user_question or synthesize an answer");
 
   pi.api.setActiveTools(["ask_user_question"]);
   await pi.emitEvent("permissions:ready", { sessionId: "session-a" });
@@ -150,6 +150,9 @@ function companionFactory(id, initOrder = []) {
     if (id === "subagents") {
       pi.registerTool({ name: "subagent" });
       pi.registerTool({ name: "subagent_wait" });
+    }
+    if (id === "web") {
+      for (const name of ["web_search", "source_check", "fetch_content", "get_search_content"]) pi.registerTool({ name });
     }
   };
 }

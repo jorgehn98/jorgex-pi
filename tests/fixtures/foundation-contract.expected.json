@@ -43,6 +43,36 @@
         "owner": "@juicesharp/rpiv-ask-user-question",
         "root": "HOME",
         "relativePath": ".config/rpiv-ask-user-question/config.json"
+      },
+      {
+        "owner": "pi-web-access",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "web-search.json"
+      },
+      {
+        "owner": "pi-web-access",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "web-search-cache"
+      },
+      {
+        "owner": "pi-web-access",
+        "root": "XDG_CONFIG_HOME",
+        "relativePath": "pi/web-search.json"
+      },
+      {
+        "owner": "pi-web-access",
+        "root": "XDG_CONFIG_HOME",
+        "relativePath": "pi/web-search-cache"
+      },
+      {
+        "owner": "pi-web-access",
+        "root": "HOME",
+        "relativePath": ".pi/web-search.json"
+      },
+      {
+        "owner": "pi-web-access",
+        "root": "HOME",
+        "relativePath": ".pi/web-search-cache"
       }
     ]
   },
@@ -51,7 +81,8 @@
     "stack-snapshot-v1",
     "runtime-agents-v1",
     "permission-gated-tools-v1",
-    "structured-questions-v1"
+    "structured-questions-v1",
+    "web-access-v1"
   ],
   "runtimeAgents": {
     "contractPath": "contract/runtime-agents.v1.json"
@@ -68,7 +99,8 @@
   "activeComponents": [
     "pi-subagents",
     "@juicesharp/rpiv-ask-user-question",
-    "@gotgenes/pi-permission-system"
+    "@gotgenes/pi-permission-system",
+    "pi-web-access"
   ],
   "requiredComponents": [
     "pi-subagents",

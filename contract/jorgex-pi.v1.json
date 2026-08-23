@@ -17,7 +17,8 @@
     "stack-snapshot-v1",
     "runtime-agents-v1",
     "permission-gated-tools-v1",
-    "structured-questions-v1"
+    "structured-questions-v1",
+    "web-access-v1"
   ],
   "assets": {
     "manifestVersion": 1,

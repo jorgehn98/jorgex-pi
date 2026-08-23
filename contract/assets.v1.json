@@ -38,6 +38,36 @@
       "owner": "@juicesharp/rpiv-ask-user-question",
       "root": "HOME",
       "relativePath": ".config/rpiv-ask-user-question/config.json"
+    },
+    {
+      "owner": "pi-web-access",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "web-search.json"
+    },
+    {
+      "owner": "pi-web-access",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "web-search-cache"
+    },
+    {
+      "owner": "pi-web-access",
+      "root": "XDG_CONFIG_HOME",
+      "relativePath": "pi/web-search.json"
+    },
+    {
+      "owner": "pi-web-access",
+      "root": "XDG_CONFIG_HOME",
+      "relativePath": "pi/web-search-cache"
+    },
+    {
+      "owner": "pi-web-access",
+      "root": "HOME",
+      "relativePath": ".pi/web-search.json"
+    },
+    {
+      "owner": "pi-web-access",
+      "root": "HOME",
+      "relativePath": ".pi/web-search-cache"
     }
   ]
 }

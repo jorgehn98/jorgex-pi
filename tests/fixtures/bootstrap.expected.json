@@ -40,6 +40,13 @@
       "version": "0.54.0",
       "integrity": "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww==",
       "entryPath": "index.ts"
+    },
+    {
+      "id": "web",
+      "name": "pi-web-access",
+      "version": "0.24.1",
+      "integrity": "sha512-kNYVqPT2wbWbDKD2mfMsrCie1DyVsE/KYNVgpp7yqq072sG2PciKAB28PG4h0+klSO3MtCFRoPWAyA+l0CS7/A==",
+      "entryPath": "index.ts"
     }
   ],
   "bundledClosure": [
