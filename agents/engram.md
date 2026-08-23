@@ -1,7 +1,7 @@
 ---
 name: engram
 description: Generic READ-ONLY specialist for Engram memory. Use it to load relevant context at session start, search specific memories, or synthesize Engram data without touching code. Reads and processes memory only — never saves, edits files or runs commands.
-tools: read, grep, find, ls
+tools: mem_save, mem_search, mem_context, mem_session_summary, mem_session_start, mem_session_end, mem_get_observation, mem_suggest_topic_key, mem_save_prompt, mem_update, mem_current_project, mem_judge, mem_compare, mem_doctor, mem_review, mem_pin, mem_unpin
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false

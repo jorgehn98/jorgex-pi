@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { installMcpEngram } from "./mcp-engram.ts";
 
 const companionIds = ["permission", "ask", "subagents", "web", "goal"];
 const staticCompanionTools = ["ask_user_question", "subagent", "subagent_wait"];
@@ -14,7 +15,10 @@ export function createBootstrap({
   detectWebAccessConflict: conflictDetector = detectWebAccessConflict,
   detectGoalConflict: goalConflictDetector = detectGoalConflict,
   readGoalConfig = readDefaultGoalConfig,
+  installMcpEngram: injectedMcpInstaller,
 } = {}) {
+  const mcpInstaller = injectedMcpInstaller
+    ?? (loadCompanion === loadDefaultCompanion ? installMcpEngram : async () => ({ state: "managed" }));
   return async function bootstrap(pi) {
     let locateService = injectedLocator;
     const readySessions = new Set();
@@ -29,6 +33,8 @@ export function createBootstrap({
     let goalConflictNotified = false;
     let goalConfigFailure;
     let goalConfigFailureNotified = false;
+    let mcpEngramFailure;
+    let mcpEngramFailureNotified = false;
     let currentSessionId;
     const companionTools = new Set(staticCompanionTools);
 
@@ -105,6 +111,9 @@ export function createBootstrap({
       if (goalConfigFailure && !goalConfigFailureNotified) {
         goalConfigFailureNotified = notifyError(ctx, formatPackageConflict(goalConfigFailure));
       }
+      if (mcpEngramFailure && !mcpEngramFailureNotified) {
+        mcpEngramFailureNotified = notifyError(ctx, `JorgeX Engram bridge is unavailable: ${mcpEngramFailure}`);
+      }
       if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
     });
 
@@ -158,6 +167,19 @@ export function createBootstrap({
       companionsHealthy = true;
     } catch (failure) {
       bootstrapFailure = normalizeFailure(failure);
+    }
+
+    if (!bootstrapFailure) {
+      try {
+        const resolution = await mcpInstaller(createToolCaptureApi(pi, companionTools));
+        if (resolution.state !== "managed") {
+          mcpEngramFailure = resolution.state === "collision"
+            ? "an existing MCP server named engram was preserved; remove the conflict and reload Pi to use the managed bridge"
+            : resolution.reason ?? "the Engram binary was not found";
+        }
+      } catch (error) {
+        mcpEngramFailure = error instanceof Error ? error.message : String(error);
+      }
     }
 
     pi.on("before_agent_start", (agentEvent, ctx) => {
@@ -234,6 +256,21 @@ function createWebAccessApi(pi, companionTools, readWebAccessConfig) {
         return (tool) => {
           companionTools.add(tool.name);
           target.registerTool(wrapWebTool(tool, readWebAccessConfig));
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+function createToolCaptureApi(pi, companionTools) {
+  return new Proxy(pi, {
+    get(target, property, receiver) {
+      if (property === "registerTool") {
+        return (tool) => {
+          companionTools.add(tool.name);
+          return target.registerTool(tool);
         };
       }
       const value = Reflect.get(target, property, receiver);

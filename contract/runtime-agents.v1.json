@@ -147,17 +147,28 @@
     {
       "name": "engram",
       "sourcePath": "snapshot/agents/engram.md",
-      "targetPath": "deferred/agents/engram.md",
+      "targetPath": "agents/engram.md",
       "tier": "cheap",
-      "status": "deferred",
-      "requiredCapability": "engram-runtime-tools-v1",
-      "reason": "engram-runtime-tools-unavailable",
+      "status": "runnable",
       "maxSubagentDepth": 0,
       "tools": [
-        "read",
-        "grep",
-        "find",
-        "ls"
+        "mem_save",
+        "mem_search",
+        "mem_context",
+        "mem_session_summary",
+        "mem_session_start",
+        "mem_session_end",
+        "mem_get_observation",
+        "mem_suggest_topic_key",
+        "mem_save_prompt",
+        "mem_update",
+        "mem_current_project",
+        "mem_judge",
+        "mem_compare",
+        "mem_doctor",
+        "mem_review",
+        "mem_pin",
+        "mem_unpin"
       ]
     },
     {

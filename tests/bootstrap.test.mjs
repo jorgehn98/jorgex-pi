@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = JSON.parse(readFileSync(join(testDir, "fixtures", "bootstrap.expected.json"), "utf8"));
+const mcpExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "mcp-engram.expected.json"), "utf8"));
 const companionToolNames = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
 test("the root manifest activates only the JorgeX bootstrap and sixteen reviewed skills", () => {
@@ -26,9 +27,10 @@ test("the root manifest activates only the JorgeX bootstrap and sixteen reviewed
 
 test("the active companions and their audited closure are exactly pinned and bundled", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  const dependencies = Object.fromEntries(expected.companions.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right)));
+  const packagedDependencies = [...expected.companions, mcpExpected.adapter];
+  const dependencies = Object.fromEntries(packagedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right)));
   assert.deepEqual(manifest.dependencies, dependencies);
-  assert.deepEqual([...manifest.bundledDependencies].sort(), expected.companions.map(({ name }) => name).sort());
+  assert.deepEqual([...manifest.bundledDependencies].sort(), packagedDependencies.map(({ name }) => name).sort());
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   for (const dependency of expected.bundledClosure) assertLockIntegrity(lock, dependency);
 });

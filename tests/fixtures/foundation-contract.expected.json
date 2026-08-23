@@ -11,7 +11,6 @@
       "agents",
       "contract/parity.v1.json",
       "contract/runtime-agents.v1.json",
-      "deferred/agents",
       "extensions",
       "primary",
       "skills",
@@ -83,6 +82,11 @@
         "owner": "@narumitw/pi-goal",
         "root": "PI_CODING_AGENT_DIR",
         "relativePath": "pi-goal-state.json"
+      },
+      {
+        "owner": "pi-mcp-adapter",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "mcp-cache.json"
       }
     ]
   },
@@ -93,7 +97,10 @@
     "permission-gated-tools-v1",
     "structured-questions-v1",
     "web-access-v1",
-    "goal-continuation-v1"
+    "goal-continuation-v1",
+    "mcp-adapter-v1",
+    "engram-runtime-tools-v1",
+    "runner-json-v1"
   ],
   "runtimeAgents": {
     "contractPath": "contract/runtime-agents.v1.json"
@@ -101,7 +108,9 @@
   "packageName": "jorgex-pi",
   "sourcePrefix": "npm:jorgex-pi@",
   "requiredPiResourceKinds": ["extensions", "skills", "prompts", "themes"],
-  "foundationSchemas": {},
+  "foundationSchemas": {
+    "runnerResponse": "contract/schemas/runner-response.v1.schema.json"
+  },
   "forbiddenTarPaths": [
     "package/scripts/generate-runtime-agents.mjs",
     "package/scripts/generate-snapshot.mjs",
@@ -112,7 +121,8 @@
     "@juicesharp/rpiv-ask-user-question",
     "@gotgenes/pi-permission-system",
     "pi-web-access",
-    "@narumitw/pi-goal"
+    "@narumitw/pi-goal",
+    "pi-mcp-adapter"
   ],
   "requiredComponents": [
     "pi-subagents",

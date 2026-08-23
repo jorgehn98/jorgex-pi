@@ -126,14 +126,14 @@ test("status resolves an absolute ENGRAM_BIN before an isolated PATH fallback wi
     assertEnvelope(explicit, "status");
     assert.deepEqual(
       { state: explicit.json.result.engram.state, source: explicit.json.result.engram.source },
-      { state: "available", source: "ENGRAM_BIN" },
+      { state: "ready", source: "environment" },
     );
     const fallback = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
     assert.equal(fallback.status, expected.exitCodes.success);
     assertEnvelope(fallback, "status");
     assert.deepEqual(
       { state: fallback.json.result.engram.state, source: fallback.json.result.engram.source },
-      { state: "available", source: "PATH" },
+      { state: "ready", source: "path" },
     );
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
@@ -178,6 +178,7 @@ function runRunner(command, env, cwd, args = []) {
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 10_000,
   });
+  assert.equal(result.error, undefined, `runner process setup failed: ${result.error?.message ?? "unknown"}`);
   const record = { status: result.status, stdout: result.stdout, stderr: result.stderr };
   assertSingleJsonRecord(record);
   return { ...record, json: JSON.parse(result.stdout) };

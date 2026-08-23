@@ -23,6 +23,11 @@ const skills = [
   "agent-delegation", "deploy-to-vercel", "diagnose", "find-skills", "lean-code", "mcp-builder", "orchestrator", "react-doctor",
   "skill-creator", "supabase", "supabase-postgres-best-practices", "tdd", "to-issues", "to-prd", "work-lifecycle", "xreview",
 ];
+const engramTools = [
+  "mem_save", "mem_search", "mem_context", "mem_session_summary", "mem_session_start", "mem_session_end",
+  "mem_get_observation", "mem_suggest_topic_key", "mem_save_prompt", "mem_update", "mem_current_project",
+  "mem_judge", "mem_compare", "mem_doctor", "mem_review", "mem_pin", "mem_unpin",
+];
 
 try {
   const names = readdirSync(join(root, "snapshot", "agents"))
@@ -35,6 +40,7 @@ try {
   if (!primary || primary.source.name !== "orchestrator" || agents.length !== 14) throw new Error("runtime translation requires one orchestrator primary and fourteen subagents");
 
   for (const agent of translated) writeRuntimeAgent(agent);
+  mkdirSync(join(stage, "deferred", "agents"), { recursive: true });
   writeJson(join(stage, "contract", "runtime-agents.v1.json"), {
     schemaVersion: 1,
     dependency,
@@ -63,8 +69,9 @@ function translateAgent(name) {
   const sourcePath = `snapshot/agents/${name}.md`;
   const source = parseAgent(readFileSync(join(root, sourcePath), "utf8"), sourcePath);
   if (source.name !== name) throw new Error(`${sourcePath} name does not match its file name`);
-  const status = source.mode === "primary" ? "dormant" : name === "engram" ? "deferred" : "runnable";
-  const targetPath = source.mode === "primary" ? `primary/${name}.md` : status === "deferred" ? `deferred/agents/${name}.md` : `agents/${name}.md`;
+  const status = source.mode === "primary" ? "dormant" : "runnable";
+  const targetPath = source.mode === "primary" ? `primary/${name}.md` : `agents/${name}.md`;
+  if (name === "engram") return { source, sourcePath, targetPath, status, tools: engramTools };
   const tools = ["read", "grep", "find", "ls"];
   if (source.bash === "git-read") tools.push("git_read");
   if (source.bash === "full") tools.push("bash");
@@ -118,7 +125,6 @@ function contractEntry(agent) {
     targetPath: agent.targetPath,
     tier: agent.source.tier,
     status: agent.status,
-    ...(agent.status === "deferred" ? { requiredCapability: "engram-runtime-tools-v1", reason: "engram-runtime-tools-unavailable" } : {}),
     ...(agent.source.spawn === "false" ? { maxSubagentDepth: 0 } : {}),
     ...(agent.source.bash === "git-read" ? { subagentOnlyExtensions: ["../extensions/git-read.ts"] } : {}),
     tools: agent.tools,
