@@ -104,6 +104,15 @@ function writeRuntimeAgent(agent) {
     "inheritProjectContext: true",
     "inheritSkills: false",
   ];
+  if (agent.source.bash === "git-read") {
+    lines.push(
+      "permission:",
+      "  bash:",
+      '    "*": deny',
+      '    "git diff*": allow',
+      '    "git log*": allow',
+    );
+  }
   if (agent.source.spawn === "false") lines.push("maxSubagentDepth: 0");
   lines.push("---", agent.source.body);
   writeText(join(stage, agent.targetPath), `${lines.join("\n").replace(/\n*$/, "")}\n`);
@@ -116,7 +125,7 @@ function contractEntry(agent) {
     targetPath: agent.targetPath,
     tier: agent.source.tier,
     status: agent.status,
-    ...(agent.status === "deferred" ? { deferredUntil: "PR06", reason: "engram-runtime-tools-unavailable" } : {}),
+    ...(agent.status === "deferred" ? { requiredCapability: "engram-runtime-tools-v1", reason: "engram-runtime-tools-unavailable" } : {}),
     ...(agent.source.spawn === "false" ? { maxSubagentDepth: 0 } : {}),
     tools: agent.tools,
   };

@@ -49,7 +49,8 @@ test("contract v1 describes a pinned, closed compatibility boundary", () => {
     testedVersion,
     "the local Pi development dependency must match the tested Pi authority exactly",
   );
-  assertNonEmptyStringArray(contract.capabilities, "contract capabilities");
+  assert.deepEqual(contract.capabilities, expected.capabilities, "contract capabilities must enumerate the activated versioned boundary");
+  assert.deepEqual(contract.runtimeAgents, expected.runtimeAgents, "root contract must link the runtime-agent contract");
   assert.equal(contract.assets?.manifestVersion, expected.foundationAssetManifest.manifestVersion);
   assert.equal(contract.assets?.manifestPath, expected.assetManifestPath);
   assert.equal(contract.components?.inventoryPath, expected.componentInventoryPath);
@@ -65,7 +66,7 @@ test("foundation asset ownership is explicit and closed", () => {
   assert.deepEqual(
     assetManifest,
     expected.foundationAssetManifest,
-    "contract/assets.v1.json must fix the complete PR01 ownership boundary",
+    "contract/assets.v1.json must distinguish JorgeX-managed writes from preserved companion state",
   );
 });
 

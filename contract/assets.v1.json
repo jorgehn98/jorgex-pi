@@ -12,5 +12,27 @@
     "skills",
     "snapshot/agents"
   ],
-  "externalWrites": []
+  "managedExternalWrites": [],
+  "preservedExternalState": [
+    {
+      "owner": "@gotgenes/pi-permission-system",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "extensions/pi-permission-system/config.json"
+    },
+    {
+      "owner": "@gotgenes/pi-permission-system",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "extensions/pi-permission-system/logs"
+    },
+    {
+      "owner": "@gotgenes/pi-permission-system",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "sessions/permission-forwarding"
+    },
+    {
+      "owner": "@juicesharp/rpiv-ask-user-question",
+      "root": "XDG_CONFIG_HOME",
+      "relativePath": "rpiv-ask-user-question/config.json"
+    }
+  ]
 }

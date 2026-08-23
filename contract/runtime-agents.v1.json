@@ -135,7 +135,7 @@
       "targetPath": "deferred/agents/engram.md",
       "tier": "cheap",
       "status": "deferred",
-      "deferredUntil": "PR06",
+      "requiredCapability": "engram-runtime-tools-v1",
       "reason": "engram-runtime-tools-unavailable",
       "maxSubagentDepth": 0,
       "tools": [

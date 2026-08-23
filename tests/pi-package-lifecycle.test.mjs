@@ -140,6 +140,39 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(readFileSync(permissionConfigPath, "utf8"), foreignPermissionConfig, "remove must preserve permission config");
     assert.equal(readFileSync(askConfigPath, "utf8"), foreignAskConfig, "remove must preserve ask config");
     runPi(pi, ["--list-models", "__jorgex_foundation_smoke_no_match__", "--no-approve", "--offline", "--no-context-files"], isolatedEnv, cwd);
+
+    const absentAgentDir = join(sandbox, "absent-agent");
+    const absentHomeDir = join(sandbox, "absent-home");
+    const absentSettingsPath = join(absentAgentDir, "settings.json");
+    const absentPermissionConfig = join(absentAgentDir, "extensions", "pi-permission-system", "config.json");
+    const absentAskConfig = join(absentAgentDir, "extensions", "rpiv-ask-user-question", "config.json");
+    const foreignTree = join(absentAgentDir, "extensions", "user-owned");
+    const foreignMarker = join(foreignTree, "keep.json");
+    mkdirSync(foreignTree, { recursive: true });
+    mkdirSync(absentHomeDir, { recursive: true });
+    writeJson(absentSettingsPath, { packages: [foreignPackageDir], foreignState });
+    writeFileSync(foreignMarker, '{"owner":"user","keep":true}\n');
+    const foreignTreeDigest = digestTree(foreignTree);
+    const absentEnv = {
+      ...isolatedEnv,
+      HOME: absentHomeDir,
+      PI_CODING_AGENT_DIR: absentAgentDir,
+      XDG_CACHE_HOME: join(sandbox, "absent-xdg-cache"),
+      XDG_CONFIG_HOME: join(sandbox, "absent-xdg-config"),
+      XDG_DATA_HOME: join(sandbox, "absent-xdg-data"),
+    };
+
+    for (const phase of ["install", "reinstall"]) {
+      runPi(pi, ["install", source, "--no-approve"], absentEnv, cwd);
+      assert.equal(existsSync(absentPermissionConfig), false, `${phase} must not seed permission config when absent`);
+      assert.equal(existsSync(absentAskConfig), false, `${phase} must not seed ask config when absent`);
+      assert.equal(digestTree(foreignTree), foreignTreeDigest, `${phase} must preserve the foreign extension tree`);
+    }
+    runPi(pi, ["remove", source, "--no-approve"], absentEnv, cwd);
+    assert.equal(existsSync(absentPermissionConfig), false, "remove must not create permission config when absent");
+    assert.equal(existsSync(absentAskConfig), false, "remove must not create ask config when absent");
+    assert.equal(digestTree(foreignTree), foreignTreeDigest, "remove must preserve the foreign extension tree");
+    assert.deepEqual(readJson(absentSettingsPath), { packages: [foreignPackageDir], foreignState });
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
   }

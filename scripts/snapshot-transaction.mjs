@@ -4,8 +4,20 @@ import { dirname, join } from "node:path";
 const DESTINATIONS = ["snapshot", "skills", "contract/parity.v1.json"];
 
 export function commitSnapshot({ root, stage, move = renameSync }) {
-  const backupRoot = join(stage, ".snapshot-backup");
-  const states = DESTINATIONS.map((path) => ({
+  return commitTransaction({
+    root,
+    stage,
+    move,
+    destinations: DESTINATIONS,
+    backupName: ".snapshot-backup",
+    label: "Snapshot",
+    preserveFlag: "preserveSnapshotStage",
+  });
+}
+
+export function commitTransaction({ root, stage, move = renameSync, destinations, backupName, label, preserveFlag }) {
+  const backupRoot = join(stage, backupName);
+  const states = destinations.map((path) => ({
     path,
     source: join(stage, path),
     target: join(root, path),
@@ -15,7 +27,7 @@ export function commitSnapshot({ root, stage, move = renameSync }) {
   }));
 
   for (const state of states) {
-    if (!existsSync(state.source)) throw new Error(`Snapshot stage is missing ${state.path}`);
+    if (!existsSync(state.source)) throw new Error(`${label} stage is missing ${state.path}`);
   }
 
   let publicationError;
@@ -36,10 +48,10 @@ export function commitSnapshot({ root, stage, move = renameSync }) {
     const rollbackErrors = rollback(states, move);
     if (rollbackErrors.length > 0) {
       preserveBackup = true;
-      const failure = new AggregateError(rollbackErrors, "Snapshot publication failed and rollback was incomplete", {
+      const failure = new AggregateError(rollbackErrors, `${label} publication failed and rollback was incomplete`, {
         cause: error,
       });
-      failure.preserveSnapshotStage = true;
+      failure[preserveFlag] = true;
       throw failure;
     }
     throw error;

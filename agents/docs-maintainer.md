@@ -5,6 +5,11 @@ tools: read, grep, find, ls, bash, edit, write, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
+permission:
+  bash:
+    "*": deny
+    "git diff*": allow
+    "git log*": allow
 ---
 
 # Docs Maintainer

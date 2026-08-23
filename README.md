@@ -11,18 +11,20 @@ This private development package is not an end-user release. PR03 activates the 
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
 | Pi resources | One bootstrap extension and 16 reviewed JorgeX skills are active. Prompts and themes remain empty. |
 | Canonical snapshot | 15 agents and 17 complete skill trees (96 files) from JorgeX Stack commit `6d2b98b1728e275bf97920f9712dd4b7928de6a7`. |
-| Runtime agents | 13 runnable subagents, a dormant primary orchestrator, and Engram deferred until its runtime tools arrive. |
-| Package assets | `contract/assets.v1.json` owns the bootstrap, runtime agents, snapshot, skills, and contracts; it declares no JorgeX external writes. |
+| Runtime agents | 13 runnable subagents, a dormant primary orchestrator, and Engram deferred behind the stable `engram-runtime-tools-v1` capability. |
+| Package assets | `contract/assets.v1.json` owns the bootstrap, runtime agents, snapshot, skills, and contracts; it declares no JorgeX-managed external writes and preserves four companion-owned state paths. |
 | Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, and `pi-subagents@0.54.0`. |
 | Model policy | Provider, model, and thinking level are inherited from the Pi session. JorgeX tiers remain contract metadata only. |
 
 The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive.
 
-`contract/runtime-agents.v1.json` records the translation from the 15 canonical agents. The 13 runnable files live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent, and `deferred/agents/engram.md` remains inert until the Engram integration supplies its Pi-native tools. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
+`contract/jorgex-pi.v1.json` advertises the active versioned capabilities (`foundation-contract-v1`, `stack-snapshot-v1`, `runtime-agents-v1`, `permission-gated-tools-v1`, and `structured-questions-v1`) and links `runtimeAgents.contractPath` to `contract/runtime-agents.v1.json`. That runtime contract records the translation from the 15 canonical agents. The 13 runnable files live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent, and `deferred/agents/engram.md` remains inert until the stable `engram-runtime-tools-v1` capability is available. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
+
+The Pi projection preserves the canonical bash boundary per agent. `none` exposes no bash tool or bash policy; `git-read` exposes bash but denies every command except `git diff*` and `git log*`; `full` exposes bash without adding a per-agent restriction.
 
 ## Bootstrap and safety boundary
 
-`extensions/bootstrap.ts` is the only root extension. It loads and initializes permission, ask, and subagents in that order so their session handlers are present from startup, but hides companion tools until the current session emits `permissions:ready` and has a keyed permissions service. A bootstrap guard is registered before companion loading and blocks all tool calls with termination until that health boundary is satisfied. Load or factory failures remain fail-closed.
+`extensions/bootstrap.ts` is the only root extension. Pi's resource loader discovers and initializes it before runtime actions are bound, but that loading phase only registers handlers and companion tools; calls that require runner actions, including changes to the active tool set, occur only after `bindCore` and the corresponding lifecycle event. The bootstrap loads permission, ask, and subagents in that order, but hides `ask_user_question`, `subagent`, and `subagent_wait` until the current session emits `permissions:ready` and has a keyed permissions service. A bootstrap guard is registered before companion loading and blocks all tool calls with termination until that health boundary is satisfied. Load or factory failures retain that fail-closed guard, keep partial companion tools hidden, and surface one diagnostic identifying the phase, companion, and original cause at the next session start.
 
 Health is session-scoped and cleared on session start or shutdown. Repeated ready events do not re-enable tools the user disabled. In headless sessions, `ask_user_question` stays unavailable instead of fabricating an answer; subagent delegation remains available after permission health.
 
@@ -79,7 +81,14 @@ That command is the narrow package-manager exception: Pi uses npm internally to 
 
 Pi may relocate its agent directory through `PI_CODING_AGENT_DIR`; the package relies on Pi and its companions to resolve that location rather than assuming a fixed user path.
 
-The ownership boundary is `contract/assets.v1.json`. Only its package paths belong to JorgeX. Permission-system and ask configuration is user-owned: the bootstrap does not seed, replace, or remove it. The upstream permission system may create review logs or forwarding state during normal operation; those remain upstream/user state and are preserved across JorgeX install, reinstall, and removal. `externalWrites` remains empty for JorgeX-owned writes.
+The ownership boundary is `contract/assets.v1.json`. Only its package paths belong to JorgeX, and `managedExternalWrites` is empty. Permission-system and ask configuration is user-owned: the bootstrap does not seed, replace, or remove it. The manifest records four `preservedExternalState` paths that must survive JorgeX install, reinstall, and removal:
+
+- `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/config.json`
+- `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/logs`
+- `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/sessions/permission-forwarding`
+- `@juicesharp/rpiv-ask-user-question`: `XDG_CONFIG_HOME/rpiv-ask-user-question/config.json`
+
+These paths may be created or managed by their named companions during normal operation; declaring them preserved does not transfer their ownership to JorgeX.
 
 ## Supply chain and security
 

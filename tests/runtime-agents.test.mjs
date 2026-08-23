@@ -7,11 +7,13 @@ import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
+import { parse as parseYaml } from "yaml";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "runtime-agents.expected.json"), "runtime agent fixture");
 const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
+const foundationExpected = readJson(join(testDir, "fixtures", "foundation-contract.expected.json"), "foundation contract fixture");
 
 test("pi-subagents is pinned with its audited bundled closure", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest");
@@ -20,6 +22,14 @@ test("pi-subagents is pinned with its audited bundled closure", () => {
   assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 13 runnable package agents may be discoverable by pi-subagents");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   for (const dependency of expected.dependency.bundledClosure) assertLockIntegrity(lock, dependency);
+});
+
+test("deferred Engram names a stable required capability instead of an internal PR", () => {
+  const contract = readJson(join(root, expected.contractPath), "runtime agent contract");
+  const expectedEngram = expected.agents.find(({ name }) => name === "engram");
+  const actualEngram = contract.agents.find(({ name }) => name === "engram");
+  assert.equal(actualEngram.requiredCapability, expectedEngram.requiredCapability);
+  assert.equal("deferredUntil" in actualEngram, false, "published contracts must not expose internal PR sequencing");
 });
 
 test("the runtime contract translates one primary and fourteen canonical subagents without model policy", () => {
@@ -34,6 +44,16 @@ test("the runtime contract translates one primary and fourteen canonical subagen
 
   assert.equal(contract.agents.length, 14);
   assert.deepEqual(contract.agents.map(({ name }) => name), expected.agents.map(({ name }) => name));
+  const expectedAgents = [...expected.agents, expected.primary];
+  for (const agent of expectedAgents) {
+    const sourcePath = agent.sourcePath ?? `snapshot/agents/${agent.name}.md`;
+    const source = parseAgentDocument(readFileSync(join(root, sourcePath), "utf8"));
+    assert.equal(source.frontmatter.bash, expectedBashPolicy(agent.name), `${sourcePath} must retain its reviewed canonical bash policy`);
+  }
+  assertAllBashPolicies(new Map(expectedAgents.map((agent) => {
+    const targetPath = agent.targetPath ?? (agent.status === "deferred" ? `deferred/agents/${agent.name}.md` : `agents/${agent.name}.md`);
+    return [agent.name, { path: targetPath, frontmatter: parseAgentDocument(readFileSync(join(root, targetPath), "utf8")).frontmatter }];
+  })));
   for (const expectedAgent of expected.agents) {
     const sourcePath = `snapshot/agents/${expectedAgent.name}.md`;
     const targetPath = expectedAgent.status === "deferred" ? `deferred/agents/${expectedAgent.name}.md` : `agents/${expectedAgent.name}.md`;
@@ -45,7 +65,7 @@ test("the runtime contract translates one primary and fourteen canonical subagen
   assert.deepEqual(
     contract.agents.filter(({ status }) => status === "deferred"),
     [{ ...expected.agents.find(({ name }) => name === "engram"), sourcePath: "snapshot/agents/engram.md", targetPath: "deferred/agents/engram.md" }],
-    "Engram must remain machine-readably inert until PR06 supplies its runtime tools",
+    "Engram must remain machine-readably inert until its stable required capability is available",
   );
   assertTranslatedAgent(expected.primary.sourcePath, expected.primary.targetPath, expected.primary);
 
@@ -104,6 +124,10 @@ test("the real tarball contains the closed runtime assets and audited dependency
     ].sort();
     const packedRuntimeFiles = [...archive.keys()].filter((path) => /^package\/(?:agents|deferred\/agents|primary)\/.+\.md$/.test(path)).sort();
     assert.deepEqual(packedRuntimeFiles, expectedRuntimeFiles, "tarball must expose 13 runnable agents while retaining primary and deferred Engram separately");
+    assertAllBashPolicies(new Map(packedRuntimeFiles.map((path) => {
+      const name = path.slice(path.lastIndexOf("/") + 1, -".md".length);
+      return [name, { path, frontmatter: parseAgentDocument(archive.get(path).toString("utf8")).frontmatter }];
+    })));
     assert.equal([...archive.keys()].some((path) => path.endsWith(".chain.md")), false, "legacy chains must not ship");
     assert.equal(archive.has(`package/${expected.generatorPath}`), false, "translation tooling must stay outside the published artifact");
 
@@ -128,7 +152,8 @@ test("the real tarball contains the closed runtime assets and audited dependency
     }
 
     const assets = readPackedJson(archive, "package/contract/assets.v1.json");
-    assert.deepEqual(assets.externalWrites, []);
+    assert.deepEqual(assets.managedExternalWrites, foundationExpected.foundationAssetManifest.managedExternalWrites);
+    assert.deepEqual(assets.preservedExternalState, foundationExpected.foundationAssetManifest.preservedExternalState);
     for (const resource of expected.ownedResources) assert.ok(assets.resources.includes(resource), `ownership manifest must declare ${resource}`);
   } finally {
     rmSync(packDir, { recursive: true, force: true });
@@ -136,18 +161,18 @@ test("the real tarball contains the closed runtime assets and audited dependency
 });
 
 function assertTranslatedAgent(sourcePath, targetPath, expectedAgent) {
-  const source = parseFrontmatter(readFileSync(join(root, sourcePath), "utf8"));
-  const target = parseFrontmatter(readFileSync(join(root, targetPath), "utf8"));
+  const source = parseAgentDocument(readFileSync(join(root, sourcePath), "utf8"));
+  const target = parseAgentDocument(readFileSync(join(root, targetPath), "utf8"));
   assert.equal(target.frontmatter.name, source.frontmatter.name);
   assert.equal(target.frontmatter.description, source.frontmatter.description);
   assert.deepEqual(splitList(target.frontmatter.tools), expectedAgent.tools, `${targetPath} tools must match the reviewed Pi translation`);
   assert.equal(target.frontmatter.systemPromptMode, "replace");
-  assert.equal(target.frontmatter.inheritProjectContext, "true");
-  assert.equal(target.frontmatter.inheritSkills, "false");
+  assert.equal(target.frontmatter.inheritProjectContext, true);
+  assert.equal(target.frontmatter.inheritSkills, false);
   for (const forbidden of ["provider", "model", "fallbackModels", "thinking", "tier", "mode", "readonly", "bash", "spawn"]) {
     assert.equal(Object.hasOwn(target.frontmatter, forbidden), false, `${targetPath} must not hardcode ${forbidden}`);
   }
-  if (expectedAgent.maxSubagentDepth === 0) assert.equal(target.frontmatter.maxSubagentDepth, "0", `${targetPath} must preserve spawn: false`);
+  if (expectedAgent.maxSubagentDepth === 0) assert.equal(target.frontmatter.maxSubagentDepth, 0, `${targetPath} must preserve spawn: false`);
   else assert.equal(Object.hasOwn(target.frontmatter, "maxSubagentDepth"), false, `${targetPath} must retain default delegation depth`);
   assert.equal(target.body, source.body, `${targetPath} must preserve the canonical persona byte-for-byte after LF normalization`);
 }
@@ -179,21 +204,54 @@ function generatedTree(packageRoot) {
   return Object.fromEntries(paths.map((path) => [relative(packageRoot, path).replaceAll("\\", "/"), sha256(readFileSync(path))]).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-function parseFrontmatter(text) {
+function parseAgentDocument(text) {
   const normalized = text.replace(/\r\n?/g, "\n");
   const match = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(normalized);
   assert.ok(match, "agent markdown must contain closed YAML frontmatter");
-  const frontmatter = {};
-  for (const line of match[1].split("\n")) {
-    const separator = line.indexOf(":");
-    assert.ok(separator > 0, `frontmatter line must be a scalar: ${line}`);
-    frontmatter[line.slice(0, separator)] = line.slice(separator + 1).trim();
-  }
+  const frontmatter = parseYaml(match[1]);
+  assert.ok(frontmatter && typeof frontmatter === "object" && !Array.isArray(frontmatter), "agent frontmatter must be a YAML mapping");
   return { frontmatter, body: match[2].trim() };
 }
 
 function splitList(value) {
-  return (value ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  const entries = Array.isArray(value) ? value : (value ?? "").split(",");
+  return entries.map((entry) => entry.trim()).filter(Boolean);
+}
+
+function expectedBashPolicy(name) {
+  for (const [policy, names] of Object.entries(expected.bashPolicies.agents)) {
+    if (names.includes(name)) return policy;
+  }
+  assert.fail(`runtime agent fixture does not declare a bash policy for ${name}`);
+}
+
+function assertAllBashPolicies(documents) {
+  const declaredNames = Object.values(expected.bashPolicies.agents).flat().sort();
+  assert.deepEqual([...documents.keys()].sort(), declaredNames, "bash policy fixture must cover every runtime agent exactly once");
+  for (const policy of ["none", "full", "git-read"]) {
+    for (const name of expected.bashPolicies.agents[policy]) {
+      const document = documents.get(name);
+      assertBashPolicy(document.frontmatter, name, document.path);
+    }
+  }
+}
+
+function assertBashPolicy(frontmatter, name, path) {
+  const policy = expectedBashPolicy(name);
+  const tools = splitList(frontmatter.tools);
+  const bashPermission = frontmatter.permission?.bash;
+  if (policy === "none") {
+    assert.equal(tools.includes("bash"), false, `${path} must not expose the bash tool`);
+    assert.equal(bashPermission, undefined, `${path} must not add a bash permission map`);
+    return;
+  }
+  assert.equal(tools.includes("bash"), true, `${path} must expose the bash tool for ${policy}`);
+  if (policy === "git-read") {
+    assert.deepEqual(frontmatter.permission, expected.bashPolicies.gitReadPermission, `${path} must deny bash by default and allow only canonical read-only git commands`);
+    return;
+  }
+  assert.equal(policy, "full", `${path} declares an unknown bash policy`);
+  assert.equal(bashPermission, undefined, `${path} must not add a per-agent bash restriction for full access`);
 }
 
 function assertLockIntegrity(lock, dependency) {

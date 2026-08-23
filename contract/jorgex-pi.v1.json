@@ -13,7 +13,11 @@
     ]
   },
   "capabilities": [
-    "foundation-contract-v1"
+    "foundation-contract-v1",
+    "stack-snapshot-v1",
+    "runtime-agents-v1",
+    "permission-gated-tools-v1",
+    "structured-questions-v1"
   ],
   "assets": {
     "manifestVersion": 1,
@@ -21,6 +25,9 @@
   },
   "components": {
     "inventoryPath": "contract/components.v1.json"
+  },
+  "runtimeAgents": {
+    "contractPath": "contract/runtime-agents.v1.json"
   },
   "schemas": {}
 }
