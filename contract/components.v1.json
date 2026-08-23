@@ -35,7 +35,7 @@
     },
     {
       "name": "pi-web-access",
-      "status": "audited",
+      "status": "active",
       "version": "0.24.1",
       "license": "MIT",
       "integrity": "sha512-kNYVqPT2wbWbDKD2mfMsrCie1DyVsE/KYNVgpp7yqq072sG2PciKAB28PG4h0+klSO3MtCFRoPWAyA+l0CS7/A==",

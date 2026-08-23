@@ -14,6 +14,7 @@ const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "runtime-agents.expected.json"), "runtime agent fixture");
 const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
 const foundationExpected = readJson(join(testDir, "fixtures", "foundation-contract.expected.json"), "foundation contract fixture");
+const webAccessExpected = readJson(join(testDir, "fixtures", "web-access.expected.json"), "web access fixture");
 
 test("pi-subagents is pinned with its audited bundled closure", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest");
@@ -182,8 +183,15 @@ test("the real tarball contains the closed runtime assets and audited dependency
       .filter(([path]) => path.startsWith("package/node_modules/") && path.endsWith("/package.json"))
       .map(([, bytes]) => JSON.parse(bytes.toString("utf8")))
       .filter(({ name, version }) => typeof name === "string" && name.length > 0 && typeof version === "string" && version.length > 0);
-    const packedClosure = dependencyManifests.map(({ name, version }) => ({ name, version })).sort(byName);
-    assert.deepEqual(packedClosure, bootstrapExpected.bundledClosure.map(({ name, version }) => ({ name, version })).sort(byName));
+    const packedClosure = dependencyManifests
+      .map(({ name, version }) => ({ name, version }))
+      .sort((left, right) => left.name.localeCompare(right.name) || left.version.localeCompare(right.version));
+    assert.equal(packedClosure.length, webAccessExpected.packedClosure.count, "tarball bundled closure count must match the audited PR04 resolution");
+    assert.equal(
+      sha256(Buffer.from(packedClosure.map(({ name, version }) => `${name}@${version}`).join("\n"))),
+      webAccessExpected.packedClosure.identitySha256,
+      "tarball bundled package identities must match the audited PR04 resolution",
+    );
     const upstreamManifest = dependencyManifests.find(({ name }) => name === "pi-subagents");
     assert.ok(upstreamManifest.pi?.skills?.length > 0 && upstreamManifest.pi?.prompts?.length > 0, "the audited upstream resources must be physically bundled");
     assert.equal(packedManifest.pi.skills.some((path) => path.includes("pi-subagents")), false, "upstream skills must remain inactive at the root");
