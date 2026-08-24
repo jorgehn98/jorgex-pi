@@ -1,6 +1,13 @@
 {
   "schemaVersion": 1,
   "extension": "./extensions/bootstrap.ts",
+  "extensions": [
+    "./extensions/bootstrap.ts",
+    "./extensions/branding.ts"
+  ],
+  "themes": [
+    "./themes/JorgeX.json"
+  ],
   "skills": [
     "./skills/agent-delegation",
     "./skills/deploy-to-vercel",

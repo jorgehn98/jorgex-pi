@@ -11,18 +11,19 @@ const expected = JSON.parse(readFileSync(join(testDir, "fixtures", "bootstrap.ex
 const mcpExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "mcp-engram.expected.json"), "utf8"));
 const companionToolNames = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
-test("the root manifest activates only the JorgeX bootstrap and sixteen reviewed skills", () => {
+test("the root manifest activates the JorgeX extensions, opt-in theme, and sixteen reviewed skills", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.deepEqual(manifest.pi, {
-    extensions: [expected.extension],
+    extensions: expected.extensions,
     skills: expected.skills,
     prompts: [],
-    themes: [],
+    themes: expected.themes,
   });
   assert.equal(manifest.pi.skills.some((path) => path.includes("playwright")), false);
   assert.equal(manifest.pi.skills.some((path) => path.includes("node_modules")), false, "upstream companion skills must stay inactive");
   assert.equal(manifest.pi.prompts.length, 0, "upstream companion prompts must stay inactive");
-  assert.ok(manifest.files.includes("extensions"), "the published file allowlist must include the bootstrap extension");
+  assert.ok(manifest.files.includes("extensions"), "the published file allowlist must include JorgeX extensions");
+  assert.ok(manifest.files.includes("themes"), "the published file allowlist must include the opt-in JorgeX theme");
 });
 
 test("the active companions and their audited closure are exactly pinned and bundled", () => {

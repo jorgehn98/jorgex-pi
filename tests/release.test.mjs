@@ -5,10 +5,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const releaseVersion = "0.1.0";
+const releaseVersion = "0.2.0";
 const repositoryUrl = "https://github.com/jorgehn98/jorgex-pi";
 
-test("the public package metadata identifies the exact first release", () => {
+test("the public package metadata identifies the exact minor release candidate", () => {
   const manifest = readJson(join(root, "package.json"));
   const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
 

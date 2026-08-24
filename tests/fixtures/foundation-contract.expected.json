@@ -14,7 +14,8 @@
       "extensions",
       "primary",
       "skills",
-      "snapshot/agents"
+      "snapshot/agents",
+      "themes"
     ],
     "managedExternalWrites": [],
     "preservedExternalState": [
@@ -100,7 +101,8 @@
     "goal-continuation-v1",
     "mcp-adapter-v1",
     "engram-runtime-tools-v1",
-    "runner-json-v1"
+    "runner-json-v1",
+    "tui-branding-v1"
   ],
   "runtimeAgents": {
     "contractPath": "contract/runtime-agents.v1.json"

@@ -13,16 +13,16 @@ const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "foundation-contract.expected.json"), "foundation contract fixture");
 const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
 
-test("package manifest exposes only the activated bootstrap and reviewed JorgeX skills", () => {
+test("package manifest exposes the activated JorgeX resources", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest required by the published Pi package");
   assert.equal(manifest.name, expected.packageName);
   assert.match(manifest.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
   assert.ok(manifest.pi && typeof manifest.pi === "object", "package.json must declare a pi manifest");
   const expectedResources = {
-    extensions: [bootstrapExpected.extension],
+    extensions: bootstrapExpected.extensions,
     skills: bootstrapExpected.skills,
     prompts: [],
-    themes: [],
+    themes: bootstrapExpected.themes,
   };
   for (const kind of expected.requiredPiResourceKinds) {
     assert.ok(Array.isArray(manifest.pi[kind]), `package.json pi.${kind} must be an array`);
@@ -115,7 +115,7 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     for (const path of expected.forbiddenTarPaths) {
       assert.equal(entries.has(path), false, `packed artifact must exclude build-only path ${path}`);
     }
-    const allowedRoots = new Set(["agents", "bin", "contract", "extensions", "node_modules", "primary", "skills"]);
+    const allowedRoots = new Set(["agents", "bin", "contract", "extensions", "node_modules", "primary", "skills", "themes"]);
     const allowedFiles = new Set(["package.json", "LICENSE", "README.md"]);
     for (const path of entries) {
       const relativePath = path.replace(/^package\//, "");
