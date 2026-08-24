@@ -35,6 +35,13 @@ test("the publish workflow is tag-gated, OIDC-only, and release-content preservi
   const permissions = topLevelBlock(workflow, "permissions");
   assert.deepEqual(readFlatMap(permissions), { contents: "read", "id-token": "write" });
   assert.equal((workflow.match(/^permissions:/gm) ?? []).length, 1, "permissions must be declared once at workflow scope");
+  const actionUses = [...workflow.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
+  assert.deepEqual(actionUses, [
+    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+    "pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa",
+    "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+  ], "every release action must use its reviewed immutable commit");
+  for (const action of actionUses) assert.match(action, /@[a-f0-9]{40}$/, `release action must not use a mutable tag: ${action}`);
   const runners = [...workflow.matchAll(/^\s*runs-on:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
   assert.deepEqual(runners, ["ubuntu-latest"], "publishing must use one GitHub-hosted runner");
   assert.doesNotMatch(workflow, /self-hosted/i);
@@ -62,6 +69,17 @@ test("the publish workflow is tag-gated, OIDC-only, and release-content preservi
   assert.doesNotMatch(workflow, /(?:^|[\s;&|])npm\s+(?:version|pack|install)\b/im, "standalone npm may only publish");
   assert.doesNotMatch(workflow, /NPM_TOKEN|secrets\.|^\s*(?:token|github-token):|pnpm\s+version|git\s+(?:commit|push|tag)|gh\s+release|changeset/i);
   assert.doesNotMatch(workflow, /uses:\s*[^\n]*(?:release|changeset)/i, "the workflow must not create a GitHub release or auto-version");
+});
+
+test("the release guide requires npm trusted-publisher setup before any tag", () => {
+  const readme = readFileSync(join(root, "README.md"), "utf8");
+  const trustedPublisher = readme.split(/\n\s*\n/).find((paragraph) => /trusted publisher/i.test(paragraph));
+  assert.ok(trustedPublisher, "README must document the external npm trusted publisher prerequisite");
+  assert.match(trustedPublisher, /npm(?:js\.com| package| settings)/i, "trusted publisher setup must happen in npm, outside the workflow");
+  assert.match(trustedPublisher, /jorgehn98\/jorgex-pi/i, "README must identify the authorized GitHub repository");
+  assert.match(trustedPublisher, /(?:\.github\/workflows\/)?publish\.yml/i, "README must identify the authorized workflow filename");
+  assert.match(trustedPublisher, /before[^.\n]*tag/i, "trusted publisher setup must be required before creating or pushing a release tag");
+  assert.match(trustedPublisher, /(?:workflow|repository)[^.\n]*(?:does not|cannot|is not)[^.\n]*(?:configure|sufficient|enough)/i, "README must not imply that committing the workflow configures npm automatically");
 });
 
 function topLevelBlock(yaml, key) {

@@ -125,6 +125,8 @@ pi install npm:jorgex-pi@0.1.0
 
 That command is the narrow package-manager exception: Pi uses npm internally to register and resolve its own package. Repository development, dependency management, and release preparation continue to use pnpm exclusively.
 
+Before creating or pushing any release tag, configure the npm trusted publisher in the npmjs.com package settings for GitHub repository `jorgehn98/jorgex-pi`, workflow filename `publish.yml`, and allowed action `npm publish`. The workflow does not configure that npm trust relationship and is not sufficient without this external prerequisite.
+
 Publication is an explicit external gate. Pushing a tag matching `v*` starts the trusted-publishing workflow, which rejects any tag other than `v<package.json version>`, runs the frozen install, tests, and pack on a GitHub-hosted runner, then publishes with npm provenance through OIDC. It does not auto-bump versions, create tags, push commits, create GitHub releases, or use a registry token. Preparing this candidate neither creates the `v0.1.0` tag nor publishes the package.
 
 ## Paths, state, and ownership
