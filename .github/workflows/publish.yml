@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+          ref: main
           fetch-depth: 0
       - name: Resolve release target
         id: target
@@ -35,10 +35,9 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main --tags
-          target="$GITHUB_SHA"
           origin_main="$(git rev-parse origin/main)"
+          target="$origin_main"
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            target="$origin_main"
             if [ -n "$RELEASE_SHA" ]; then
               release_sha="${RELEASE_SHA,,}"
               if ! [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]; then
@@ -51,9 +50,6 @@ jobs:
               fi
               target="$release_sha"
             fi
-          elif [ "$target" != "$origin_main" ]; then
-            echo "::error::La run está obsoleta porque main avanzó."
-            exit 1
           fi
           git checkout --detach "$target"
           echo "sha=$target" >> "$GITHUB_OUTPUT"

@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const FULL_SHA = /^[0-9a-f]{40}$/i;
 const VERSION_NOT_FOUND = /ERR_PNPM_PACKAGE_NOT_FOUND|No matching version found/i;
 
@@ -100,6 +99,17 @@ export function normalizeRecoverySha(value) {
   return sha;
 }
 
+export function assertReleaseBaseline({ currentVersion, currentVersionExists, currentTagSha, recoveryRun, releaseShaProvided }) {
+  if (!currentVersionExists || currentTagSha !== null) return;
+  const tag = `v${currentVersion}`;
+  if (recoveryRun && !releaseShaProvided) {
+    throw new Error(`${tag} is missing. Recovery requires the exact release_sha that was published.`);
+  }
+  if (!recoveryRun) {
+    throw new Error(`${tag} is missing. Recover its exact published SHA before automatic patch releases continue.`);
+  }
+}
+
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }).trim();
 }
@@ -133,8 +143,7 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function changedPathsForPush(before, head) {
-  const base = /^0+$/.test(before) || before === "" ? EMPTY_TREE_SHA : before;
+function changedPathsSinceRelease(base, head) {
   return run("git", ["diff", "--name-only", base, head]).split(/\r?\n/).filter(Boolean);
 }
 
@@ -179,10 +188,27 @@ export function runReleasePlan() {
     throw new Error("package.json and contract/jorgex-pi.v1.json release metadata are not synchronized.");
   }
 
-  const paths = recoveryRun ? [] : changedPathsForPush(process.env.GITHUB_EVENT_BEFORE ?? "", targetSha);
+  const currentVersionExists = npmHasVersion(manifest.name, manifest.version);
+  const currentTag = `v${manifest.version}`;
+  const currentTagSha = resolveTagSha(currentTag)?.toLowerCase() ?? null;
+  assertReleaseBaseline({
+    currentVersion: manifest.version,
+    currentVersionExists,
+    currentTagSha,
+    recoveryRun,
+    releaseShaProvided: Boolean((process.env.RELEASE_SHA ?? "").trim()),
+  });
+  if (currentTagSha !== null) {
+    try {
+      run("git", ["merge-base", "--is-ancestor", currentTagSha, targetSha]);
+    } catch {
+      throw new Error(`${currentTag} does not belong to the selected main history.`);
+    }
+  }
+
+  const paths = recoveryRun || currentTagSha === null ? [] : changedPathsSinceRelease(currentTagSha, targetSha);
   const classification = classifyReleasePaths(paths);
   const message = run("git", ["log", "-1", "--pretty=%B", targetSha]);
-  const currentVersionExists = npmHasVersion(manifest.name, manifest.version);
   const plan = buildReleasePlan({
     currentVersion: manifest.version,
     currentVersionExists,

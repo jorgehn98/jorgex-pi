@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  assertReleaseBaseline,
   buildReleasePlan,
   classifyReleasePaths,
   synchronizeReleaseMetadata,
@@ -100,6 +101,37 @@ test("automatic patch bumps keep package and root contract synchronized", () => 
   assert.equal(manifest.version, "0.2.0", "the pure policy must not mutate caller-owned objects");
 });
 
+test("published releases use an immutable tag baseline and require exact recovery when it is missing", () => {
+  assert.doesNotThrow(() => assertReleaseBaseline({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    currentTagSha: "a".repeat(40),
+    recoveryRun: false,
+    releaseShaProvided: false,
+  }));
+  assert.throws(() => assertReleaseBaseline({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    currentTagSha: null,
+    recoveryRun: false,
+    releaseShaProvided: false,
+  }), /Recover its exact published SHA/);
+  assert.throws(() => assertReleaseBaseline({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    currentTagSha: null,
+    recoveryRun: true,
+    releaseShaProvided: false,
+  }), /requires the exact release_sha/);
+  assert.doesNotThrow(() => assertReleaseBaseline({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    currentTagSha: null,
+    recoveryRun: true,
+    releaseShaProvided: true,
+  }));
+});
+
 test("the publish workflow is main-gated, recoverable, OIDC-only, and release-content preserving", () => {
   const workflowPath = join(root, ".github", "workflows", "publish.yml");
   assert.equal(existsSync(workflowPath), true, "the public release workflow must exist");
@@ -118,6 +150,7 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
     "description: SHA completa de 40 hex de recuperación anclada a main (opcional)",
     "required: false",
   ], "publishing must be triggered by main pushes and expose only the pinned recovery input");
+  assert.match(workflow, /actions\/checkout@[a-f0-9]{40}[\s\S]*?ref:\s*main/, "validation must test the current serialized main head so rapid merges cannot lose publicable changes");
 
   const permissions = topLevelBlock(workflow, "permissions");
   assert.deepEqual(readFlatMap(permissions), { contents: "read" });
