@@ -32,6 +32,8 @@ jobs:
       - name: Test
         run: pnpm test
       - name: Pack
-        run: pnpm pack
+        run: |
+          mkdir -p .release-artifacts
+          pnpm pack --pack-destination .release-artifacts
       - name: Publish
-        run: npm publish --ignore-scripts --provenance
+        run: npm publish .release-artifacts/jorgex-pi-0.1.0.tgz --ignore-scripts --provenance
