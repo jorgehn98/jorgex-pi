@@ -74,7 +74,7 @@ test("the publish workflow is tag-gated, OIDC-only, and release-content preservi
 test("the publish workflow publishes the exact deterministic tarball created by pnpm pack", () => {
   const workflow = readFileSync(join(root, ".github", "workflows", "publish.yml"), "utf8");
   const artifactDirectory = ".release-artifacts";
-  const artifactPath = `${artifactDirectory}/jorgex-pi-${releaseVersion}.tgz`;
+  const artifactPath = `${artifactDirectory}/jorgex-pi-\${GITHUB_REF_NAME#v}.tgz`;
 
   assert.match(
     workflow,
@@ -90,6 +90,11 @@ test("the publish workflow publishes the exact deterministic tarball created by 
     workflow,
     /run:\s*npm publish\s+--ignore-scripts\s+--provenance\s*(?:\n|$)/,
     "npm publish without an artifact path would silently package the working tree again",
+  );
+  assert.doesNotMatch(
+    workflow,
+    new RegExp(`run:\\s*npm publish ${escapeRegExp(artifactDirectory)}/jorgex-pi-\\d+\\.\\d+\\.\\d+(?:[-+][\\w.-]+)?\\.tgz\\b`),
+    "the artifact path must derive its version from the validated tag, never from a release-specific literal",
   );
 });
 
