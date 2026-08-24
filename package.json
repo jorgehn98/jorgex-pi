@@ -1,9 +1,19 @@
 {
   "name": "jorgex-pi",
-  "version": "0.0.0-development",
+  "version": "0.1.0",
   "description": "Pi-native runtime package for the JorgeX harness.",
-  "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jorgehn98/jorgex-pi.git"
+  },
+  "homepage": "https://github.com/jorgehn98/jorgex-pi#readme",
+  "bugs": {
+    "url": "https://github.com/jorgehn98/jorgex-pi/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "jorgex-pi": "./bin/jorgex-pi.mjs"

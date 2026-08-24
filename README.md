@@ -2,7 +2,7 @@
 
 `jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle.
 
-This private development package is not an end-user release. PR06 adds the noninteractive JSON runner and an isolated Engram MCP bridge while retaining the existing fail-closed bootstrap and versioned JorgeX Stack snapshot.
+Version `0.1.0` is the first public release candidate. This repository state is publishable but does not by itself assert that the version has been tagged or published. PR06 adds the noninteractive JSON runner and an isolated Engram MCP bridge while retaining the existing fail-closed bootstrap and versioned JorgeX Stack snapshot.
 
 ## Current boundary
 
@@ -36,7 +36,7 @@ This atomic safety guarantee applies to the tool-call flow. A bundled healthy Go
 
 The bundled `pi-mcp-adapter@2.27.0` receives a programmatic configuration containing exactly one lazy local server named `engram`. JorgeX does not call the adapter's ambient config loader, import host MCP configuration, preserve foreign server definitions inside its adapter instance, or enable HTTP transport. User MCP configuration remains external and untouched; it is neither adopted nor managed by this package.
 
-The managed bridge requires one validated absolute `ENGRAM_BIN` and never searches `PATH`. On Windows it rejects `.cmd` and `.bat` shims because the wrapper launches the native executable without a shell as `engram mcp --tools=agent`. If the variable is absent, invalid, or unresolved, the adapter is not loaded. The child receives only the documented portability and Engram data/project/timezone environment allowlist—not ambient secrets, proxy variables, Node options, cloud autosync credentials, or npm configuration. Passive capture is excluded, so `mem_capture_passive` is never advertised.
+The managed bridge requires one validated absolute `ENGRAM_BIN` and never searches `PATH`. On Windows it accepts only a native `.exe` path because the wrapper launches the executable without a shell as `engram mcp --tools=agent`. If the variable is absent, invalid, or unresolved, the adapter is not loaded. The child receives only the documented portability and Engram data/project/timezone environment allowlist—not ambient secrets, proxy variables, Node options, cloud autosync credentials, or npm configuration. Passive capture is excluded, so `mem_capture_passive` is never advertised.
 
 With a healthy managed bridge, the main Pi session receives the 17 reviewed direct Engram tools. The `engram` subagent is deliberately narrower and read-only: it exposes only `mem_search`, `mem_context`, `mem_get_observation`, `mem_suggest_topic_key`, `mem_current_project`, and `mem_doctor`; its contract retains `requiredCapability: engram-runtime-tools-v1` so unavailable runtime state stays machine-readable. Save, update, session-write, review, pin, and unpin operations remain unavailable to that specialist.
 
@@ -117,13 +117,15 @@ pnpm runtime-agents:generate
 
 This publishes `agents`, `deferred/agents`, `primary`, and `contract/runtime-agents.v1.json` transactionally; a failure restores the previous generation. `pnpm test` verifies deterministic output, containment, the bundled closure, and the isolated Pi lifecycle. `pnpm pack` creates the candidate tarball with the bootstrap, resources, pinned companions, audited closure, and required WASM files. Development generators and transaction modules under `scripts/` are excluded.
 
-The package is currently `private` with the development version `0.0.0-development`. There is therefore no valid installation command for users yet. After a reviewed release is published, installation will use Pi's package manager with an exact version:
+Package metadata and contracts are synchronized at `0.1.0`. After that exact version is present on npm, installation uses Pi's package manager with the release pinned:
 
 ```bash
-pi install npm:jorgex-pi@<published-version>
+pi install npm:jorgex-pi@0.1.0
 ```
 
 That command is the narrow package-manager exception: Pi uses npm internally to register and resolve its own package. Repository development, dependency management, and release preparation continue to use pnpm exclusively.
+
+Publication is an explicit external gate. Pushing a tag matching `v*` starts the trusted-publishing workflow, which rejects any tag other than `v<package.json version>`, runs the frozen install, tests, and pack on a GitHub-hosted runner, then publishes with npm provenance through OIDC. It does not auto-bump versions, create tags, push commits, create GitHub releases, or use a registry token. Preparing this candidate neither creates the `v0.1.0` tag nor publishes the package.
 
 ## Paths, state, and ownership
 

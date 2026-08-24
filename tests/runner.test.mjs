@@ -22,6 +22,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "runner.expected.json"));
 const runnerEntry = join(root, expected.entrypoint);
+const packageVersion = readJson(join(root, "package.json")).version;
 
 test("the package exposes one versioned JSON-only runner contract", () => {
   const manifest = readJson(join(root, "package.json"));
@@ -101,7 +102,7 @@ test("status recognizes one exact Pi registration without mutating foreign setti
   assert.ok(existsSync(runnerEntry), "runner production is required before exercising install-state detection");
   const sandbox = createSandbox("registration");
   const settingsPath = join(sandbox.agentDir, "settings.json");
-  const source = "npm:jorgex-pi@0.0.0-development";
+  const source = `npm:jorgex-pi@${packageVersion}`;
   const bytes = `${JSON.stringify({ packages: ["npm:foreign@1.0.0", source], foreign: { keep: true } }, null, 2)}\n`;
   writeFileSync(settingsPath, bytes);
   try {
@@ -131,7 +132,7 @@ test("doctor requires both exact package registration and a ready Engram binary"
 });
 
 test("every invalid Pi settings shape retains a schema-valid stable diagnosis", async (t) => {
-  const exactSource = "npm:jorgex-pi@0.0.0-development";
+  const exactSource = `npm:jorgex-pi@${packageVersion}`;
   const cases = [
     ["invalid-json", "{invalid json\n"],
     ["root-array", "[]\n"],
@@ -277,7 +278,7 @@ function assertEnvelope(result, command) {
   assert.equal(json.command, command);
   assert.equal(typeof json.ok, "boolean");
   assert.equal(json.package?.name, "jorgex-pi");
-  assert.equal(json.package?.version, "0.0.0-development");
+  assert.equal(json.package?.version, packageVersion);
   assert.equal(typeof json.package?.root, "string");
   assert.ok(json.result && typeof json.result === "object" && !Array.isArray(json.result));
   assert.equal(json.ok ? json.error === undefined : typeof json.error === "object", true, "ok must discriminate success from error envelopes");

@@ -94,6 +94,7 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     assert.equal(packedFiles.length, 1, "pnpm pack must produce exactly one tarball");
     const tarball = join(packDir, packedFiles[0]);
     const archive = readTgz(tarball);
+    const headers = readTgzHeaders(tarball);
     const entries = new Set(archive.keys());
     const packageManifest = readPackedJson(archive, "package/package.json");
     const contract = readPackedJson(archive, `package/${expected.contractPath}`);
@@ -114,6 +115,20 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     for (const path of expected.forbiddenTarPaths) {
       assert.equal(entries.has(path), false, `packed artifact must exclude build-only path ${path}`);
     }
+    const allowedRoots = new Set(["agents", "bin", "contract", "extensions", "node_modules", "primary", "skills"]);
+    const allowedFiles = new Set(["package.json", "LICENSE", "README.md"]);
+    for (const path of entries) {
+      const relativePath = path.replace(/^package\//, "");
+      const [topLevel, snapshotKind] = relativePath.split("/");
+      assert.equal(
+        allowedFiles.has(relativePath) || allowedRoots.has(topLevel) || (topLevel === "snapshot" && snapshotKind === "agents"),
+        true,
+        `packed artifact contains non-whitelisted path ${path}`,
+      );
+    }
+    const binHeader = headers.find(({ path }) => path === "package/bin/jorgex-pi.mjs");
+    assert.ok(binHeader, "packed artifact must contain the public jorgex-pi bin");
+    assert.notEqual(binHeader.mode & 0o111, 0, "the packed jorgex-pi bin must remain executable");
     const digest = createHash("sha256").update(readFileSync(tarball)).digest("hex");
     assert.match(digest, /^[a-f0-9]{64}$/, "packed artifact must be hashable for release evidence");
   } finally {
@@ -188,6 +203,31 @@ function readTgz(path) {
     offset += 512 + Math.ceil(size / 512) * 512;
   }
   return files;
+}
+
+function readTgzHeaders(path) {
+  const tar = gunzipSync(readFileSync(path));
+  const entries = [];
+  let offset = 0;
+  let nextPath;
+  while (offset + 512 <= tar.length) {
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const size = Number.parseInt(readTarString(header, 124, 12).trim() || "0", 8);
+    const mode = Number.parseInt(readTarString(header, 100, 8).trim() || "0", 8);
+    const type = String.fromCharCode(header[156] || 48);
+    const body = tar.subarray(offset + 512, offset + 512 + size);
+    const prefix = readTarString(header, 345, 155);
+    const headerPath = [prefix, readTarString(header, 0, 100)].filter(Boolean).join("/");
+    if (type === "x") nextPath = readPaxPath(body) ?? nextPath;
+    else if (type === "L") nextPath = body.toString("utf8").replace(/\0.*$/s, "");
+    else {
+      entries.push({ path: nextPath ?? headerPath, mode, type });
+      nextPath = undefined;
+    }
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  return entries;
 }
 
 function readTarString(header, start, length) {
