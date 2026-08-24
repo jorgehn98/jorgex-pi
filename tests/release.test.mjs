@@ -162,6 +162,7 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   assert.doesNotMatch(planJob, /id-token:\s*write/, "the repository-write planning job must not receive OIDC");
   assert.match(publishJob, /contents:\s*read[\s\S]*id-token:\s*write/, "the publish job must be read-only except for OIDC");
   assert.doesNotMatch(publishJob, /contents:\s*write/, "the npm publish job must not write to the repository");
+  assert.doesNotMatch(publishJob, /\bcache:\s*(?:pnpm|npm|yarn)\b/, "the privileged release build must not reuse a package-manager cache");
   assert.match(workflow, /git\s+tag/, "the verified release SHA must receive its immutable version tag");
   assert.match(workflow, /git\s+push\s+origin/, "the release commit and tag must be pushed explicitly");
 });
