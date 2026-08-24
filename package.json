@@ -26,6 +26,7 @@
   ],
   "files": [
     "agents",
+    "assets",
     "bin",
     "contract",
     "extensions",
@@ -33,6 +34,7 @@
     "skills",
     "snapshot/agents",
     "themes",
+    "DESIGN.md",
     "LICENSE",
     "README.md"
   ],

@@ -3,7 +3,9 @@
   "manifestVersion": 1,
   "ownership": "package",
   "resources": [
+    "DESIGN.md",
     "agents",
+    "assets/brand/eye-logo.svg",
     "contract/parity.v1.json",
     "contract/runtime-agents.v1.json",
     "extensions",

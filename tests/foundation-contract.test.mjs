@@ -115,8 +115,8 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     for (const path of expected.forbiddenTarPaths) {
       assert.equal(entries.has(path), false, `packed artifact must exclude build-only path ${path}`);
     }
-    const allowedRoots = new Set(["agents", "bin", "contract", "extensions", "node_modules", "primary", "skills", "themes"]);
-    const allowedFiles = new Set(["package.json", "LICENSE", "README.md"]);
+    const allowedRoots = new Set(["agents", "assets", "bin", "contract", "extensions", "node_modules", "primary", "skills", "themes"]);
+    const allowedFiles = new Set(["package.json", "DESIGN.md", "LICENSE", "README.md"]);
     for (const path of entries) {
       const relativePath = path.replace(/^package\//, "");
       const [topLevel, snapshotKind] = relativePath.split("/");
