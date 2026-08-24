@@ -2,38 +2,160 @@ name: Publish package
 
 on:
   push:
-    tags:
-      - v*
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: SHA completa de 40 hex de recuperación anclada a main (opcional)
+        required: false
+
+concurrency:
+  group: publish-main
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
+  validate:
     runs-on: ubuntu-latest
+    outputs:
+      target_sha: ${{ steps.target.outputs.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+          fetch-depth: 0
+      - name: Resolve release target
+        id: target
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ github.event.inputs.release_sha || '' }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          target="$GITHUB_SHA"
+          origin_main="$(git rev-parse origin/main)"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            target="$origin_main"
+            if [ -n "$RELEASE_SHA" ]; then
+              release_sha="${RELEASE_SHA,,}"
+              if ! [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::error::release_sha debe ser una SHA completa de 40 hex."
+                exit 1
+              fi
+              if ! git merge-base --is-ancestor "$release_sha" "$origin_main"; then
+                echo "::error::$release_sha no pertenece a main."
+                exit 1
+              fi
+              target="$release_sha"
+            fi
+          elif [ "$target" != "$origin_main" ]; then
+            echo "::error::La run está obsoleta porque main avanzó."
+            exit 1
+          fi
+          git checkout --detach "$target"
+          echo "sha=$target" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
         with:
           version: 11.22.0
           run_install: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: "22.14.0"
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm pack --pack-destination .validation-artifacts
+
+  plan:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      version: ${{ steps.release.outputs.version }}
+      publish_sha: ${{ steps.release.outputs.publish_sha }}
+      tag_needed: ${{ steps.release.outputs.tag_needed }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.validate.outputs.target_sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 11.22.0
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Resolve release plan
+        id: release
+        env:
+          RELEASE_SHA: ${{ github.event.inputs.release_sha || '' }}
+          TARGET_SHA: ${{ needs.validate.outputs.target_sha }}
+        run: node ./scripts/release-policy.mjs plan
+
+  publish:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.plan.outputs.publish_sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 11.22.0
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
           registry-url: https://registry.npmjs.org
           cache: pnpm
-      - name: Verify release tag
-        run: node -e 'const pkg = require("./package.json"); if (process.env.GITHUB_REF_NAME !== `v${pkg.version}`) throw new Error(`Tag ${process.env.GITHUB_REF_NAME} does not match package.json version ${pkg.version}`)'
-      - name: Provision trusted-publishing npm
-        run: pnpm add --global npm@11.5.1
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Test
-        run: pnpm test
-      - name: Pack
+      - run: pnpm add --global npm@11.5.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - name: Pack exact release
         run: |
           mkdir -p .release-artifacts
           pnpm pack --pack-destination .release-artifacts
-      - name: Publish
-        run: npm publish .release-artifacts/jorgex-pi-${GITHUB_REF_NAME#v}.tgz --ignore-scripts --provenance
+      - name: Publish exact release
+        run: npm publish .release-artifacts/jorgex-pi-${{ needs.plan.outputs.version }}.tgz --ignore-scripts --provenance
+
+  tag-release:
+    needs: [plan, publish]
+    if: always() && !cancelled() && needs.publish.result != 'failure' && needs.publish.result != 'cancelled' && (needs.publish.result == 'success' || needs.plan.outputs.tag_needed == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.plan.outputs.publish_sha }}
+          fetch-depth: 0
+      - name: Create immutable release tag
+        shell: bash
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          SHA: ${{ needs.plan.outputs.publish_sha }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          git fetch origin --tags
+          if git rev-parse --verify --quiet "refs/tags/$tag" > /dev/null; then
+            existing="$(git rev-list -n 1 "$tag")"
+            if [ "$existing" != "$SHA" ]; then
+              echo "::error::$tag apunta a $existing, no a $SHA."
+              exit 1
+            fi
+            exit 0
+          fi
+          git tag "$tag" "$SHA"
+          git push origin "$tag"
