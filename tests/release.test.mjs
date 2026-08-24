@@ -59,16 +59,43 @@ test("the publish workflow is tag-gated, OIDC-only, and release-content preservi
     "pnpm install --frozen-lockfile",
     "pnpm test",
     "pnpm pack",
-    "npm publish --ignore-scripts --provenance",
   ]) assert.ok(workflow.includes(command), `workflow is missing required command: ${command}`);
 
   const npmCommands = workflow.split(/\r?\n/)
     .map((line) => line.trim().replace(/^run:\s*/, ""))
     .filter((line) => line.startsWith("npm "));
-  assert.deepEqual(npmCommands, ["npm publish --ignore-scripts --provenance"], "publish is the only direct npm command allowed");
+  assert.equal(npmCommands.length, 1, "publish is the only direct npm command allowed");
+  assert.match(npmCommands[0] ?? "", /^npm publish\b/, "the only direct npm command must publish");
   assert.doesNotMatch(workflow, /(?:^|[\s;&|])npm\s+(?:version|pack|install)\b/im, "standalone npm may only publish");
   assert.doesNotMatch(workflow, /NPM_TOKEN|secrets\.|^\s*(?:token|github-token):|pnpm\s+version|git\s+(?:commit|push|tag)|gh\s+release|changeset/i);
   assert.doesNotMatch(workflow, /uses:\s*[^\n]*(?:release|changeset)/i, "the workflow must not create a GitHub release or auto-version");
+});
+
+test("the publish workflow publishes the exact deterministic tarball created by pnpm pack", () => {
+  const workflow = readFileSync(join(root, ".github", "workflows", "publish.yml"), "utf8");
+  const artifactDirectory = ".release-artifacts";
+  const artifactPath = `${artifactDirectory}/jorgex-pi-\${GITHUB_REF_NAME#v}.tgz`;
+
+  assert.match(
+    workflow,
+    new RegExp(`run:\\s*\\|\\s*\\n\\s*mkdir -p ${escapeRegExp(artifactDirectory)}\\s*\\n\\s*pnpm pack --pack-destination ${escapeRegExp(artifactDirectory)}\\s*(?:\\n|$)`),
+    "Pack must create a deterministic artifact directory and place the tarball there with pnpm pack",
+  );
+  assert.match(
+    workflow,
+    new RegExp(`run:\\s*npm publish ${escapeRegExp(artifactPath)} --ignore-scripts --provenance\\s*(?:\\n|$)`),
+    "npm publish must receive the exact tarball created by Pack",
+  );
+  assert.doesNotMatch(
+    workflow,
+    /run:\s*npm publish\s+--ignore-scripts\s+--provenance\s*(?:\n|$)/,
+    "npm publish without an artifact path would silently package the working tree again",
+  );
+  assert.doesNotMatch(
+    workflow,
+    new RegExp(`run:\\s*npm publish ${escapeRegExp(artifactDirectory)}/jorgex-pi-\\d+\\.\\d+\\.\\d+(?:[-+][\\w.-]+)?\\.tgz\\b`),
+    "the artifact path must derive its version from the validated tag, never from a release-specific literal",
+  );
 });
 
 test("the release guide requires npm trusted-publisher setup before any tag", () => {
@@ -106,6 +133,10 @@ function versionAtLeast(actual, minimum) {
     if ((left[index] ?? 0) !== (right[index] ?? 0)) return (left[index] ?? 0) > (right[index] ?? 0);
   }
   return true;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function readJson(path) {
