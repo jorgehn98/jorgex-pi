@@ -2,7 +2,7 @@
 
 `jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle.
 
-This private development package is not an end-user release. PR05 adds pinned Goal continuation behind the existing fail-closed bootstrap while retaining a versioned snapshot of the JorgeX Stack sources.
+Version `0.1.0` is the first public release candidate. This repository state is publishable but does not by itself assert that the version has been tagged or published. PR06 adds the noninteractive JSON runner and an isolated Engram MCP bridge while retaining the existing fail-closed bootstrap and versioned JorgeX Stack snapshot.
 
 ## Current boundary
 
@@ -11,14 +11,14 @@ This private development package is not an end-user release. PR05 adds pinned Go
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
 | Pi resources | One bootstrap extension and 16 reviewed JorgeX skills are active. Prompts and themes remain empty. |
 | Canonical snapshot | 15 agents and 17 complete skill trees (96 files) from JorgeX Stack commit `6d2b98b1728e275bf97920f9712dd4b7928de6a7`. |
-| Runtime agents | 13 runnable subagents, a dormant primary orchestrator, and Engram deferred behind the stable `engram-runtime-tools-v1` capability. |
-| Package assets | `contract/assets.v1.json` owns the bootstrap, runtime agents, snapshot, skills, and contracts; it declares no JorgeX-managed external writes and preserves thirteen companion-owned state paths. |
-| Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, and `@narumitw/pi-goal@0.53.0`. |
+| Runtime agents | 14 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
+| Package assets | `contract/assets.v1.json` owns the bootstrap, runtime agents, snapshot, skills, and contracts; it declares no JorgeX-managed external writes and preserves fourteen companion-owned state paths. |
+| Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, `@narumitw/pi-goal@0.53.0`, and `pi-mcp-adapter@2.27.0`. |
 | Model policy | Provider, model, and thinking level are inherited from the Pi session. JorgeX tiers remain contract metadata only. |
 
 The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive.
 
-`contract/jorgex-pi.v1.json` advertises the active versioned capabilities (`foundation-contract-v1`, `stack-snapshot-v1`, `runtime-agents-v1`, `permission-gated-tools-v1`, `structured-questions-v1`, `web-access-v1`, and `goal-continuation-v1`) and links `runtimeAgents.contractPath` to `contract/runtime-agents.v1.json`. That runtime contract records the translation from the 15 canonical agents. The 13 runnable files live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent, and `deferred/agents/engram.md` remains inert until the stable `engram-runtime-tools-v1` capability is available. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
+`contract/jorgex-pi.v1.json` advertises the active versioned capabilities, including `mcp-adapter-v1`, `engram-runtime-tools-v1`, and `runner-json-v1`, and links the runtime-agent and runner contracts. The runtime contract records the translation from the 15 canonical agents. All 14 subagents live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
 
 The Pi projection preserves the canonical bash boundary per agent. `none` exposes no shell capability; `git-read` replaces bash with the child-only `git_read` tool, which executes only `git diff` and `git log` through validated argv without a shell; `full` exposes bash and remains governed by the user's permission policy. This dedicated tool avoids relying on `permission.bash`, which `pi-subagents@0.54.0` does not support.
 
@@ -28,9 +28,19 @@ The Pi projection preserves the canonical bash boundary per agent. `none` expose
 
 Health is session-scoped and cleared on session start or shutdown. A normal session start does not mutate Pi's current tool selection: the guard supplies the pre-health boundary. If a prompt starts before health, the bootstrap records the selected companion tools and hides them. Once health arrives, it reconciles that snapshot against the current active tools and never adds a missing tool, so a selection disabled during the wait cannot be revived from stale state. If health arrives before the first prompt, the current selection remains untouched. Later ready events also never re-enable disabled tools. In headless sessions, `ask_user_question` stays unavailable instead of fabricating an answer; subagent delegation remains available after permission health.
 
-The bootstrap reads Pi settings only to prevent loading Web Access or its bundled Goal twice. It checks global `PI_CODING_AGENT_DIR/settings.json` (default `~/.pi/agent/settings.json`) and project `.pi/settings.json` for pinned or unpinned npm entries, including object entries with `source`. Each detector latches and reports its own issue only after a UI notification is actually delivered. Web Access detection retains the existing global fail-closed boundary. A Goal duplicate or unreadable Goal preflight skips only the bundled Goal; permission health, Web Access, and subagents remain available. Detection never rewrites settings. JorgeX Stack PR07 will add install/sync preflight and ownership-safe migration for npm, local, and Git package identities; the runtime detector intentionally recognizes only npm identities.
+The bootstrap reads Pi settings only to prevent loading Web Access, Goal, or `pi-mcp-adapter` twice. It checks global `PI_CODING_AGENT_DIR/settings.json` (default `~/.pi/agent/settings.json`) and project `.pi/settings.json` for pinned or unpinned npm entries, including object entries with `source`. Each detector latches until Pi reloads and reports its own issue only after a UI notification is actually delivered. Web Access detection retains the existing global fail-closed boundary. A Goal duplicate or unreadable Goal preflight skips only the bundled Goal. A direct `pi-mcp-adapter` entry skips only the internal Engram adapter; permission health, Web Access, Goal, and subagents remain available. Detection never rewrites settings. JorgeX Stack PR07 will add install/sync preflight and ownership-safe migration for npm, local, and Git package identities; the runtime detector intentionally recognizes only npm identities.
 
 This atomic safety guarantee applies to the tool-call flow. A bundled healthy Goal is additionally gated at its command, managed-run start, prompt, settled-continuation, and message-delivery boundaries so it cannot start provider work before permission health. A valid managed-run request rejected by that gate receives the upstream-compatible terminal `ACTIVATION_FAILED` error instead of disappearing silently. Other companion slash commands and the event/RPC bridges registered internally by `pi-subagents` retain their upstream lifecycle and error handling; this package does not claim to guard those surfaces.
+
+## MCP and Engram
+
+The bundled `pi-mcp-adapter@2.27.0` receives a programmatic configuration containing exactly one lazy local server named `engram`. JorgeX does not call the adapter's ambient config loader, import host MCP configuration, preserve foreign server definitions inside its adapter instance, or enable HTTP transport. User MCP configuration remains external and untouched; it is neither adopted nor managed by this package.
+
+The managed bridge requires one validated absolute `ENGRAM_BIN` and never searches `PATH`. On Windows it accepts only a native `.exe` path because the wrapper launches the executable without a shell as `engram mcp --tools=agent`. If the variable is absent, invalid, or unresolved, the adapter is not loaded. The child receives only the documented portability and Engram data/project/timezone environment allowlist—not ambient secrets, proxy variables, Node options, cloud autosync credentials, or npm configuration. Passive capture is excluded, so `mem_capture_passive` is never advertised.
+
+With a healthy managed bridge, the main Pi session receives the 17 reviewed direct Engram tools. The `engram` subagent is deliberately narrower and read-only: it exposes only `mem_search`, `mem_context`, `mem_get_observation`, `mem_suggest_topic_key`, `mem_current_project`, and `mem_doctor`; its contract retains `requiredCapability: engram-runtime-tools-v1` so unavailable runtime state stays machine-readable. Save, update, session-write, review, pin, and unpin operations remain unavailable to that specialist.
+
+The packaged adapter closure includes the audited native keyring bindings for macOS arm64/x64; Linux armhf, arm64, riscv64, and x64 variants covered by the contract; and Windows arm64/ia32/x64. FreeBSD is intentionally outside the tested bundle. Runtime compatibility remains limited to Pi `0.84.2`; the bindings expand platform packaging, not the claimed Pi-version range.
 
 ## Goal continuation and orchestrator policy
 
@@ -52,6 +62,20 @@ Playwright remains a separate opt-in route, used only when the task requires int
 
 `pi-web-access` also registers `/websearch`, `/curator`, `/google-account`, and `/search`. These slash commands are explicit user actions and do not pass through Pi's `tool_call` health guard. They retain the companion's own lifecycle, UI, configuration, and error handling; the fail-closed guarantee above applies to agent tool calls, not those commands.
 
+## JSON runner
+
+The package exposes the noninteractive `jorgex-pi` binary with the versioned contract in `contract/runner.v1.json` and response schema in `contract/schemas/runner-response.v1.schema.json`. During development, invoke it directly:
+
+```bash
+node ./bin/jorgex-pi.mjs status --json
+node ./bin/jorgex-pi.mjs doctor --json
+node ./bin/jorgex-pi.mjs models --json
+node ./bin/jorgex-pi.mjs sync --json
+node ./bin/jorgex-pi.mjs cleanup --json
+```
+
+`--json` is accepted after the command for Stack compatibility; stdout is one bounded JSON record with a trailing newline even when the flag is omitted. Exit codes are `0` for success, `1` for unhealthy state, `2` for invalid usage, and `3` for an internal failure. `status` reports exact-package registration plus user-owned Engram discovery. `doctor` requires both the exact package registration and an executable Engram binary. Invalid settings retain their path, reason, and remedy in the error envelope. `models` reports inherited session policy, while `sync` and `cleanup` currently return an empty action plan and perform no writes. For diagnostics only, the runner checks `ENGRAM_BIN` first and otherwise searches `PATH`/`PATHEXT`; it never spawns Engram. This diagnostic fallback does not broaden the managed bridge's `ENGRAM_BIN`-only runtime contract.
+
 ## Development
 
 Use pnpm for repository work:
@@ -64,6 +88,8 @@ pnpm pack
 ```
 
 `pnpm install --frozen-lockfile` provisions `@earendil-works/pi-coding-agent@0.84.2` as an exact development dependency. The lifecycle test invokes that local Pi entrypoint with isolated home, cache, workspace, and `PI_CODING_AGENT_DIR` paths, so verification does not depend on a globally installed Pi. Pi itself is not bundled in the tarball and is not a runtime dependency of `jorgex-pi`.
+
+Tests use isolated temporary homes and fake executable Engram paths. They verify discovery, argv, environment filtering, adapter metadata, direct-tool projection, lifecycle recovery, JSON protocol, and tarball bindings without starting a real Engram process or reading a real Engram database.
 
 ### Refresh and verify the canonical snapshot
 
@@ -91,19 +117,23 @@ pnpm runtime-agents:generate
 
 This publishes `agents`, `deferred/agents`, `primary`, and `contract/runtime-agents.v1.json` transactionally; a failure restores the previous generation. `pnpm test` verifies deterministic output, containment, the bundled closure, and the isolated Pi lifecycle. `pnpm pack` creates the candidate tarball with the bootstrap, resources, pinned companions, audited closure, and required WASM files. Development generators and transaction modules under `scripts/` are excluded.
 
-The package is currently `private` with the development version `0.0.0-development`. There is therefore no valid installation command for users yet. After a reviewed release is published, installation will use Pi's package manager with an exact version:
+Package metadata and contracts are synchronized at `0.1.0`. After that exact version is present on npm, installation uses Pi's package manager with the release pinned:
 
 ```bash
-pi install npm:jorgex-pi@<published-version>
+pi install npm:jorgex-pi@0.1.0
 ```
 
 That command is the narrow package-manager exception: Pi uses npm internally to register and resolve its own package. Repository development, dependency management, and release preparation continue to use pnpm exclusively.
+
+Before creating or pushing any release tag, configure the npm trusted publisher in the npmjs.com package settings for GitHub repository `jorgehn98/jorgex-pi`, workflow filename `publish.yml`, and allowed action `npm publish`. The workflow does not configure that npm trust relationship and is not sufficient without this external prerequisite.
+
+Publication is an explicit external gate. Pushing a tag matching `v*` starts the trusted-publishing workflow, which rejects any tag other than `v<package.json version>`, runs the frozen install, tests, and pack on a GitHub-hosted runner, then publishes with npm provenance through OIDC. It does not auto-bump versions, create tags, push commits, create GitHub releases, or use a registry token. Preparing this candidate neither creates the `v0.1.0` tag nor publishes the package.
 
 ## Paths, state, and ownership
 
 Pi may relocate its agent directory through `PI_CODING_AGENT_DIR`; the package relies on Pi and its companions to resolve that location rather than assuming a fixed user path.
 
-The ownership boundary is `contract/assets.v1.json`. Only its package paths belong to JorgeX, and `managedExternalWrites` is empty. Permission-system, ask, Web Access, and Goal state is companion- or user-owned: the bootstrap does not seed, replace, or remove it. The manifest records thirteen `preservedExternalState` paths that must survive JorgeX install, reinstall, and removal:
+The ownership boundary is `contract/assets.v1.json`. Only its package paths belong to JorgeX, and `managedExternalWrites` is empty. Permission-system, ask, Web Access, Goal, and MCP adapter state is companion- or user-owned: the bootstrap does not seed, replace, or remove it. The manifest records fourteen `preservedExternalState` paths that must survive JorgeX install, reinstall, and removal:
 
 - `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/config.json`
 - `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/logs`
@@ -118,11 +148,12 @@ The ownership boundary is `contract/assets.v1.json`. Only its package paths belo
 - `pi-web-access`: `HOME/.pi/web-search-cache`
 - `@narumitw/pi-goal`: `PI_CODING_AGENT_DIR/pi-goal.json`
 - `@narumitw/pi-goal`: `PI_CODING_AGENT_DIR/pi-goal-state.json` (legacy state retained for ownership-safe migration and clear behavior)
+- `pi-mcp-adapter`: `PI_CODING_AGENT_DIR/mcp-cache.json`
 
 The XDG and HOME ask paths may resolve to the same file; lifecycle consumers preserve both declarations and deduplicate resolved paths. These paths may be created or managed by their named companions during normal operation; declaring them preserved does not transfer their ownership to JorgeX.
 
 ## Supply chain and security
 
-`contract/components.v1.json` distinguishes the five active companions from the audited future roadmap. Runtime and bundled dependencies are exact pins, the lockfile records audited npm `sha512` integrity values, and installation performs no live GitHub download. Goal's bundled closure resolves `@narumitw/pi-tui-kit` to the audited lock version alongside its exact transitive packages. The tarball carries the complete companion closure for the tested offline Pi lifecycle.
+`contract/components.v1.json` distinguishes the six active companions from the audited future roadmap. Runtime and bundled dependencies are exact pins, the lockfile records audited npm `sha512` integrity values, and installation performs no live GitHub download. Goal's bundled closure resolves `@narumitw/pi-tui-kit` to the audited lock version alongside its exact transitive packages. The tarball carries the complete companion closure and reviewed native bindings for the tested offline Pi lifecycle.
 
-The repository contains no keys, tokens, credentials, or secret placeholders. PR05 adds Goal without API keys, browser credentials, MCP setup, Engram runtime, custom theme, startup branding, or project bootstrap. It does not impose a permission or Goal configuration: policy remains an explicit user concern.
+The repository contains no keys, tokens, credentials, or secret placeholders. PR06 adds the isolated local Engram bridge and JSON runner without browser credentials, HTTP MCP, passive capture, custom theme, startup branding, or project bootstrap. It does not install, update, remove, or test against the user's real Engram binary or memory database, and it does not impose permission, Goal, or MCP configuration outside the isolated internal adapter.

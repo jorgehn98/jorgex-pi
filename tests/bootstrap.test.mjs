@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = JSON.parse(readFileSync(join(testDir, "fixtures", "bootstrap.expected.json"), "utf8"));
+const mcpExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "mcp-engram.expected.json"), "utf8"));
 const companionToolNames = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
 test("the root manifest activates only the JorgeX bootstrap and sixteen reviewed skills", () => {
@@ -26,9 +27,10 @@ test("the root manifest activates only the JorgeX bootstrap and sixteen reviewed
 
 test("the active companions and their audited closure are exactly pinned and bundled", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  const dependencies = Object.fromEntries(expected.companions.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right)));
+  const packagedDependencies = [...expected.companions, mcpExpected.adapter];
+  const dependencies = Object.fromEntries(packagedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right)));
   assert.deepEqual(manifest.dependencies, dependencies);
-  assert.deepEqual([...manifest.bundledDependencies].sort(), expected.companions.map(({ name }) => name).sort());
+  assert.deepEqual([...manifest.bundledDependencies].sort(), packagedDependencies.map(({ name }) => name).sort());
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   for (const dependency of expected.bundledClosure) assertLockIntegrity(lock, dependency);
 });
@@ -249,6 +251,63 @@ for (const directInstall of [
       assert.equal(notifications.length, 1, "later session starts must not duplicate the conflict diagnostic");
       assert.equal(readFileSync(globalSettingsPath, "utf8"), globalBytes, "conflict detection must not rewrite global settings");
       assert.equal(readFileSync(projectSettingsPath, "utf8"), projectBytes, "conflict detection must not rewrite project settings");
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const directInstall of [
+  { label: "global pinned string", scope: "global", entry: "npm:pi-mcp-adapter@2.27.0" },
+  { label: "project unpinned string", scope: "project", entry: "npm:pi-mcp-adapter" },
+  { label: "project object source", scope: "project", entry: { source: "npm:pi-mcp-adapter@2.27.0", extensions: ["index.ts"] } },
+]) {
+  test(`direct pi-mcp-adapter conflict skips the bundled adapter and latches for ${directInstall.label}`, async () => {
+    const { createBootstrap, detectMcpAdapterConflict } = await import("../extensions/bootstrap.ts");
+    assert.equal(typeof detectMcpAdapterConflict, "function", "bootstrap must expose its production MCP adapter conflict detector");
+    const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-adapter-conflict-"));
+    const globalSettingsPath = join(sandbox, "agent", "settings.json");
+    const projectSettingsPath = join(sandbox, "project", ".pi", "settings.json");
+    const globalBytes = JSON.stringify({ packages: [directInstall.scope === "global" ? directInstall.entry : "npm:foreign-global@1.0.0"] }, null, 2) + "\n";
+    const projectBytes = JSON.stringify({ packages: [directInstall.scope === "project" ? directInstall.entry : "npm:foreign-project@1.0.0"] }, null, 2) + "\n";
+    mkdirSync(dirname(globalSettingsPath), { recursive: true });
+    mkdirSync(dirname(projectSettingsPath), { recursive: true });
+    writeFileSync(globalSettingsPath, globalBytes);
+    writeFileSync(projectSettingsPath, projectBytes);
+
+    try {
+      const detector = () => detectMcpAdapterConflict({ globalSettingsPath, projectSettingsPath });
+      const conflict = detector();
+      assert.equal(conflict?.packageName, "pi-mcp-adapter");
+      assert.equal(conflict?.scope, directInstall.scope);
+
+      let adapterFactoryCalls = 0;
+      const pi = createPiHarness();
+      await createBootstrap({
+        loadCompanion: async (id) => companionFactory(id),
+        getPermissionsService: () => ({ ready: true }),
+        detectMcpAdapterConflict: detector,
+        installMcpEngram: async () => {
+          adapterFactoryCalls += 1;
+          return { state: "managed" };
+        },
+      })(pi.api);
+      assert.equal(adapterFactoryCalls, 0, "duplicate detection must run before the bundled adapter factory");
+
+      const notifications = [];
+      const context = { sessionId: `mcp-conflict-${directInstall.scope}`, ui: { notify: (message, type) => notifications.push({ message, type }) } };
+      await pi.emitLifecycle("session_start", {}, context);
+      await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
+      await pi.emitLifecycle("before_agent_start", {}, context);
+      assert.deepEqual(pi.activeTools(), companionToolNames, "an MCP adapter collision must isolate Engram without disabling healthy companions");
+      assert.equal(notifications.length, 1, "the external unmanaged adapter must be diagnosed exactly once");
+      assert.match(notifications[0].message, /pi-mcp-adapter|adapter/i);
+      assert.match(notifications[0].message, /external|duplicate|unmanaged/i);
+
+      writeFileSync(directInstall.scope === "global" ? globalSettingsPath : projectSettingsPath, '{"packages":[]}\n');
+      await pi.emitLifecycle("session_start", {}, { ...context, sessionId: `${context.sessionId}-later` });
+      assert.equal(adapterFactoryCalls, 0, "cleaning settings in-process must not activate a second adapter before reload");
+      assert.equal(notifications.length, 1, "the latched collision must not duplicate its diagnostic");
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": 1,
+  "bin": "jorgex-pi",
+  "entrypoint": "bin/jorgex-pi.mjs",
+  "commands": [
+    "status",
+    "doctor",
+    "models",
+    "sync",
+    "cleanup"
+  ],
+  "exitCodes": {
+    "success": 0,
+    "unhealthy": 1,
+    "usage": 2,
+    "internal": 3
+  },
+  "stdout": {
+    "format": "json",
+    "records": 1,
+    "trailingNewline": true,
+    "maxBytes": 65536
+  },
+  "responseSchema": "contract/schemas/runner-response.v1.schema.json"
+}

@@ -15,28 +15,62 @@ const expected = readJson(join(testDir, "fixtures", "runtime-agents.expected.jso
 const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
 const foundationExpected = readJson(join(testDir, "fixtures", "foundation-contract.expected.json"), "foundation contract fixture");
 const webAccessExpected = readJson(join(testDir, "fixtures", "web-access.expected.json"), "web access fixture");
+const mcpEngramExpected = readJson(join(testDir, "fixtures", "mcp-engram.expected.json"), "MCP Engram fixture");
 
 test("pi-subagents is pinned with its audited bundled closure", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest");
+  const expectedDependencies = [...bootstrapExpected.companions, mcpEngramExpected.adapter];
   assert.deepEqual(
     manifest.dependencies,
-    Object.fromEntries(bootstrapExpected.companions.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right))),
+    Object.fromEntries(expectedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right))),
   );
-  assert.deepEqual([...manifest.bundledDependencies].sort(), bootstrapExpected.companions.map(({ name }) => name).sort());
-  assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 13 runnable package agents may be discoverable by pi-subagents");
+  assert.deepEqual([...manifest.bundledDependencies].sort(), expectedDependencies.map(({ name }) => name).sort());
+  assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 14 runnable package agents may be discoverable by pi-subagents");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   for (const dependency of expected.dependency.bundledClosure) assertLockIntegrity(lock, dependency);
 });
 
-test("deferred Engram names a stable required capability instead of an internal PR", () => {
+test("the read-only Engram specialist exposes only non-mutating ProfileAgent tools", () => {
   const contract = readJson(join(root, expected.contractPath), "runtime agent contract");
   const expectedEngram = expected.agents.find(({ name }) => name === "engram");
   const actualEngram = contract.agents.find(({ name }) => name === "engram");
-  assert.equal(actualEngram.requiredCapability, expectedEngram.requiredCapability);
+  assert.equal(actualEngram.status, "runnable");
+  assert.equal(actualEngram.requiredCapability, "engram-runtime-tools-v1", "Engram availability must remain machine-readable when the runtime bridge is unhealthy");
+  assert.deepEqual(actualEngram.tools, expectedEngram.tools);
+  assert.deepEqual(actualEngram.tools, [
+    "mem_search",
+    "mem_context",
+    "mem_get_observation",
+    "mem_suggest_topic_key",
+    "mem_current_project",
+    "mem_doctor",
+  ]);
+  for (const mutatingTool of [
+    "mem_save",
+    "mem_session_summary",
+    "mem_session_start",
+    "mem_session_end",
+    "mem_save_prompt",
+    "mem_update",
+    "mem_judge",
+    "mem_compare",
+    "mem_review",
+    "mem_pin",
+    "mem_unpin",
+    "mem_capture_passive",
+  ]) assert.equal(actualEngram.tools.includes(mutatingTool), false, `read-only Engram must not expose ${mutatingTool}`);
   assert.equal("deferredUntil" in actualEngram, false, "published contracts must not expose internal PR sequencing");
 });
 
-test("pi-subagents 0.54.0 discovers all thirteen runnable package agents without diagnostics", () => {
+test("Engram agent instructions mention only tools present in its active profile", () => {
+  const generated = readFileSync(join(root, "agents/engram.md"), "utf8");
+  assert.doesNotMatch(generated, /\bmem_timeline\b/, "generated Engram instructions must not mention a tool excluded from the active profile");
+  for (const operation of ["mem_context", "mem_search", "mem_get_observation"]) {
+    assert.match(generated, new RegExp(`\\b${operation}\\b`), `generated Engram instructions must retain available operation ${operation}`);
+  }
+});
+
+test("pi-subagents 0.54.0 discovers all fourteen runnable package agents without diagnostics", () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-agent-discovery-"));
   try {
     const agentDir = join(sandbox, "agent");
@@ -62,7 +96,7 @@ test("pi-subagents 0.54.0 discovers all thirteen runnable package agents without
       stdio: ["ignore", "pipe", "pipe"],
     });
     const results = JSON.parse(output);
-    assert.equal(results.length, 13);
+    assert.equal(results.length, 14);
     assert.deepEqual(results.map(({ requestedName }) => requestedName), names);
     assert.deepEqual(
       results.filter(({ ok, discoveredName, requestedName }) => !ok || discoveredName !== requestedName),
@@ -111,17 +145,13 @@ test("the runtime contract translates one primary and fourteen canonical subagen
     assert.deepEqual(contract.agents.find(({ name }) => name === expectedAgent.name), expectedEntry);
     assertTranslatedAgent(sourcePath, targetPath, expectedAgent);
   }
-  assert.equal(contract.agents.filter(({ status }) => status === "runnable").length, 13);
-  assert.deepEqual(
-    contract.agents.filter(({ status }) => status === "deferred"),
-    [{ ...expected.agents.find(({ name }) => name === "engram"), sourcePath: "snapshot/agents/engram.md", targetPath: "deferred/agents/engram.md" }],
-    "Engram must remain machine-readably inert until its stable required capability is available",
-  );
+  assert.equal(contract.agents.filter(({ status }) => status === "runnable").length, 14);
+  assert.deepEqual(contract.agents.filter(({ status }) => status === "deferred"), []);
   assertTranslatedAgent(expected.primary.sourcePath, expected.primary.targetPath, expected.primary);
 
   const packageAgents = listFiles(join(root, "agents")).map((path) => relative(join(root, "agents"), path).replaceAll("\\", "/"));
   assert.deepEqual(packageAgents, expected.agents.filter(({ status }) => status === "runnable").map(({ name }) => `${name}.md`));
-  assert.deepEqual(listFiles(join(root, "deferred", "agents")).map((path) => relative(root, path).replaceAll("\\", "/")), ["deferred/agents/engram.md"]);
+  assert.deepEqual(existsSync(join(root, "deferred", "agents")) ? listFiles(join(root, "deferred", "agents")) : [], []);
   assert.deepEqual(listFiles(join(root, "primary")).map((path) => relative(root, path).replaceAll("\\", "/")), ["primary/orchestrator.md"]);
   assert.equal([...packageAgents, ...listFiles(join(root, "deferred")), ...listFiles(join(root, "primary"))].some((path) => path.endsWith(".chain.md")), false);
 });
@@ -169,11 +199,10 @@ test("the real tarball contains the closed runtime assets and audited dependency
 
     const expectedRuntimeFiles = [
       ...expected.agents.filter(({ status }) => status === "runnable").map(({ name }) => `package/agents/${name}.md`),
-      "package/deferred/agents/engram.md",
       "package/primary/orchestrator.md",
     ].sort();
     const packedRuntimeFiles = [...archive.keys()].filter((path) => /^package\/(?:agents|deferred\/agents|primary)\/.+\.md$/.test(path)).sort();
-    assert.deepEqual(packedRuntimeFiles, expectedRuntimeFiles, "tarball must expose 13 runnable agents while retaining primary and deferred Engram separately");
+    assert.deepEqual(packedRuntimeFiles, expectedRuntimeFiles, "tarball must expose all 14 runnable agents and retain the primary separately");
     assert.ok(archive.has("package/extensions/git-read.ts"), "tarball must contain the child-only provider referenced by git-read agents");
     assertAllBashPolicies(new Map(packedRuntimeFiles.map((path) => {
       const name = path.slice(path.lastIndexOf("/") + 1, -".md".length);
@@ -186,6 +215,15 @@ test("the real tarball contains the closed runtime assets and audited dependency
       .filter(([path]) => path.startsWith("package/node_modules/") && path.endsWith("/package.json"))
       .map(([, bytes]) => JSON.parse(bytes.toString("utf8")))
       .filter(({ name, version }) => typeof name === "string" && name.length > 0 && typeof version === "string" && version.length > 0);
+    for (const { packageName, file } of mcpEngramExpected.portableKeyringBindings) {
+      const bindingPath = `package/node_modules/${packageName}/${file}`;
+      assert.equal(archive.has(bindingPath), true, `portable MCP bundle must contain regular native binding ${bindingPath}`);
+    }
+    assert.equal(
+      [...archive.keys()].some((path) => path.includes("/node_modules/@napi-rs/keyring-freebsd-")),
+      false,
+      "the supported portability matrix must not silently expand to an unaudited FreeBSD binding",
+    );
     const packedClosure = dependencyManifests
       .map(({ name, version }) => ({ name, version }))
       .sort((left, right) => left.name.localeCompare(right.name) || left.version.localeCompare(right.version));
@@ -232,7 +270,11 @@ function assertTranslatedAgent(sourcePath, targetPath, expectedAgent) {
   }
   if (expectedAgent.maxSubagentDepth === 0) assert.equal(target.frontmatter.maxSubagentDepth, 0, `${targetPath} must preserve spawn: false`);
   else assert.equal(Object.hasOwn(target.frontmatter, "maxSubagentDepth"), false, `${targetPath} must retain default delegation depth`);
-  assert.equal(target.body, source.body, `${targetPath} must preserve the canonical persona byte-for-byte after LF normalization`);
+  if (expectedAgent.name === "engram") {
+    assert.doesNotMatch(target.body, /\bmem_timeline\b/, `${targetPath} must translate unavailable runtime-specific Engram operations`);
+  } else {
+    assert.equal(target.body, source.body, `${targetPath} must preserve the canonical persona byte-for-byte after LF normalization`);
+  }
 }
 
 function createGeneratorPackage(target) {

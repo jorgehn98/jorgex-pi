@@ -1,0 +1,37 @@
+name: Publish package
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 11.22.0
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22.14.0"
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - name: Verify release tag
+        run: node -e 'const pkg = require("./package.json"); if (process.env.GITHUB_REF_NAME !== `v${pkg.version}`) throw new Error(`Tag ${process.env.GITHUB_REF_NAME} does not match package.json version ${pkg.version}`)'
+      - name: Provision trusted-publishing npm
+        run: pnpm add --global npm@11.5.1
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test
+        run: pnpm test
+      - name: Pack
+        run: pnpm pack
+      - name: Publish
+        run: npm publish --ignore-scripts --provenance

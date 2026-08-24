@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "adapter": {
+    "name": "pi-mcp-adapter",
+    "version": "2.27.0",
+    "integrity": "sha512-IM9dfGhou5Q5AJqwkm1kW1+WXyMsvL53GEO4JVYukzvTxNPHn2b+Zi49+JAnOhlaOpEq5vEodUSJXmpghik+lw==",
+    "entryPath": "index.ts",
+    "deepConfigPath": "config.ts"
+  },
+  "engramProfile": {
+    "version": "1.20.0",
+    "sourceCommit": "ba9e46c",
+    "tools": [
+      "mem_save",
+      "mem_search",
+      "mem_context",
+      "mem_session_summary",
+      "mem_session_start",
+      "mem_session_end",
+      "mem_get_observation",
+      "mem_suggest_topic_key",
+      "mem_save_prompt",
+      "mem_update",
+      "mem_current_project",
+      "mem_judge",
+      "mem_compare",
+      "mem_doctor",
+      "mem_review",
+      "mem_pin",
+      "mem_unpin"
+    ],
+    "excludedTools": [
+      "mem_capture_passive"
+    ]
+  },
+  "server": {
+    "name": "engram",
+    "args": [
+      "mcp",
+      "--tools=agent"
+    ],
+    "lifecycle": "lazy",
+    "directTools": true,
+    "toolPrefix": "none"
+  },
+  "childEnvKeys": [
+    "HOME",
+    "USERPROFILE",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "SystemRoot",
+    "SYSTEMROOT",
+    "WINDIR",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TZ",
+    "ENGRAM_DATA_DIR",
+    "ENGRAM_PROJECT",
+    "ENGRAM_TIMEZONE"
+  ],
+  "portableKeyringBindings": [
+    { "packageName": "@napi-rs/keyring-darwin-arm64", "file": "keyring.darwin-arm64.node" },
+    { "packageName": "@napi-rs/keyring-darwin-x64", "file": "keyring.darwin-x64.node" },
+    { "packageName": "@napi-rs/keyring-linux-arm-gnueabihf", "file": "keyring.linux-arm-gnueabihf.node" },
+    { "packageName": "@napi-rs/keyring-linux-arm64-gnu", "file": "keyring.linux-arm64-gnu.node" },
+    { "packageName": "@napi-rs/keyring-linux-arm64-musl", "file": "keyring.linux-arm64-musl.node" },
+    { "packageName": "@napi-rs/keyring-linux-riscv64-gnu", "file": "keyring.linux-riscv64-gnu.node" },
+    { "packageName": "@napi-rs/keyring-linux-x64-gnu", "file": "keyring.linux-x64-gnu.node" },
+    { "packageName": "@napi-rs/keyring-linux-x64-musl", "file": "keyring.linux-x64-musl.node" },
+    { "packageName": "@napi-rs/keyring-win32-arm64-msvc", "file": "keyring.win32-arm64-msvc.node" },
+    { "packageName": "@napi-rs/keyring-win32-ia32-msvc", "file": "keyring.win32-ia32-msvc.node" },
+    { "packageName": "@napi-rs/keyring-win32-x64-msvc", "file": "keyring.win32-x64-msvc.node" }
+  ]
+}

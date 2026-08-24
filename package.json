@@ -1,10 +1,23 @@
 {
   "name": "jorgex-pi",
-  "version": "0.0.0-development",
+  "version": "0.1.0",
   "description": "Pi-native runtime package for the JorgeX harness.",
-  "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jorgehn98/jorgex-pi.git"
+  },
+  "homepage": "https://github.com/jorgehn98/jorgex-pi#readme",
+  "bugs": {
+    "url": "https://github.com/jorgehn98/jorgex-pi/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
+  "bin": {
+    "jorgex-pi": "./bin/jorgex-pi.mjs"
+  },
   "keywords": [
     "pi-package",
     "pi",
@@ -13,8 +26,8 @@
   ],
   "files": [
     "agents",
+    "bin",
     "contract",
-    "deferred/agents",
     "extensions",
     "primary",
     "skills",
@@ -63,7 +76,8 @@
     "@juicesharp/rpiv-ask-user-question",
     "pi-subagents",
     "pi-web-access",
-    "@narumitw/pi-goal"
+    "@narumitw/pi-goal",
+    "pi-mcp-adapter"
   ],
   "packageManager": "pnpm@11.22.0",
   "devDependencies": {
@@ -73,6 +87,7 @@
     "@gotgenes/pi-permission-system": "27.0.0",
     "@juicesharp/rpiv-ask-user-question": "2.7.0",
     "@narumitw/pi-goal": "0.53.0",
+    "pi-mcp-adapter": "2.27.0",
     "pi-subagents": "0.54.0",
     "pi-web-access": "0.24.1"
   }

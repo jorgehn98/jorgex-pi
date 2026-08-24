@@ -11,7 +11,7 @@
     },
     {
       "name": "pi-mcp-adapter",
-      "status": "audited",
+      "status": "active",
       "version": "2.27.0",
       "license": "MIT",
       "integrity": "sha512-IM9dfGhou5Q5AJqwkm1kW1+WXyMsvL53GEO4JVYukzvTxNPHn2b+Zi49+JAnOhlaOpEq5vEodUSJXmpghik+lw==",

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { installMcpEngram } from "./mcp-engram.ts";
 
 const companionIds = ["permission", "ask", "subagents", "web", "goal"];
 const staticCompanionTools = ["ask_user_question", "subagent", "subagent_wait"];
@@ -13,8 +14,12 @@ export function createBootstrap({
   resolvePlaywrightCapability = () => ({ status: "hidden" }),
   detectWebAccessConflict: conflictDetector = detectWebAccessConflict,
   detectGoalConflict: goalConflictDetector = detectGoalConflict,
+  detectMcpAdapterConflict: mcpAdapterConflictDetector = detectMcpAdapterConflict,
   readGoalConfig = readDefaultGoalConfig,
+  installMcpEngram: injectedMcpInstaller,
 } = {}) {
+  const mcpInstaller = injectedMcpInstaller
+    ?? (loadCompanion === loadDefaultCompanion ? installMcpEngram : async () => ({ state: "managed" }));
   return async function bootstrap(pi) {
     let locateService = injectedLocator;
     const readySessions = new Set();
@@ -29,8 +34,23 @@ export function createBootstrap({
     let goalConflictNotified = false;
     let goalConfigFailure;
     let goalConfigFailureNotified = false;
+    let mcpEngramFailure;
+    let mcpEngramFailureNotified = false;
+    let mcpAdapterConflict;
+    let mcpAdapterConflictNotified = false;
     let currentSessionId;
     const companionTools = new Set(staticCompanionTools);
+
+    try {
+      mcpAdapterConflict = mcpAdapterConflictDetector?.();
+    } catch (error) {
+      mcpAdapterConflict = {
+        packageName: "pi-mcp-adapter",
+        scope: "settings",
+        source: "unknown",
+        error,
+      };
+    }
 
     try {
       goalConflict = goalConflictDetector?.();
@@ -105,6 +125,12 @@ export function createBootstrap({
       if (goalConfigFailure && !goalConfigFailureNotified) {
         goalConfigFailureNotified = notifyError(ctx, formatPackageConflict(goalConfigFailure));
       }
+      if (mcpEngramFailure && !mcpEngramFailureNotified) {
+        mcpEngramFailureNotified = notifyError(ctx, `JorgeX Engram bridge is unavailable: ${mcpEngramFailure}`);
+      }
+      if (mcpAdapterConflict && !mcpAdapterConflictNotified) {
+        mcpAdapterConflictNotified = notifyError(ctx, formatMcpAdapterConflict(mcpAdapterConflict));
+      }
       if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
     });
 
@@ -158,6 +184,19 @@ export function createBootstrap({
       companionsHealthy = true;
     } catch (failure) {
       bootstrapFailure = normalizeFailure(failure);
+    }
+
+    if (!bootstrapFailure && !mcpAdapterConflict) {
+      try {
+        const resolution = await mcpInstaller(createToolCaptureApi(pi, companionTools));
+        if (resolution.state !== "managed") {
+          mcpEngramFailure = resolution.state === "collision"
+            ? "an existing MCP server named engram was preserved; remove the conflict and reload Pi to use the managed bridge"
+            : resolution.reason ?? "the Engram binary was not found";
+        }
+      } catch (error) {
+        mcpEngramFailure = error instanceof Error ? error.message : String(error);
+      }
     }
 
     pi.on("before_agent_start", (agentEvent, ctx) => {
@@ -234,6 +273,21 @@ function createWebAccessApi(pi, companionTools, readWebAccessConfig) {
         return (tool) => {
           companionTools.add(tool.name);
           target.registerTool(wrapWebTool(tool, readWebAccessConfig));
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+function createToolCaptureApi(pi, companionTools) {
+  return new Proxy(pi, {
+    get(target, property, receiver) {
+      if (property === "registerTool") {
+        return (tool) => {
+          companionTools.add(tool.name);
+          return target.registerTool(tool);
         };
       }
       const value = Reflect.get(target, property, receiver);
@@ -432,6 +486,16 @@ export function detectGoalConflict({
   });
 }
 
+export function detectMcpAdapterConflict({
+  globalSettingsPath = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "settings.json"),
+  projectSettingsPath = join(process.cwd(), ".pi", "settings.json"),
+} = {}) {
+  return detectPackageConflict("pi-mcp-adapter", /^npm:pi-mcp-adapter(?:@[^/\s]+)?$/, {
+    globalSettingsPath,
+    projectSettingsPath,
+  });
+}
+
 function detectPackageConflict(packageName, sourcePattern, { globalSettingsPath, projectSettingsPath }) {
   for (const [scope, settingsPath] of [["global", globalSettingsPath], ["project", projectSettingsPath]]) {
     let settings;
@@ -511,6 +575,12 @@ function formatPackageConflict({ packageName, scope, source, error }) {
     return `${packageName} settings detection failed closed (${scope}: ${source}): ${message}. Correct the settings and reload Pi explicitly.`;
   }
   return `Direct duplicate ${packageName} package detected in ${scope} Pi settings (${source}); remove the direct entry, keep jorgex-pi as the owner, and reload Pi explicitly.`;
+}
+
+function formatMcpAdapterConflict(conflict) {
+  if (conflict.error) return formatPackageConflict(conflict);
+  const { scope, source } = conflict;
+  return `An external duplicate pi-mcp-adapter package was detected in ${scope} Pi settings (${source}). That adapter is unmanaged; remove the direct entry and reload Pi explicitly to activate the internal Engram adapter.`;
 }
 
 export default createBootstrap();

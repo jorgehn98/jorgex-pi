@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "package": {
     "name": "jorgex-pi",
-    "version": "0.0.0-development",
-    "source": "npm:jorgex-pi@0.0.0-development"
+    "version": "0.1.0",
+    "source": "npm:jorgex-pi@0.1.0"
   },
   "pi": {
     "minimumVersion": "0.84.2",
@@ -19,7 +19,10 @@
     "permission-gated-tools-v1",
     "structured-questions-v1",
     "web-access-v1",
-    "goal-continuation-v1"
+    "goal-continuation-v1",
+    "mcp-adapter-v1",
+    "engram-runtime-tools-v1",
+    "runner-json-v1"
   ],
   "assets": {
     "manifestVersion": 1,
@@ -31,5 +34,10 @@
   "runtimeAgents": {
     "contractPath": "contract/runtime-agents.v1.json"
   },
-  "schemas": {}
+  "runner": {
+    "contractPath": "contract/runner.v1.json"
+  },
+  "schemas": {
+    "runnerResponse": "contract/schemas/runner-response.v1.schema.json"
+  }
 }

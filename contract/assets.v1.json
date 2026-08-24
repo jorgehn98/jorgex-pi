@@ -6,7 +6,6 @@
     "agents",
     "contract/parity.v1.json",
     "contract/runtime-agents.v1.json",
-    "deferred/agents",
     "extensions",
     "primary",
     "skills",
@@ -78,6 +77,11 @@
       "owner": "@narumitw/pi-goal",
       "root": "PI_CODING_AGENT_DIR",
       "relativePath": "pi-goal-state.json"
+    },
+    {
+      "owner": "pi-mcp-adapter",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "mcp-cache.json"
     }
   ]
 }

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "binName": "jorgex-pi",
+  "entrypoint": "bin/jorgex-pi.mjs",
+  "commands": [
+    "status",
+    "doctor",
+    "models",
+    "sync",
+    "cleanup"
+  ],
+  "errorCommand": "unknown",
+  "maxStdoutBytes": 65536,
+  "exitCodes": {
+    "success": 0,
+    "unhealthy": 1,
+    "usage": 2,
+    "internal": 3
+  },
+  "models": {
+    "mode": "inherit-session",
+    "tiers": [
+      "strong",
+      "standard",
+      "cheap"
+    ]
+  }
+}

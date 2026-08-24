@@ -23,6 +23,9 @@ const skills = [
   "agent-delegation", "deploy-to-vercel", "diagnose", "find-skills", "lean-code", "mcp-builder", "orchestrator", "react-doctor",
   "skill-creator", "supabase", "supabase-postgres-best-practices", "tdd", "to-issues", "to-prd", "work-lifecycle", "xreview",
 ];
+const engramTools = [
+  "mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor",
+];
 
 try {
   const names = readdirSync(join(root, "snapshot", "agents"))
@@ -35,6 +38,7 @@ try {
   if (!primary || primary.source.name !== "orchestrator" || agents.length !== 14) throw new Error("runtime translation requires one orchestrator primary and fourteen subagents");
 
   for (const agent of translated) writeRuntimeAgent(agent);
+  mkdirSync(join(stage, "deferred", "agents"), { recursive: true });
   writeJson(join(stage, "contract", "runtime-agents.v1.json"), {
     schemaVersion: 1,
     dependency,
@@ -63,8 +67,21 @@ function translateAgent(name) {
   const sourcePath = `snapshot/agents/${name}.md`;
   const source = parseAgent(readFileSync(join(root, sourcePath), "utf8"), sourcePath);
   if (source.name !== name) throw new Error(`${sourcePath} name does not match its file name`);
-  const status = source.mode === "primary" ? "dormant" : name === "engram" ? "deferred" : "runnable";
-  const targetPath = source.mode === "primary" ? `primary/${name}.md` : status === "deferred" ? `deferred/agents/${name}.md` : `agents/${name}.md`;
+  const status = source.mode === "primary" ? "dormant" : "runnable";
+  const targetPath = source.mode === "primary" ? `primary/${name}.md` : `agents/${name}.md`;
+  if (name === "engram") {
+    const body = source.body
+      .replace("use `mem_timeline` or `mem_get_observation` selectively", "use `mem_get_observation` selectively")
+      .replace("call `mem_timeline(observation_id)`", "use `mem_search` with a narrower time-oriented query");
+    return {
+      source: { ...source, body },
+      sourcePath,
+      targetPath,
+      status,
+      requiredCapability: "engram-runtime-tools-v1",
+      tools: engramTools,
+    };
+  }
   const tools = ["read", "grep", "find", "ls"];
   if (source.bash === "git-read") tools.push("git_read");
   if (source.bash === "full") tools.push("bash");
@@ -118,7 +135,7 @@ function contractEntry(agent) {
     targetPath: agent.targetPath,
     tier: agent.source.tier,
     status: agent.status,
-    ...(agent.status === "deferred" ? { requiredCapability: "engram-runtime-tools-v1", reason: "engram-runtime-tools-unavailable" } : {}),
+    ...(agent.requiredCapability ? { requiredCapability: agent.requiredCapability } : {}),
     ...(agent.source.spawn === "false" ? { maxSubagentDepth: 0 } : {}),
     ...(agent.source.bash === "git-read" ? { subagentOnlyExtensions: ["../extensions/git-read.ts"] } : {}),
     tools: agent.tools,
