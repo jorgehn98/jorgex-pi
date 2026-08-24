@@ -1,8 +1,10 @@
 import { createEventBus, DefaultResourceLoader, ExtensionRunner } from "@earendil-works/pi-coding-agent";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const root = process.argv[2];
 if (!root) throw new Error("package root argument is required");
+const settingsPath = join(process.env.PI_CODING_AGENT_DIR, "settings.json");
 
 const eventBus = createEventBus();
 const loader = new DefaultResourceLoader({
@@ -17,6 +19,7 @@ const loader = new DefaultResourceLoader({
 });
 await loader.reload();
 const loaded = loader.getExtensions();
+const themes = loader.getThemes();
 
 let activeTools = [];
 const entries = [];
@@ -97,6 +100,9 @@ await runner.emit({ type: "session_shutdown" });
 writeFileSync(1, `${JSON.stringify({
   errors: loaded.errors,
   extensionCount: loaded.extensions.length,
+  themeNames: themes.themes.map(({ name }) => name).sort(),
+  themeDiagnostics: themes.diagnostics,
+  settingsBytes: existsSync(settingsPath) ? readFileSync(settingsPath, "utf8") : undefined,
   guard,
   engramToolNames: realToolNames.filter((name) => name.startsWith("mem_")),
   realGoal: {

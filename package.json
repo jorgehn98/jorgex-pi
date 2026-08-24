@@ -1,6 +1,6 @@
 {
   "name": "jorgex-pi",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pi-native runtime package for the JorgeX harness.",
   "license": "MIT",
   "repository": {
@@ -32,6 +32,7 @@
     "primary",
     "skills",
     "snapshot/agents",
+    "themes",
     "LICENSE",
     "README.md"
   ],
@@ -43,7 +44,8 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/bootstrap.ts"
+      "./extensions/bootstrap.ts",
+      "./extensions/branding.ts"
     ],
     "skills": [
       "./skills/agent-delegation",
@@ -64,7 +66,9 @@
       "./skills/xreview"
     ],
     "prompts": [],
-    "themes": []
+    "themes": [
+      "./themes/JorgeX.json"
+    ]
   },
   "pi-subagents": {
     "agents": [

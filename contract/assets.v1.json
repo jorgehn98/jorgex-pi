@@ -9,7 +9,8 @@
     "extensions",
     "primary",
     "skills",
-    "snapshot/agents"
+    "snapshot/agents",
+    "themes"
   ],
   "managedExternalWrites": [],
   "preservedExternalState": [

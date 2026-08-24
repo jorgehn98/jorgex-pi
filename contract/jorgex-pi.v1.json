@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "package": {
     "name": "jorgex-pi",
-    "version": "0.1.0",
-    "source": "npm:jorgex-pi@0.1.0"
+    "version": "0.2.0",
+    "source": "npm:jorgex-pi@0.2.0"
   },
   "pi": {
     "minimumVersion": "0.84.2",
@@ -22,7 +22,8 @@
     "goal-continuation-v1",
     "mcp-adapter-v1",
     "engram-runtime-tools-v1",
-    "runner-json-v1"
+    "runner-json-v1",
+    "tui-branding-v1"
   ],
   "assets": {
     "manifestVersion": 1,

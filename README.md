@@ -2,29 +2,35 @@
 
 `jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle.
 
-Version `0.1.0` is the first public release candidate. This repository state is publishable but does not by itself assert that the version has been tagged or published. PR06 adds the noninteractive JSON runner and an isolated Engram MCP bridge while retaining the existing fail-closed bootstrap and versioned JorgeX Stack snapshot.
+Version `0.2.0` is the next minor release candidate after the published `0.1.0` bootstrap. This repository state is publishable but does not by itself assert that the version has been tagged or published. It adds the native opt-in JorgeX theme and TUI-only startup branding while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned JorgeX Stack snapshot.
 
 ## Current boundary
 
 | Area | Current state |
 | --- | --- |
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
-| Pi resources | One bootstrap extension and 16 reviewed JorgeX skills are active. Prompts and themes remain empty. |
+| Pi resources | Bootstrap and TUI branding extensions plus 16 reviewed JorgeX skills are active. The `JorgeX` theme is available but opt-in. Prompts remain empty. |
 | Canonical snapshot | 15 agents and 17 complete skill trees (96 files) from JorgeX Stack commit `6d2b98b1728e275bf97920f9712dd4b7928de6a7`. |
 | Runtime agents | 14 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
-| Package assets | `contract/assets.v1.json` owns the bootstrap, runtime agents, snapshot, skills, and contracts; it declares no JorgeX-managed external writes and preserves fourteen companion-owned state paths. |
+| Package assets | `contract/assets.v1.json` owns the packaged extensions, theme, runtime agents, snapshot, skills, and contracts; it declares no JorgeX-managed external writes and preserves fourteen companion-owned state paths. |
 | Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, `@narumitw/pi-goal@0.53.0`, and `pi-mcp-adapter@2.27.0`. |
 | Model policy | Provider, model, and thinking level are inherited from the Pi session. JorgeX tiers remain contract metadata only. |
 
 The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive.
 
-`contract/jorgex-pi.v1.json` advertises the active versioned capabilities, including `mcp-adapter-v1`, `engram-runtime-tools-v1`, and `runner-json-v1`, and links the runtime-agent and runner contracts. The runtime contract records the translation from the 15 canonical agents. All 14 subagents live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
+`contract/jorgex-pi.v1.json` advertises the active versioned capabilities, including `mcp-adapter-v1`, `engram-runtime-tools-v1`, `runner-json-v1`, and `tui-branding-v1`, and links the runtime-agent and runner contracts. The runtime contract records the translation from the 15 canonical agents. All 14 subagents live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent. The contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices.
+
+## TUI branding
+
+The package supplies a compact JorgeX header for interactive Pi sessions only. It is reversible for the current session with `/jorgex:header builtin` and can be restored with `/jorgex:header custom`; non-TUI modes are unchanged. The package also declares the native `JorgeX` Pi theme for selection through Pi's normal theme controls. It never selects, persists, or replaces a user's active theme.
 
 The Pi projection preserves the canonical bash boundary per agent. `none` exposes no shell capability; `git-read` replaces bash with the child-only `git_read` tool, which executes only `git diff` and `git log` through validated argv without a shell; `full` exposes bash and remains governed by the user's permission policy. This dedicated tool avoids relying on `permission.bash`, which `pi-subagents@0.54.0` does not support.
 
 ## Bootstrap and safety boundary
 
-`extensions/bootstrap.ts` is the only root extension. Pi's resource loader discovers and initializes it before runtime actions are bound, but that loading phase only registers handlers and companion tools; calls that require runner actions, including changes to the active tool set, occur only after `bindCore` and the corresponding lifecycle event. The bootstrap loads permission, ask, subagents, Web Access, and—only after its preflight succeeds—Goal in that order, dynamically capturing the tools registered by Web Access and Goal. A bootstrap guard is registered before companion loading and blocks all tool calls with termination until the current session emits `permissions:ready` and has a keyed permissions service. Load or factory failures retain that fail-closed guard, keep partial companion tools hidden, and surface a diagnostic identifying the phase, companion, and original cause at the next session start.
+`extensions/bootstrap.ts` is the security-focused root extension. Pi's resource loader discovers and initializes it before runtime actions are bound, but that loading phase only registers handlers and companion tools; calls that require runner actions, including changes to the active tool set, occur only after `bindCore` and the corresponding lifecycle event. The bootstrap loads permission, ask, subagents, Web Access, and—only after its preflight succeeds—Goal in that order, dynamically capturing the tools registered by Web Access and Goal. A bootstrap guard is registered before companion loading and blocks all tool calls with termination until the current session emits `permissions:ready` and has a keyed permissions service. Load or factory failures retain that fail-closed guard, keep partial companion tools hidden, and surface a diagnostic identifying the phase, companion, and original cause at the next session start.
+
+`extensions/branding.ts` is a separate, independent root extension. It only replaces the interactive TUI header in memory and does not select themes, write settings, load companions, or modify the bootstrap health boundary.
 
 Health is session-scoped and cleared on session start or shutdown. A normal session start does not mutate Pi's current tool selection: the guard supplies the pre-health boundary. If a prompt starts before health, the bootstrap records the selected companion tools and hides them. Once health arrives, it reconciles that snapshot against the current active tools and never adds a missing tool, so a selection disabled during the wait cannot be revived from stale state. If health arrives before the first prompt, the current selection remains untouched. Later ready events also never re-enable disabled tools. In headless sessions, `ask_user_question` stays unavailable instead of fabricating an answer; subagent delegation remains available after permission health.
 
@@ -117,17 +123,17 @@ pnpm runtime-agents:generate
 
 This publishes `agents`, `deferred/agents`, `primary`, and `contract/runtime-agents.v1.json` transactionally; a failure restores the previous generation. `pnpm test` verifies deterministic output, containment, the bundled closure, and the isolated Pi lifecycle. `pnpm pack` creates the candidate tarball with the bootstrap, resources, pinned companions, audited closure, and required WASM files. Development generators and transaction modules under `scripts/` are excluded.
 
-Package metadata and contracts are synchronized at `0.1.0`. After that exact version is present on npm, installation uses Pi's package manager with the release pinned:
+Package metadata and contracts are synchronized at `0.2.0`. After that exact version is present on npm, installation uses Pi's package manager with the release pinned:
 
 ```bash
-pi install npm:jorgex-pi@0.1.0
+pi install npm:jorgex-pi@0.2.0
 ```
 
 That command is the narrow package-manager exception: Pi uses npm internally to register and resolve its own package. Repository development, dependency management, and release preparation continue to use pnpm exclusively.
 
 Before creating or pushing any release tag, configure the npm trusted publisher in the npmjs.com package settings for GitHub repository `jorgehn98/jorgex-pi`, workflow filename `publish.yml`, and allowed action `npm publish`. The workflow does not configure that npm trust relationship and is not sufficient without this external prerequisite.
 
-Publication is an explicit external gate. Pushing a tag matching `v*` starts the trusted-publishing workflow, which rejects any tag other than `v<package.json version>`, runs the frozen install, tests, and pack on a GitHub-hosted runner, then publishes with npm provenance through OIDC. It does not auto-bump versions, create tags, push commits, create GitHub releases, or use a registry token. Preparing this candidate neither creates the `v0.1.0` tag nor publishes the package.
+Publication is an explicit external gate. Pushing a tag matching `v*` starts the trusted-publishing workflow, which rejects any tag other than `v<package.json version>`, runs the frozen install, tests, and pack on a GitHub-hosted runner, then publishes with npm provenance through OIDC. It does not auto-bump versions, create tags, push commits, create GitHub releases, or use a registry token. Preparing this candidate neither creates the `v0.2.0` tag nor publishes the package.
 
 ## Paths, state, and ownership
 
@@ -156,4 +162,4 @@ The XDG and HOME ask paths may resolve to the same file; lifecycle consumers pre
 
 `contract/components.v1.json` distinguishes the six active companions from the audited future roadmap. Runtime and bundled dependencies are exact pins, the lockfile records audited npm `sha512` integrity values, and installation performs no live GitHub download. Goal's bundled closure resolves `@narumitw/pi-tui-kit` to the audited lock version alongside its exact transitive packages. The tarball carries the complete companion closure and reviewed native bindings for the tested offline Pi lifecycle.
 
-The repository contains no keys, tokens, credentials, or secret placeholders. PR06 adds the isolated local Engram bridge and JSON runner without browser credentials, HTTP MCP, passive capture, custom theme, startup branding, or project bootstrap. It does not install, update, remove, or test against the user's real Engram binary or memory database, and it does not impose permission, Goal, or MCP configuration outside the isolated internal adapter.
+The repository contains no keys, tokens, credentials, or secret placeholders. The isolated local Engram bridge and JSON runner exclude browser credentials, HTTP MCP, passive capture, and project bootstrap. The TUI branding remains in-memory and session-local: it has no settings-write, shell, timer, or animation surface. The package does not install, update, remove, or test against the user's real Engram binary or memory database, and it does not impose permission, Goal, or MCP configuration outside the isolated internal adapter.

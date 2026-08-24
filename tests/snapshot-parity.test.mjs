@@ -8,12 +8,12 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "snapshot-parity.expected.json"), "snapshot parity fixture");
+const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
 
 test("the Stack snapshot stays complete and deterministic after runtime activation", () => {
   const packageManifest = readJson(join(root, "package.json"), "package manifest");
-  for (const kind of ["prompts", "themes"]) {
-    assert.deepEqual(packageManifest.pi?.[kind], [], `snapshot resources must not activate pi.${kind}`);
-  }
+  assert.deepEqual(packageManifest.pi?.prompts, [], "snapshot resources must not activate pi.prompts");
+  assert.deepEqual(packageManifest.pi?.themes, bootstrapExpected.themes, "the package-owned JorgeX theme is outside the inert Stack snapshot");
   for (const field of ["optionalDependencies", "peerDependencies"]) {
     assert.deepEqual(packageManifest[field] ?? {}, {}, `snapshot S1 must not activate ${field}`);
   }

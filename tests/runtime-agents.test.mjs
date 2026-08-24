@@ -151,9 +151,11 @@ test("the runtime contract translates one primary and fourteen canonical subagen
 
   const packageAgents = listFiles(join(root, "agents")).map((path) => relative(join(root, "agents"), path).replaceAll("\\", "/"));
   assert.deepEqual(packageAgents, expected.agents.filter(({ status }) => status === "runnable").map(({ name }) => `${name}.md`));
-  assert.deepEqual(existsSync(join(root, "deferred", "agents")) ? listFiles(join(root, "deferred", "agents")) : [], []);
+  const deferredRoot = join(root, "deferred");
+  const deferredFiles = existsSync(deferredRoot) ? listFiles(deferredRoot) : [];
+  assert.deepEqual(deferredFiles, [], "the zero-deferred contract must not require an empty directory on disk");
   assert.deepEqual(listFiles(join(root, "primary")).map((path) => relative(root, path).replaceAll("\\", "/")), ["primary/orchestrator.md"]);
-  assert.equal([...packageAgents, ...listFiles(join(root, "deferred")), ...listFiles(join(root, "primary"))].some((path) => path.endsWith(".chain.md")), false);
+  assert.equal([...packageAgents, ...deferredFiles, ...listFiles(join(root, "primary"))].some((path) => path.endsWith(".chain.md")), false);
 });
 
 test("the real translator is deterministic and writes only inside its package copy", () => {
@@ -191,10 +193,10 @@ test("the real tarball contains the closed runtime assets and audited dependency
     assert.deepEqual(packedContract.dependency, expected.dependency);
     assert.deepEqual(packedManifest["pi-subagents"], { agents: ["./agents"] });
     assert.deepEqual(packedManifest.pi, {
-      extensions: [bootstrapExpected.extension],
+      extensions: bootstrapExpected.extensions,
       skills: bootstrapExpected.skills,
       prompts: [],
-      themes: [],
+      themes: bootstrapExpected.themes,
     });
 
     const expectedRuntimeFiles = [

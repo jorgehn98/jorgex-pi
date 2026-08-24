@@ -139,10 +139,10 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     const installedManifest = readJson(join(installedPackageDir, "package.json"));
     assert.equal(installedManifest.name, "jorgex-pi");
     assert.deepEqual(installedManifest.pi, {
-      extensions: [bootstrapExpected.extension],
+      extensions: bootstrapExpected.extensions,
       skills: bootstrapExpected.skills,
       prompts: [],
-      themes: [],
+      themes: bootstrapExpected.themes,
     });
     const firstPackageDigest = digestTree(installedPackageDir);
     const firstSettingsBytes = readFileSync(settingsPath, "utf8");

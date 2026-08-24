@@ -23,6 +23,8 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     for (const path of [isolation.home, isolation.agentDir, isolation.xdgConfig, isolation.tempRoot, isolation.emptyBin]) {
       mkdirSync(path, { recursive: true });
     }
+    const userSettings = '{"theme":"dark"}\n';
+    writeFileSync(join(isolation.agentDir, "settings.json"), userSettings);
     const fakeServer = readFileSync(join(testDir, "fixtures", "fake-engram-mcp.mjs"), "utf8");
     writeFileSync(isolation.engramBin, `#!${process.execPath}\n${fakeServer}`);
     chmodSync(isolation.engramBin, 0o755);
@@ -50,7 +52,10 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     });
     const loaded = JSON.parse(output);
     assert.deepEqual(loaded.errors, [], "the package bootstrap must not call runtime actions during Pi extension loading");
-    assert.equal(loaded.extensionCount, 1, "the root package manifest must load exactly one bootstrap extension");
+    assert.equal(loaded.extensionCount, 2, "the root package manifest must load the bootstrap and TUI branding extensions");
+    assert.deepEqual(loaded.themeNames, ["JorgeX"], "the real Pi loader must load the package's opt-in JorgeX theme");
+    assert.deepEqual(loaded.themeDiagnostics, [], "the package theme must load without Pi diagnostics");
+    assert.equal(loaded.settingsBytes, userSettings, "loading branding must preserve existing Pi settings byte-for-byte");
     assert.equal(loaded.guard?.block, true, "the real Pi runner must see the JorgeX guard before session health");
     assert.equal(loaded.guard?.terminate, true, "the pre-health guard must terminate the blocked tool batch");
     assert.deepEqual(loaded.engramToolNames, [
@@ -60,6 +65,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     ], "the real Pi runner must register exactly the 17 reviewed direct Engram tools");
     assert.equal(loaded.engramToolNames.includes("mem_capture_passive"), false);
     assert.equal(loaded.realGoal.commandNames.filter((name) => name === "goal").length, 1, "the real packaged companion must register exactly one /goal command");
+    assert.equal(loaded.realGoal.commandNames.filter((name) => name === "jorgex:header").length, 1, "the real Pi loader must register the reversible JorgeX header command");
     assert.deepEqual(
       loaded.realGoal.toolNames.filter((name) => name.startsWith("goal_")),
       ["goal_blocked", "goal_complete", "goal_wait"],
