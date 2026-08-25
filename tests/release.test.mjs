@@ -7,6 +7,7 @@ import {
   assertReleaseBaseline,
   buildReleasePlan,
   classifyReleasePaths,
+  resolveReleaseTagState,
   synchronizeReleaseMetadata,
 } from "../scripts/release-policy.mjs";
 
@@ -135,6 +136,32 @@ test("published releases use an immutable tag baseline and require exact recover
     recoveryRun: true,
     releaseShaProvided: true,
   }));
+});
+
+test("non-publishing merges leave the existing immutable release tag untouched", () => {
+  assert.deepEqual(resolveReleaseTagState({
+    version: "0.2.0",
+    tagSha: "a".repeat(40),
+    publishSha: "b".repeat(40),
+    publish: false,
+    recoveryRun: false,
+  }), { tagNeeded: false });
+
+  assert.throws(() => resolveReleaseTagState({
+    version: "0.2.0",
+    tagSha: "a".repeat(40),
+    publishSha: "b".repeat(40),
+    publish: true,
+    recoveryRun: false,
+  }), /already points to/);
+
+  assert.throws(() => resolveReleaseTagState({
+    version: "0.2.0",
+    tagSha: "a".repeat(40),
+    publishSha: "b".repeat(40),
+    publish: false,
+    recoveryRun: true,
+  }), /already points to/);
 });
 
 test("the publish workflow is main-gated, recoverable, OIDC-only, and release-content preserving", () => {
