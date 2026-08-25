@@ -32,7 +32,7 @@ La instalación directa puede seleccionar una versión publicada explícita y qu
 - Usar pnpm para instalar, probar, construir y empaquetar. La única excepción npm es el `npm publish` ejecutado por trusted publishing.
 - Comandos base: `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm build` y `pnpm pack`.
 - Pi soportado: exactamente la versión declarada en `contract/jorgex-pi.v1.json`; no ampliar compatibilidad sin una prueba real.
-- No tocar configuraciones, estado o memoria Engram del usuario. Los límites de ownership viven en `contract/assets.v1.json`.
+- No tocar configuraciones, estado o memoria Engram del usuario. El bridge acepta primero un `ENGRAM_BIN` absoluto explícito y, si falta, el receipt exacto que JorgeX Stack deja en `~/.jorgex-stack/pi-receipt.json`; no usa `PATH` ni convierte ese hand-off en ownership de Pi. Los límites de ownership viven en `contract/assets.v1.json`.
 - Mantener sincronizados `package.json`, el contrato raíz, el runner, README y cualquier metadato de release.
 - No añadir dependencias ni activar companions sin pin exacto, integridad auditada, cierre empaquetado y lifecycle real aislado.
 
