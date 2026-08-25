@@ -110,6 +110,12 @@ export function assertReleaseBaseline({ currentVersion, currentVersionExists, cu
   }
 }
 
+export function resolveReleaseTagState({ version, tagSha, publishSha, publish, recoveryRun }) {
+  if (!publish && !recoveryRun) return { tagNeeded: false };
+  if (tagSha !== null && tagSha !== publishSha) throw new Error(`v${version} already points to ${tagSha}, not ${publishSha}.`);
+  return { tagNeeded: tagSha === null && (publish || recoveryRun) };
+}
+
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }).trim();
 }
@@ -223,8 +229,13 @@ export function runReleasePlan() {
 
   const tag = `v${plan.version}`;
   const tagSha = resolveTagSha(tag)?.toLowerCase() ?? null;
-  if (tagSha !== null && tagSha !== publishSha) throw new Error(`${tag} already points to ${tagSha}, not ${publishSha}.`);
-  const tagNeeded = tagSha === null && (plan.publish || recoveryRun);
+  const { tagNeeded } = resolveReleaseTagState({
+    version: plan.version,
+    tagSha,
+    publishSha,
+    publish: plan.publish,
+    recoveryRun,
+  });
 
   appendOutputs({ publish: plan.publish, version: plan.version, publish_sha: publishSha, tag_needed: tagNeeded, reason: plan.reason });
 }
