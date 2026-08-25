@@ -107,6 +107,62 @@ test("managed Engram resolves only an absolute native ENGRAM_BIN and never searc
   }
 });
 
+test("managed Engram falls back only to the exact installed Stack receipt", async () => {
+  const { resolveConfiguredEngramBinary } = await import("../extensions/mcp-engram.ts");
+  const manifest = readJson(join(root, "package.json"));
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-engram-receipt-"));
+  const home = join(sandbox, "home");
+  const agentDir = join(sandbox, "agent");
+  const receiptPath = join(home, ".jorgex-stack", "pi-receipt.json");
+  const nativeBin = join(sandbox, "engram.exe");
+  const explicitBin = join(sandbox, "explicit-engram.exe");
+  const nonNativeBin = join(sandbox, "engram.cmd");
+  const exactSource = `npm:jorgex-pi@${manifest.version}`;
+  const env = { HOME: home, PATH: sandbox, PI_CODING_AGENT_DIR: agentDir };
+  writeFileSync(nativeBin, "native fixture\n");
+  writeFileSync(explicitBin, "explicit fixture\n");
+  writeFileSync(nonNativeBin, "non-native fixture\n");
+  chmodSync(nativeBin, 0o755);
+  chmodSync(explicitBin, 0o755);
+  chmodSync(nonNativeBin, 0o755);
+  try {
+    const exactReceipt = createReceipt({ source: exactSource, version: manifest.version, codingAgentDir: agentDir, binary: nativeBin });
+    writeReceipt(receiptPath, exactReceipt);
+    assert.equal(
+      resolveConfiguredEngramBinary({ env: { ...env, ENGRAM_BIN: explicitBin }, platform: "win32" }),
+      explicitBin,
+      "a valid absolute ENGRAM_BIN must take precedence over the managed receipt",
+    );
+
+    for (const mutation of [
+      (receipt) => ({ ...receipt, state: "installing" }),
+      (receipt) => ({ ...receipt, candidate: { ...receipt.candidate, package: { ...receipt.candidate.package, source: "npm:jorgex-pi@0.0.0", version: "0.0.0" } } }),
+      (receipt) => ({ ...receipt, scope: { ...receipt.scope, codingAgentDir: join(sandbox, "other-agent") } }),
+      (receipt) => ({ ...receipt, engram: { ...receipt.engram, binary: nonNativeBin } }),
+    ]) {
+      writeReceipt(receiptPath, mutation(exactReceipt));
+      assert.equal(
+        resolveConfiguredEngramBinary({ env, platform: "win32" }),
+        undefined,
+        "a corrupt, stale, copied, or non-native receipt must not enable the bridge",
+      );
+    }
+
+    writeFileSync(receiptPath, "{not-json\n");
+    assert.equal(resolveConfiguredEngramBinary({ env, platform: "win32" }), undefined, "a corrupt receipt must fail closed");
+    rmSync(receiptPath, { force: true });
+    assert.equal(resolveConfiguredEngramBinary({ env, platform: "win32" }), undefined, "PATH must remain outside the managed bridge contract");
+    writeReceipt(receiptPath, exactReceipt);
+    assert.equal(
+      resolveConfiguredEngramBinary({ env, platform: "win32" }),
+      nativeBin,
+      "an installed Stack receipt must provide the native executable when ENGRAM_BIN is absent",
+    );
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("the pinned adapter metadata seam yields exactly the 17 reviewed direct Engram tools", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const adapterEntry = import.meta.resolve(expected.adapter.name);
@@ -200,4 +256,23 @@ test("one compaction produces one ordered Engram recovery instruction", async ()
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function createReceipt({ source, version, codingAgentDir, binary }) {
+  return {
+    schemaVersion: 1,
+    state: "installed",
+    candidate: {
+      package: { name: "jorgex-pi", source, version },
+      tarball: { bytes: 1, sha256: "a", sha512: "b" },
+      provenance: { commit: "reviewed" },
+    },
+    scope: { kind: "real", codingAgentDir },
+    engram: { binary },
+  };
+}
+
+function writeReceipt(path, receipt) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(receipt)}\n`);
 }
