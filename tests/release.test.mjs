@@ -170,9 +170,9 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   assert.doesNotMatch(workflow, /self-hosted/i);
 
   const nodeVersion = workflow.match(/node-version:\s*["']?(\d+(?:\.\d+){0,2})["']?/)?.[1];
-  const npmVersion = workflow.match(/\bnpm@(\d+\.\d+\.\d+)\b/)?.[1];
+  const npmVersion = workflow.match(/MINIMUM_NPM_VERSION:\s*["']?(\d+\.\d+\.\d+)["']?/)?.[1];
   assert.equal(versionAtLeast(nodeVersion, "22.14.0"), true, "setup-node must select Node >=22.14.0");
-  assert.equal(versionAtLeast(npmVersion, "11.5.1"), true, "the workflow must pin npm >=11.5.1 using pnpm");
+  assert.equal(versionAtLeast(npmVersion, "11.5.1"), true, "the workflow must require npm >=11.5.1");
 
   for (const command of [
     "pnpm install --frozen-lockfile",
@@ -196,6 +196,8 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   assert.match(publishJob, /contents:\s*read[\s\S]*id-token:\s*write/, "the publish job must be read-only except for OIDC");
   assert.doesNotMatch(publishJob, /contents:\s*write/, "the npm publish job must not write to the repository");
   assert.doesNotMatch(publishJob, /\bcache:\s*(?:pnpm|npm|yarn)\b/, "the privileged release build must not reuse a package-manager cache");
+  assert.match(publishJob, /npm_version="\$\(npm --version\)"/, "the release job must verify the npm bundled with Node without a global install");
+  assert.doesNotMatch(publishJob, /pnpm\s+(?:add|install)\s+--global\s+npm\b/, "the release job must not depend on pnpm global-bin configuration");
   assert.match(workflow, /git\s+tag/, "the verified release SHA must receive its immutable version tag");
   assert.match(workflow, /git\s+push\s+origin/, "the release commit and tag must be pushed explicitly");
 });

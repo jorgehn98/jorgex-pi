@@ -114,7 +114,21 @@ jobs:
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
-      - run: pnpm add --global npm@11.5.1
+      - name: Verify trusted-publishing npm
+        env:
+          MINIMUM_NPM_VERSION: "11.5.1"
+        run: |
+          set -euo pipefail
+          npm_version="$(npm --version)"
+          node - "$npm_version" "$MINIMUM_NPM_VERSION" <<'NODE'
+          const [current, minimum] = process.argv.slice(2);
+          const parse = (value) => value.split(".").map((part) => Number.parseInt(part, 10));
+          const [currentParts, minimumParts] = [parse(current), parse(minimum)];
+          const compatible = minimumParts.every((part, index) => (currentParts[index] ?? 0) === part)
+            || currentParts.some((part, index) => part > (minimumParts[index] ?? 0)
+              && currentParts.slice(0, index).every((value, prefix) => value === minimumParts[prefix]));
+          if (!compatible) throw new Error(`npm ${current} is older than required ${minimum}.`);
+          NODE
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - name: Pack exact release
