@@ -13,6 +13,11 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const releaseVersion = readJson(join(root, "package.json")).version;
 const repositoryUrl = "https://github.com/jorgehn98/jorgex-pi";
+const reviewedActions = new Set([
+  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+  "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+  "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+]);
 
 test("the public package metadata identifies the exact minor release candidate", () => {
   const manifest = readJson(join(root, "package.json"));
@@ -157,13 +162,8 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   assert.equal((workflow.match(/^permissions:/gm) ?? []).length, 1, "permissions must be declared once at workflow scope");
   const actionUses = [...workflow.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
   assert.ok(actionUses.length >= 3, "the release pipeline must contain its reviewed setup actions");
-  const allowedActions = new Set([
-    "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
-    "pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa",
-    "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
-  ]);
   for (const action of actionUses) assert.match(action, /@[a-f0-9]{40}$/, `release action must not use a mutable tag: ${action}`);
-  for (const action of actionUses) assert.equal(allowedActions.has(action), true, "release action is not in the reviewed allowlist: " + action);
+  for (const action of actionUses) assert.equal(reviewedActions.has(action), true, "release action is not in the reviewed allowlist: " + action);
   const runners = [...workflow.matchAll(/^\s*runs-on:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
   assert.ok(runners.length >= 3, "validation, planning, publishing and tagging must be isolated jobs");
   assert.ok(runners.every((runner) => runner === "ubuntu-latest"), "publishing must use only GitHub-hosted runners");
@@ -200,6 +200,28 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   assert.doesNotMatch(publishJob, /pnpm\s+(?:add|install)\s+--global\s+npm\b/, "the release job must not depend on pnpm global-bin configuration");
   assert.match(workflow, /git\s+tag/, "the verified release SHA must receive its immutable version tag");
   assert.match(workflow, /git\s+push\s+origin/, "the release commit and tag must be pushed explicitly");
+});
+
+test("pull requests execute the reviewed actions in a non-privileged quality gate", () => {
+  const workflowPath = join(root, ".github", "workflows", "quality.yml");
+  assert.equal(existsSync(workflowPath), true, "the pull-request quality workflow must exist");
+  const workflow = readFileSync(workflowPath, "utf8");
+
+  assert.deepEqual(topLevelBlock(workflow, "on").trim(), "pull_request:");
+  assert.deepEqual(readFlatMap(topLevelBlock(workflow, "permissions")), { contents: "read" });
+  assert.doesNotMatch(workflow, /id-token:\s*write|contents:\s*write|npm publish|secrets\./i);
+
+  const actionUses = [...workflow.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
+  assert.deepEqual(actionUses, [...reviewedActions], "quality must use each reviewed setup action exactly once and in order");
+  for (const action of actionUses) assert.match(action, /@[a-f0-9]{40}$/, `quality action must not use a mutable tag: ${action}`);
+  for (const action of actionUses) assert.equal(reviewedActions.has(action), true, "quality action is not in the reviewed allowlist: " + action);
+  assert.equal(workflow.match(/node-version:\s*["']?(\d+)["']?/)?.[1], "24", "quality must exercise the actions under Node 24");
+
+  for (const command of [
+    "pnpm install --frozen-lockfile",
+    "pnpm test",
+    "pnpm pack --pack-destination .validation-artifacts",
+  ]) assert.ok(workflow.includes(command), `quality workflow is missing required command: ${command}`);
 });
 
 test("the publish workflow publishes the exact deterministic tarball created by pnpm pack", () => {
