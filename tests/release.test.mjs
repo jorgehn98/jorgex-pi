@@ -3,9 +3,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  assertReleaseBaseline,
+  buildReleasePlan,
+  classifyReleasePaths,
+  synchronizeReleaseMetadata,
+} from "../scripts/release-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const releaseVersion = "0.2.0";
+const releaseVersion = readJson(join(root, "package.json")).version;
 const repositoryUrl = "https://github.com/jorgehn98/jorgex-pi";
 
 test("the public package metadata identifies the exact minor release candidate", () => {
@@ -22,7 +28,111 @@ test("the public package metadata identifies the exact minor release candidate",
   assert.equal(contract.package.source, `npm:jorgex-pi@${releaseVersion}`);
 });
 
-test("the publish workflow is tag-gated, OIDC-only, and release-content preserving", () => {
+test("the release policy publishes manual versions and only auto-bumps publicable changes", () => {
+  assert.deepEqual(classifyReleasePaths([
+    "extensions/bootstrap.ts",
+    "contract/jorgex-pi.v1.json",
+    "README.md",
+    "tests/release.test.mjs",
+    ".github/workflows/publish.yml",
+    "scripts/release-policy.mjs",
+    "AGENTS.md",
+  ]), {
+    publicPaths: ["extensions/bootstrap.ts", "contract/jorgex-pi.v1.json", "README.md"],
+    ignoredPaths: ["AGENTS.md"],
+    testPaths: ["tests/release.test.mjs"],
+    workflowPaths: [".github/workflows/publish.yml"],
+    scriptPaths: ["scripts/release-policy.mjs"],
+  });
+
+  assert.deepEqual(buildReleasePlan({
+    currentVersion: "0.2.0",
+    currentVersionExists: false,
+    publicable: false,
+    releaseBumpCommit: false,
+    recoveryRun: false,
+    versionExists: () => false,
+  }), { publish: true, bump: false, version: "0.2.0", reason: "unpublished_version" });
+
+  assert.deepEqual(buildReleasePlan({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    publicable: true,
+    releaseBumpCommit: false,
+    recoveryRun: false,
+    versionExists: (version) => version === "0.2.1",
+  }), { publish: true, bump: true, version: "0.2.2", reason: "publicable_patch" });
+
+  assert.deepEqual(buildReleasePlan({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    publicable: false,
+    releaseBumpCommit: false,
+    recoveryRun: false,
+    versionExists: () => false,
+  }), { publish: false, bump: false, version: "0.2.0", reason: "no_publicable_changes" });
+
+  assert.deepEqual(buildReleasePlan({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    publicable: true,
+    releaseBumpCommit: false,
+    recoveryRun: true,
+    versionExists: () => false,
+  }), { publish: false, bump: false, version: "0.2.0", reason: "published_recovery" });
+
+  assert.deepEqual(buildReleasePlan({
+    currentVersion: "0.2.1",
+    currentVersionExists: false,
+    publicable: true,
+    releaseBumpCommit: true,
+    recoveryRun: false,
+    versionExists: () => false,
+  }), { publish: false, bump: false, version: "0.2.1", reason: "release_bump_commit" });
+});
+
+test("automatic patch bumps keep package and root contract synchronized", () => {
+  const manifest = { name: "jorgex-pi", version: "0.2.0", untouched: true };
+  const contract = { package: { name: "jorgex-pi", version: "0.2.0", source: "npm:jorgex-pi@0.2.0" }, schemaVersion: 1 };
+  assert.deepEqual(synchronizeReleaseMetadata({ manifest, contract, version: "0.2.1" }), {
+    manifest: { name: "jorgex-pi", version: "0.2.1", untouched: true },
+    contract: { package: { name: "jorgex-pi", version: "0.2.1", source: "npm:jorgex-pi@0.2.1" }, schemaVersion: 1 },
+  });
+  assert.equal(manifest.version, "0.2.0", "the pure policy must not mutate caller-owned objects");
+});
+
+test("published releases use an immutable tag baseline and require exact recovery when it is missing", () => {
+  assert.doesNotThrow(() => assertReleaseBaseline({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    currentTagSha: "a".repeat(40),
+    recoveryRun: false,
+    releaseShaProvided: false,
+  }));
+  assert.throws(() => assertReleaseBaseline({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    currentTagSha: null,
+    recoveryRun: false,
+    releaseShaProvided: false,
+  }), /Recover its exact published SHA/);
+  assert.throws(() => assertReleaseBaseline({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    currentTagSha: null,
+    recoveryRun: true,
+    releaseShaProvided: false,
+  }), /requires the exact release_sha/);
+  assert.doesNotThrow(() => assertReleaseBaseline({
+    currentVersion: "0.2.0",
+    currentVersionExists: true,
+    currentTagSha: null,
+    recoveryRun: true,
+    releaseShaProvided: true,
+  }));
+});
+
+test("the publish workflow is main-gated, recoverable, OIDC-only, and release-content preserving", () => {
   const workflowPath = join(root, ".github", "workflows", "publish.yml");
   assert.equal(existsSync(workflowPath), true, "the public release workflow must exist");
   const workflow = readFileSync(workflowPath, "utf8");
@@ -30,20 +140,33 @@ test("the publish workflow is tag-gated, OIDC-only, and release-content preservi
   const triggerLines = topLevelBlock(workflow, "on").split(/\r?\n/)
     .map((line) => line.trim().replace(/^-\s*["'](.*)["']$/, "- $1"))
     .filter((line) => line && !line.startsWith("#"));
-  assert.deepEqual(triggerLines, ["push:", "tags:", "- v*"], "publishing must be triggered only by v* tags");
+  assert.deepEqual(triggerLines, [
+    "push:",
+    "branches:",
+    "- main",
+    "workflow_dispatch:",
+    "inputs:",
+    "release_sha:",
+    "description: SHA completa de 40 hex de recuperación anclada a main (opcional)",
+    "required: false",
+  ], "publishing must be triggered by main pushes and expose only the pinned recovery input");
+  assert.match(workflow, /actions\/checkout@[a-f0-9]{40}[\s\S]*?ref:\s*main/, "validation must test the current serialized main head so rapid merges cannot lose publicable changes");
 
   const permissions = topLevelBlock(workflow, "permissions");
-  assert.deepEqual(readFlatMap(permissions), { contents: "read", "id-token": "write" });
+  assert.deepEqual(readFlatMap(permissions), { contents: "read" });
   assert.equal((workflow.match(/^permissions:/gm) ?? []).length, 1, "permissions must be declared once at workflow scope");
   const actionUses = [...workflow.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
-  assert.deepEqual(actionUses, [
-    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+  assert.ok(actionUses.length >= 3, "the release pipeline must contain its reviewed setup actions");
+  const allowedActions = new Set([
+    "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
     "pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa",
     "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
-  ], "every release action must use its reviewed immutable commit");
+  ]);
   for (const action of actionUses) assert.match(action, /@[a-f0-9]{40}$/, `release action must not use a mutable tag: ${action}`);
+  for (const action of actionUses) assert.equal(allowedActions.has(action), true, "release action is not in the reviewed allowlist: " + action);
   const runners = [...workflow.matchAll(/^\s*runs-on:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
-  assert.deepEqual(runners, ["ubuntu-latest"], "publishing must use one GitHub-hosted runner");
+  assert.ok(runners.length >= 3, "validation, planning, publishing and tagging must be isolated jobs");
+  assert.ok(runners.every((runner) => runner === "ubuntu-latest"), "publishing must use only GitHub-hosted runners");
   assert.doesNotMatch(workflow, /self-hosted/i);
 
   const nodeVersion = workflow.match(/node-version:\s*["']?(\d+(?:\.\d+){0,2})["']?/)?.[1];
@@ -51,14 +174,11 @@ test("the publish workflow is tag-gated, OIDC-only, and release-content preservi
   assert.equal(versionAtLeast(nodeVersion, "22.14.0"), true, "setup-node must select Node >=22.14.0");
   assert.equal(versionAtLeast(npmVersion, "11.5.1"), true, "the workflow must pin npm >=11.5.1 using pnpm");
 
-  const tagGuard = workflow.split(/\r?\n/).find((line) => line.includes("GITHUB_REF_NAME") && line.includes("package.json") && line.includes("version"));
-  assert.match(tagGuard ?? "", /v/, "the workflow must require tag v<package.version> exactly");
-  assert.match(tagGuard ?? "", /(?:!==|!=|==|=)/, "the tag/version comparison must fail on inequality");
-
   for (const command of [
     "pnpm install --frozen-lockfile",
     "pnpm test",
     "pnpm pack",
+    "node ./scripts/release-policy.mjs plan",
   ]) assert.ok(workflow.includes(command), `workflow is missing required command: ${command}`);
 
   const npmCommands = workflow.split(/\r?\n/)
@@ -67,14 +187,23 @@ test("the publish workflow is tag-gated, OIDC-only, and release-content preservi
   assert.equal(npmCommands.length, 1, "publish is the only direct npm command allowed");
   assert.match(npmCommands[0] ?? "", /^npm publish\b/, "the only direct npm command must publish");
   assert.doesNotMatch(workflow, /(?:^|[\s;&|])npm\s+(?:version|pack|install)\b/im, "standalone npm may only publish");
-  assert.doesNotMatch(workflow, /NPM_TOKEN|secrets\.|^\s*(?:token|github-token):|pnpm\s+version|git\s+(?:commit|push|tag)|gh\s+release|changeset/i);
-  assert.doesNotMatch(workflow, /uses:\s*[^\n]*(?:release|changeset)/i, "the workflow must not create a GitHub release or auto-version");
+  assert.doesNotMatch(workflow, /NPM_TOKEN|secrets\.|^\s*(?:token|github-token):|pnpm\s+version|gh\s+release|changeset/i);
+  assert.match(workflow, /id-token:\s*write/, "only the publish job must receive OIDC authority");
+  assert.match(workflow, /contents:\s*write/, "version and tag jobs require narrowly scoped repository writes");
+  const planJob = workflow.split("\n  plan:\n")[1]?.split("\n  publish:\n")[0] ?? "";
+  const publishJob = workflow.split("\n  publish:\n")[1]?.split("\n  tag-release:\n")[0] ?? "";
+  assert.doesNotMatch(planJob, /id-token:\s*write/, "the repository-write planning job must not receive OIDC");
+  assert.match(publishJob, /contents:\s*read[\s\S]*id-token:\s*write/, "the publish job must be read-only except for OIDC");
+  assert.doesNotMatch(publishJob, /contents:\s*write/, "the npm publish job must not write to the repository");
+  assert.doesNotMatch(publishJob, /\bcache:\s*(?:pnpm|npm|yarn)\b/, "the privileged release build must not reuse a package-manager cache");
+  assert.match(workflow, /git\s+tag/, "the verified release SHA must receive its immutable version tag");
+  assert.match(workflow, /git\s+push\s+origin/, "the release commit and tag must be pushed explicitly");
 });
 
 test("the publish workflow publishes the exact deterministic tarball created by pnpm pack", () => {
   const workflow = readFileSync(join(root, ".github", "workflows", "publish.yml"), "utf8");
   const artifactDirectory = ".release-artifacts";
-  const artifactPath = `${artifactDirectory}/jorgex-pi-\${GITHUB_REF_NAME#v}.tgz`;
+  const artifactPath = `${artifactDirectory}/jorgex-pi-\${{ needs.plan.outputs.version }}.tgz`;
 
   assert.match(
     workflow,
@@ -98,15 +227,19 @@ test("the publish workflow publishes the exact deterministic tarball created by 
   );
 });
 
-test("the release guide requires npm trusted-publisher setup before any tag", () => {
+test("the release guide explains automatic publishing and coordinated Stack adoption", () => {
   const readme = readFileSync(join(root, "README.md"), "utf8");
   const trustedPublisher = readme.split(/\n\s*\n/).find((paragraph) => /trusted publisher/i.test(paragraph));
   assert.ok(trustedPublisher, "README must document the external npm trusted publisher prerequisite");
   assert.match(trustedPublisher, /npm(?:js\.com| package| settings)/i, "trusted publisher setup must happen in npm, outside the workflow");
   assert.match(trustedPublisher, /jorgehn98\/jorgex-pi/i, "README must identify the authorized GitHub repository");
   assert.match(trustedPublisher, /(?:\.github\/workflows\/)?publish\.yml/i, "README must identify the authorized workflow filename");
-  assert.match(trustedPublisher, /before[^.\n]*tag/i, "trusted publisher setup must be required before creating or pushing a release tag");
+  assert.match(trustedPublisher, /before[^.\n]*(?:publish|release|main)/i, "trusted publisher setup must be required before automatic publishing");
   assert.match(trustedPublisher, /(?:workflow|repository)[^.\n]*(?:does not|cannot|is not)[^.\n]*(?:configure|sufficient|enough)/i, "README must not imply that committing the workflow configures npm automatically");
+  assert.match(readme, /push[^.\n]*main/i, "README must identify main pushes as the automatic release trigger");
+  assert.match(readme, /patch[^.\n]*(?:automatic|automático|increment)/i, "README must explain automatic patch bumps");
+  assert.match(readme, /minor[^.\n]*major[^.\n]*(?:manual|human)/i, "README must keep minor and major version decisions manual");
+  assert.match(readme, /24 horas[^.\n]*Stack/i, "README must retain the managed Stack maturity window");
 });
 
 function topLevelBlock(yaml, key) {

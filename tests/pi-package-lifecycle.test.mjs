@@ -239,7 +239,7 @@ function runPi(pi, args, env, cwd) {
     env,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 

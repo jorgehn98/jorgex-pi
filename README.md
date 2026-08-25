@@ -2,7 +2,7 @@
 
 `jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle.
 
-Version `0.2.0` is the next minor release candidate after the published `0.1.0` bootstrap. This repository state is publishable but does not by itself assert that the version has been tagged or published. It adds the native opt-in JorgeX theme and TUI-only startup branding while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned JorgeX Stack snapshot.
+The version in `package.json` is the release authority. Minor and major remain manual decisions; after merge, the automatic release workflow preserves and publishes an unpublished selection from `main`. Later publicable changes increment the patch automatically. The current line adds the native opt-in JorgeX theme and TUI-only startup branding while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned JorgeX Stack snapshot.
 
 ## Current boundary
 
@@ -125,17 +125,19 @@ pnpm runtime-agents:generate
 
 This publishes `agents`, `deferred/agents`, `primary`, and `contract/runtime-agents.v1.json` transactionally; a failure restores the previous generation. `pnpm test` verifies deterministic output, containment, the bundled closure, and the isolated Pi lifecycle. `pnpm pack` creates the candidate tarball with the bootstrap, resources, pinned companions, audited closure, and required WASM files. Development generators and transaction modules under `scripts/` are excluded.
 
-Package metadata and contracts are synchronized at `0.2.0`. After that exact version is present on npm, installation uses Pi's package manager with the release pinned:
+Package metadata and contracts always carry the same version. After the selected version is present on npm, a standalone installation uses Pi's package manager with that release pinned explicitly:
 
 ```bash
-pi install npm:jorgex-pi@0.2.0
+pi install npm:jorgex-pi@<published-version>
 ```
 
 That command is the narrow package-manager exception: Pi uses npm internally to register and resolve its own package. Repository development, dependency management, and release preparation continue to use pnpm exclusively.
 
-Before creating or pushing any release tag, configure the npm trusted publisher in the npmjs.com package settings for GitHub repository `jorgehn98/jorgex-pi`, workflow filename `publish.yml`, and allowed action `npm publish`. The workflow does not configure that npm trust relationship and is not sufficient without this external prerequisite.
+Before merging anything that may publish, configure the npm trusted publisher in the npmjs.com package settings for GitHub repository `jorgehn98/jorgex-pi`, workflow filename `publish.yml`, and allowed action `npm publish`. The workflow does not configure that npm trust relationship and is not sufficient without this external prerequisite. Release jobs use Node 24 and provision npm 11.5.1 through pnpm.
 
-Publication is an explicit external gate. Pushing a tag matching `v*` starts the trusted-publishing workflow, which rejects any tag other than `v<package.json version>`, runs the frozen install, tests, and pack on a GitHub-hosted runner, then publishes with npm provenance through OIDC. It does not auto-bump versions, create tags, push commits, create GitHub releases, or use a registry token. Preparing this candidate neither creates the `v0.2.0` tag nor publishes the package.
+A push to `main` starts the release workflow. If the version declared in `package.json` is absent from npm, it is published unchanged; this preserves a manual minor or major decision. If it already exists and the push changes packaged runtime content, the workflow selects the next free patch, updates `package.json` and the root contract together, verifies the resulting commit, publishes its exact `pnpm pack` tarball with npm provenance through OIDC, and creates the immutable `v<version>` tag. Tests, work state, release scripts, workflow-only changes and operational `AGENTS.md` edits do not create another patch once the declared version is published. `workflow_dispatch` can recover an unpublished version or missing tag only from a verified SHA belonging to `main`.
+
+Publication does not update JorgeX Stack. After at least **24 horas** on npm, Stack may adopt the Pi release in a separate PR with the exact tarball URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate; an earlier adoption requires Jorge's explicit exception in that PR. Until it merges, managed installations continue using the previous frozen Pi version.
 
 ## Paths, state, and ownership
 

@@ -41,4 +41,4 @@ La instalación directa puede seleccionar una versión publicada explícita y qu
 - Los cambios de comportamiento van por rama/worktree y PR; nunca se empujan directamente a `main`.
 - Antes de ready: tests focales, suite completa, pack real, diff final y revisión del SHA candidato.
 - El merge requiere orden explícito de Jorge.
-- Trusted publishing autoriza npm, pero no sustituye los triggers ni la política de versionado del workflow. No crear tags ni publicar manualmente salvo instrucción explícita.
+- Trusted publishing autoriza npm, pero no sustituye los triggers ni la política de versionado del workflow. Los pushes a `main` publican versiones ausentes o incrementan el patch para cambios publicables; minor y major siguen siendo decisiones manuales dentro del PR. El workflow crea el tag después de publicar. No crear tags ni publicar manualmente salvo recuperación expresamente autorizada.
