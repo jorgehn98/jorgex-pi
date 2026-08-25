@@ -1,5 +1,5 @@
-import { accessSync, constants, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { accessSync, constants, readFileSync, statSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEngramChildSpec } from "./engram-mcp-wrapper.mjs";
 
@@ -83,12 +83,74 @@ export function resolveConfiguredEngramBinary({
   platform = process.platform,
 } = {}) {
   const configured = env.ENGRAM_BIN;
-  if (typeof configured !== "string" || !configured) return undefined;
-  if (!isAbsolute(configured)) throw new Error("ENGRAM_BIN must be absolute");
-  if (platform === "win32" && !/\.exe$/i.test(configured)) {
-    throw new Error("ENGRAM_BIN must point to a native .exe executable on Windows");
+  if (typeof configured === "string" && configured) {
+    if (!isAbsolute(configured)) throw new Error("ENGRAM_BIN must be absolute");
+    if (platform === "win32" && !/\.exe$/i.test(configured)) {
+      throw new Error("ENGRAM_BIN must point to a native .exe executable on Windows");
+    }
+    return isExecutable(configured, platform) ? configured : undefined;
   }
-  return isExecutable(configured, platform) ? configured : undefined;
+  return resolveStackReceiptEngramBinary({ env, platform });
+}
+
+function resolveStackReceiptEngramBinary({ env, platform }) {
+  const home = receiptHome(env, platform);
+  if (!home) return undefined;
+
+  let receipt;
+  try {
+    receipt = JSON.parse(readFileSync(join(home, ".jorgex-stack", "pi-receipt.json"), "utf8"));
+  } catch {
+    return undefined;
+  }
+
+  const packageIdentity = readPackageIdentity();
+  const codingAgentDir = env.PI_CODING_AGENT_DIR ?? join(home, ".pi", "agent");
+  if (!packageIdentity || !isAbsolute(codingAgentDir) || !isExactInstalledReceipt(receipt, packageIdentity, codingAgentDir)) {
+    return undefined;
+  }
+
+  const binary = receipt.engram.binary;
+  if (typeof binary !== "string" || !isAbsolute(binary)) return undefined;
+  if (platform === "win32" && !/\.exe$/i.test(binary)) return undefined;
+  return isExecutable(binary, platform) ? binary : undefined;
+}
+
+function receiptHome(env, platform) {
+  const configured = platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE;
+  return typeof configured === "string" && isAbsolute(configured) ? resolve(configured) : undefined;
+}
+
+function readPackageIdentity() {
+  try {
+    const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"));
+    return typeof manifest?.name === "string" && typeof manifest?.version === "string"
+      ? { name: manifest.name, version: manifest.version }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isExactInstalledReceipt(receipt, packageIdentity, codingAgentDir) {
+  if (!isRecord(receipt) || receipt.schemaVersion !== 1 || receipt.state !== "installed") return false;
+  if (!isRecord(receipt.candidate) || !isRecord(receipt.candidate.package) || !isRecord(receipt.scope) || !isRecord(receipt.engram)) {
+    return false;
+  }
+  const packageSource = `npm:${packageIdentity.name}@${packageIdentity.version}`;
+  if (receipt.candidate.package.name !== packageIdentity.name
+    || receipt.candidate.package.version !== packageIdentity.version
+    || receipt.candidate.package.source !== packageSource
+    || receipt.scope.kind !== "real"
+    || typeof receipt.scope.codingAgentDir !== "string"
+    || !isAbsolute(receipt.scope.codingAgentDir)) {
+    return false;
+  }
+  return resolve(receipt.scope.codingAgentDir) === resolve(codingAgentDir);
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function isExecutable(path, platform = process.platform) {
