@@ -1,5 +1,5 @@
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEngramChildSpec } from "./engram-mcp-wrapper.mjs";
 
@@ -84,7 +84,7 @@ export function resolveConfiguredEngramBinary({
 } = {}) {
   const configured = env.ENGRAM_BIN;
   if (typeof configured === "string" && configured) {
-    if (!isAbsolute(configured)) throw new Error("ENGRAM_BIN must be absolute");
+    if (!platformPaths(platform).isAbsolute(configured)) throw new Error("ENGRAM_BIN must be absolute");
     if (platform === "win32" && !/\.exe$/i.test(configured)) {
       throw new Error("ENGRAM_BIN must point to a native .exe executable on Windows");
     }
@@ -94,31 +94,33 @@ export function resolveConfiguredEngramBinary({
 }
 
 function resolveStackReceiptEngramBinary({ env, platform }) {
+  const paths = platformPaths(platform);
   const home = receiptHome(env, platform);
   if (!home) return undefined;
 
   let receipt;
   try {
-    receipt = JSON.parse(readFileSync(join(home, ".jorgex-stack", "pi-receipt.json"), "utf8"));
+    receipt = JSON.parse(readFileSync(paths.join(home, ".jorgex-stack", "pi-receipt.json"), "utf8"));
   } catch {
     return undefined;
   }
 
   const packageIdentity = readPackageIdentity();
-  const codingAgentDir = env.PI_CODING_AGENT_DIR ?? join(home, ".pi", "agent");
-  if (!packageIdentity || !isAbsolute(codingAgentDir) || !isExactInstalledReceipt(receipt, packageIdentity, codingAgentDir)) {
+  const codingAgentDir = env.PI_CODING_AGENT_DIR ?? paths.join(home, ".pi", "agent");
+  if (!packageIdentity || !paths.isAbsolute(codingAgentDir) || !isExactInstalledReceipt(receipt, packageIdentity, codingAgentDir, platform)) {
     return undefined;
   }
 
   const binary = receipt.engram.binary;
-  if (typeof binary !== "string" || !isAbsolute(binary)) return undefined;
+  if (typeof binary !== "string" || !paths.isAbsolute(binary)) return undefined;
   if (platform === "win32" && !/\.exe$/i.test(binary)) return undefined;
   return isExecutable(binary, platform) ? binary : undefined;
 }
 
 function receiptHome(env, platform) {
+  const paths = platformPaths(platform);
   const configured = platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE;
-  return typeof configured === "string" && isAbsolute(configured) ? resolve(configured) : undefined;
+  return typeof configured === "string" && paths.isAbsolute(configured) ? paths.resolve(configured) : undefined;
 }
 
 function readPackageIdentity() {
@@ -132,7 +134,8 @@ function readPackageIdentity() {
   }
 }
 
-function isExactInstalledReceipt(receipt, packageIdentity, codingAgentDir) {
+function isExactInstalledReceipt(receipt, packageIdentity, codingAgentDir, platform) {
+  const paths = platformPaths(platform);
   if (!isRecord(receipt) || receipt.schemaVersion !== 1 || receipt.state !== "installed") return false;
   if (!isRecord(receipt.candidate) || !isRecord(receipt.candidate.package) || !isRecord(receipt.scope) || !isRecord(receipt.engram)) {
     return false;
@@ -143,14 +146,26 @@ function isExactInstalledReceipt(receipt, packageIdentity, codingAgentDir) {
     || receipt.candidate.package.source !== packageSource
     || receipt.scope.kind !== "real"
     || typeof receipt.scope.codingAgentDir !== "string"
-    || !isAbsolute(receipt.scope.codingAgentDir)) {
+    || !paths.isAbsolute(receipt.scope.codingAgentDir)) {
     return false;
   }
-  return resolve(receipt.scope.codingAgentDir) === resolve(codingAgentDir);
+  return samePath(receipt.scope.codingAgentDir, codingAgentDir, paths, platform);
 }
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function platformPaths(platform) {
+  return platform === "win32" ? win32 : posix;
+}
+
+function samePath(left, right, paths, platform) {
+  const resolvedLeft = paths.resolve(left);
+  const resolvedRight = paths.resolve(right);
+  return platform === "win32"
+    ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+    : resolvedLeft === resolvedRight;
 }
 
 function isExecutable(path, platform = process.platform) {

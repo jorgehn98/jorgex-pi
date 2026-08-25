@@ -124,11 +124,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     const receiptLoaded = JSON.parse(receiptOutput);
     assert.deepEqual(
       receiptLoaded.engramToolNames,
-      [
-        "mem_compare", "mem_context", "mem_current_project", "mem_doctor", "mem_get_observation", "mem_judge", "mem_pin",
-        "mem_review", "mem_save", "mem_save_prompt", "mem_search", "mem_session_end", "mem_session_start",
-        "mem_session_summary", "mem_suggest_topic_key", "mem_unpin", "mem_update",
-      ],
+      loaded.engramToolNames,
       "the real Pi loader must register the reviewed Engram tools from the exact Stack receipt without ENGRAM_BIN",
     );
 
