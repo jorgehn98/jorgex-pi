@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve, win32 } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
@@ -82,9 +82,10 @@ test("managed Engram resolves only an absolute native ENGRAM_BIN and never searc
   const { resolveConfiguredEngramBinary } = await import("../extensions/mcp-engram.ts");
   assert.equal(typeof resolveConfiguredEngramBinary, "function", "binary policy must expose a deterministic platform seam");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-engram-resolution-"));
-  const nativeBin = join(sandbox, "engram.exe");
+  const windows = prepareWindowsFixture(sandbox);
+  const nativeBin = win32.join(windows.home, "engram.exe");
   const rejectedBins = ["engram.cmd", "engram.bat", "engram.ps1", "engram.txt", "engram"]
-    .map((name) => join(sandbox, name));
+    .map((name) => win32.join(windows.home, name));
   writeFileSync(nativeBin, "native fixture\n");
   chmodSync(nativeBin, 0o755);
   for (const path of rejectedBins) {
@@ -103,6 +104,106 @@ test("managed Engram resolves only an absolute native ENGRAM_BIN and never searc
       );
     }
   } finally {
+    windows.restore();
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("managed Engram falls back only to the exact installed Stack receipt", async () => {
+  const { resolveConfiguredEngramBinary } = await import("../extensions/mcp-engram.ts");
+  const manifest = readJson(join(root, "package.json"));
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-engram-receipt-"));
+  const windows = prepareWindowsFixture(sandbox);
+  const home = windows.home;
+  const agentDir = win32.join(home, "agent");
+  const receiptPath = win32.join(home, ".jorgex-stack", "pi-receipt.json");
+  const nativeBin = win32.join(home, "engram.exe");
+  const explicitBin = win32.join(home, "explicit-engram.exe");
+  const nonNativeBin = win32.join(home, "engram.cmd");
+  const exactSource = `npm:jorgex-pi@${manifest.version}`;
+  const env = { USERPROFILE: home, PATH: sandbox, PI_CODING_AGENT_DIR: agentDir };
+  writeFileSync(nativeBin, "native fixture\n");
+  writeFileSync(explicitBin, "explicit fixture\n");
+  writeFileSync(nonNativeBin, "non-native fixture\n");
+  chmodSync(nativeBin, 0o755);
+  chmodSync(explicitBin, 0o755);
+  chmodSync(nonNativeBin, 0o755);
+  try {
+    const exactReceipt = createReceipt({ source: exactSource, version: manifest.version, codingAgentDir: agentDir, binary: nativeBin });
+    writeReceipt(receiptPath, exactReceipt);
+    assert.equal(
+      resolveConfiguredEngramBinary({ env: { ...env, ENGRAM_BIN: explicitBin }, platform: "win32" }),
+      explicitBin,
+      "a valid absolute ENGRAM_BIN must take precedence over the managed receipt",
+    );
+
+    assert.equal(
+      resolveConfiguredEngramBinary({ env: { ...env, ENGRAM_BIN: win32.join(home, "missing-engram.exe") }, platform: "win32" }),
+      undefined,
+      "an invalid explicit ENGRAM_BIN must not fall through to the managed receipt",
+    );
+
+    for (const { label, mutation } of [
+      { label: "state", mutation: (receipt) => ({ ...receipt, state: "installing" }) },
+      { label: "source", mutation: (receipt) => ({ ...receipt, candidate: { ...receipt.candidate, package: { ...receipt.candidate.package, source: "npm:jorgex-pi@0.0.0" } } }) },
+      { label: "version", mutation: (receipt) => ({ ...receipt, candidate: { ...receipt.candidate, package: { ...receipt.candidate.package, version: "0.0.0" } } }) },
+      { label: "scope kind", mutation: (receipt) => ({ ...receipt, scope: { ...receipt.scope, kind: "sandbox" } }) },
+      { label: "scope directory", mutation: (receipt) => ({ ...receipt, scope: { ...receipt.scope, codingAgentDir: win32.join(home, "other-agent") } }) },
+      { label: "Windows binary", mutation: (receipt) => ({ ...receipt, engram: { ...receipt.engram, binary: nonNativeBin } }) },
+    ]) {
+      writeReceipt(receiptPath, mutation(exactReceipt));
+      assert.equal(
+        resolveConfiguredEngramBinary({ env, platform: "win32" }),
+        undefined,
+        `${label} must not enable the bridge`,
+      );
+    }
+
+    writeFileSync(receiptPath, "{not-json\n");
+    assert.equal(resolveConfiguredEngramBinary({ env, platform: "win32" }), undefined, "a corrupt receipt must fail closed");
+    rmSync(receiptPath, { force: true });
+    assert.equal(resolveConfiguredEngramBinary({ env, platform: "win32" }), undefined, "PATH must remain outside the managed bridge contract");
+    writeReceipt(receiptPath, exactReceipt);
+    assert.equal(
+      resolveConfiguredEngramBinary({ env, platform: "win32" }),
+      nativeBin,
+      "an installed Stack receipt must provide the native executable when ENGRAM_BIN is absent",
+    );
+  } finally {
+    windows.restore();
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("managed Engram accepts an exact Windows Stack receipt at Pi's default agent directory", async () => {
+  const { resolveConfiguredEngramBinary } = await import("../extensions/mcp-engram.ts");
+  const manifest = readJson(join(root, "package.json"));
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-engram-windows-receipt-"));
+  const windows = prepareWindowsFixture(sandbox);
+  const home = windows.home;
+  const agentDir = win32.join(home, ".pi", "agent");
+  const receiptPath = win32.join(home, ".jorgex-stack", "pi-receipt.json");
+  const nativeBin = win32.join(home, "engram.exe");
+  try {
+    if (process.platform === "win32") mkdirSync(dirname(receiptPath), { recursive: true });
+    writeFileSync(nativeBin, "native fixture\n");
+    chmodSync(nativeBin, 0o755);
+    writeFileSync(
+      receiptPath,
+      `${JSON.stringify(createReceipt({
+        source: `npm:jorgex-pi@${manifest.version}`,
+        version: manifest.version,
+        codingAgentDir: agentDir,
+        binary: nativeBin,
+      }))}\n`,
+    );
+    assert.equal(
+      resolveConfiguredEngramBinary({ env: { USERPROFILE: home }, platform: "win32" }),
+      nativeBin,
+      "a native Windows receipt must use USERPROFILE and Pi's default .pi/agent directory",
+    );
+  } finally {
+    windows.restore();
     rmSync(sandbox, { recursive: true, force: true });
   }
 });
@@ -200,4 +301,31 @@ test("one compaction produces one ordered Engram recovery instruction", async ()
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function createReceipt({ source, version, codingAgentDir, binary }) {
+  return {
+    schemaVersion: 1,
+    state: "installed",
+    candidate: {
+      package: { name: "jorgex-pi", source, version },
+      tarball: { bytes: 1, sha256: "a", sha512: "b" },
+      provenance: { commit: "reviewed" },
+    },
+    scope: { kind: "real", codingAgentDir },
+    engram: { binary },
+  };
+}
+
+function writeReceipt(path, receipt) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(receipt)}\n`);
+}
+
+function prepareWindowsFixture(sandbox) {
+  const previousCwd = process.cwd();
+  const home = process.platform === "win32" ? join(sandbox, "home") : "C:\\Users\\JorgeXPiTest";
+  if (process.platform === "win32") mkdirSync(home, { recursive: true });
+  else process.chdir(sandbox);
+  return { home, restore: () => process.chdir(previousCwd) };
 }

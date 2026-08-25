@@ -82,6 +82,52 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     );
     assert.deepEqual(loaded.isolation, { ...isolation, path: isolation.emptyBin, piPackageDirConfigured: false });
 
+    const receiptRoot = join(sandbox, "receipt-engram");
+    const receiptIsolation = {
+      HOME: join(receiptRoot, "home"),
+      PATH: join(receiptRoot, "empty-bin"),
+      PI_CODING_AGENT_DIR: join(receiptRoot, "agent"),
+      PI_SUBAGENTS_TEMP_ROOT: join(receiptRoot, "pi-subagents-temp"),
+      XDG_CACHE_HOME: join(receiptRoot, "xdg-cache"),
+      XDG_CONFIG_HOME: join(receiptRoot, "xdg-config"),
+      XDG_DATA_HOME: join(receiptRoot, "xdg-data"),
+      TEMP: join(receiptRoot, "temp"),
+      TMP: join(receiptRoot, "temp"),
+      TMPDIR: join(receiptRoot, "temp"),
+    };
+    for (const path of Object.values(receiptIsolation)) mkdirSync(path, { recursive: true });
+    const receiptBin = join(receiptRoot, process.platform === "win32" ? "engram.exe" : "engram");
+    writeFileSync(receiptBin, `#!${process.execPath}\n${fakeServer}`);
+    chmodSync(receiptBin, 0o755);
+    const packageManifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    mkdirSync(join(receiptIsolation.HOME, ".jorgex-stack"), { recursive: true });
+    writeFileSync(
+      join(receiptIsolation.HOME, ".jorgex-stack", "pi-receipt.json"),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        state: "installed",
+        candidate: {
+          package: { name: "jorgex-pi", version: packageManifest.version, source: `npm:jorgex-pi@${packageManifest.version}` },
+          tarball: { bytes: 1, sha256: "a", sha512: "b" },
+          provenance: { commit: "reviewed" },
+        },
+        scope: { kind: "real", codingAgentDir: receiptIsolation.PI_CODING_AGENT_DIR },
+        engram: { binary: receiptBin },
+      })}\n`,
+    );
+    const receiptOutput = execFileSync(process.execPath, [join(testDir, "fixtures", "load-bootstrap-with-pi.mjs"), root], {
+      cwd: receiptRoot,
+      env: { ...allowedHostEnv(), ...receiptIsolation },
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const receiptLoaded = JSON.parse(receiptOutput);
+    assert.deepEqual(
+      receiptLoaded.engramToolNames,
+      loaded.engramToolNames,
+      "the real Pi loader must register the reviewed Engram tools from the exact Stack receipt without ENGRAM_BIN",
+    );
+
     const missingRoot = join(sandbox, "missing-engram");
     const missingIsolation = {
       HOME: join(missingRoot, "home"),
