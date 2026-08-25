@@ -212,9 +212,10 @@ test("pull requests execute the reviewed actions in a non-privileged quality gat
   assert.doesNotMatch(workflow, /id-token:\s*write|contents:\s*write|npm publish|secrets\./i);
 
   const actionUses = [...workflow.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
-  assert.equal(actionUses.length, 3, "quality must use exactly the reviewed checkout, pnpm, and Node setup actions");
+  assert.deepEqual(actionUses, [...reviewedActions], "quality must use each reviewed setup action exactly once and in order");
   for (const action of actionUses) assert.match(action, /@[a-f0-9]{40}$/, `quality action must not use a mutable tag: ${action}`);
   for (const action of actionUses) assert.equal(reviewedActions.has(action), true, "quality action is not in the reviewed allowlist: " + action);
+  assert.equal(workflow.match(/node-version:\s*["']?(\d+)["']?/)?.[1], "24", "quality must exercise the actions under Node 24");
 
   for (const command of [
     "pnpm install --frozen-lockfile",
