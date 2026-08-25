@@ -111,6 +111,19 @@ test("JorgeX header is TUI-only, reversible, and leaves the active theme alone",
   assert.doesNotMatch(wide.join("\n"), /_{4,}|\\_{2,}|<\s+\/./, "the rejected hand-drawn underscore eye must not survive");
   assert.equal(typeof header.dispose, "function", "the animated header must own a deterministic dispose hook");
 
+  const previousNoColor = process.env.NO_COLOR;
+  delete process.env.NO_COLOR;
+  try {
+    const themedHeader = headers[0]({ requestRender() {} }, tokenTheme());
+    const themedWide = themedHeader.render(100);
+    assert.ok(themedWide.slice(0, 8).every((line) => line.startsWith("<text>")), "the eye and JorgeX Pi wordmark must use the white text token");
+    assert.ok(themedWide[9].startsWith("<muted>"), "package metadata must retain its muted semantic color");
+    themedHeader.dispose();
+  } finally {
+    if (previousNoColor === undefined) delete process.env.NO_COLOR;
+    else process.env.NO_COLOR = previousNoColor;
+  }
+
   await pi.emitLifecycle("session_start", {}, { mode: "rpc", ui: tuiContext.ui });
   assert.equal(headers.length, 1, "non-TUI sessions must not install terminal branding");
 
@@ -211,6 +224,10 @@ function readJson(path) {
 
 function fakeTheme() {
   return { fg: (_token, text) => text };
+}
+
+function tokenTheme() {
+  return { fg: (token, text) => `<${token}>${text}` };
 }
 
 function delay(ms) {

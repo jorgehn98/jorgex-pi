@@ -36,6 +36,7 @@ El bloque JSON siguiente es machine-readable. Los tests exigen paridad con `them
 
 ## Header
 
+- El ojo y el wordmark `JorgeX Pi` usan siempre el token `text` blanco; el color de acento queda reservado para metadatos y estado.
 - Menos de 40 columnas: ojo compacto y versión de Pi; siempre estático.
 - De 40 a 99: ojo compacto, `JorgeX Pi` y metadatos en una columna.
 - Desde 100: ojo detallado a la izquierda, wordmark a la derecha y metadatos debajo.

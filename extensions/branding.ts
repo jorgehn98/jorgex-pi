@@ -191,6 +191,7 @@ function reveal(line: string, progress: number, row: number, rowCount: number): 
 
 function colorize(line: string, theme: Theme, row: number): string {
   if (process.env.NO_COLOR) return line;
+  if (/[⠀-⣿█]/u.test(line) || line.includes("JorgeX Pi")) return theme.fg("text", line);
   if (line.includes("STATUS   PACKAGE LOADED") || line.includes("STATUS PACKAGE LOADED")) return theme.fg("success", line);
   if (line.includes("PACKAGE") || line.includes("AGENTS") || line.includes("SKILLS") || line.includes("PATH")) return theme.fg("muted", line);
   return theme.fg(row % 3 === 2 ? "customMessageLabel" : "borderAccent", line);
