@@ -18,7 +18,12 @@
     "internal": 3
   },
   "models": {
-    "mode": "inherit-session",
+    "mode": "managed-primary",
+    "primary": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "contextWindow": 872000
+    },
     "tiers": [
       "strong",
       "standard",

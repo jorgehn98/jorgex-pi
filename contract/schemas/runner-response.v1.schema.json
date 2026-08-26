@@ -34,12 +34,20 @@
       "not": { "required": ["error"] }
     },
     {
-      "properties": { "command": { "const": "sync" }, "ok": { "const": true }, "result": { "$ref": "#/$defs/noopResult" } },
+      "properties": { "command": { "const": "sync" }, "ok": { "const": true }, "result": { "$ref": "#/$defs/lifecycleResult" } },
       "not": { "required": ["error"] }
     },
     {
-      "properties": { "command": { "const": "cleanup" }, "ok": { "const": true }, "result": { "$ref": "#/$defs/noopResult" } },
+      "properties": { "command": { "const": "sync" }, "ok": { "const": false }, "result": { "$ref": "#/$defs/lifecycleResult" } },
+      "required": ["error"]
+    },
+    {
+      "properties": { "command": { "const": "cleanup" }, "ok": { "const": true }, "result": { "$ref": "#/$defs/lifecycleResult" } },
       "not": { "required": ["error"] }
+    },
+    {
+      "properties": { "command": { "const": "cleanup" }, "ok": { "const": false }, "result": { "$ref": "#/$defs/lifecycleResult" } },
+      "required": ["error"]
     },
     {
       "properties": { "command": { "const": "unknown" }, "ok": { "const": false }, "result": { "$ref": "#/$defs/emptyResult" } },
@@ -147,20 +155,60 @@
     "modelsResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "tiers"],
+      "required": ["mode", "primary", "tiers"],
       "properties": {
-        "mode": { "const": "inherit-session" },
+        "mode": { "const": "managed-primary" },
+        "primary": { "$ref": "#/$defs/primaryModel" },
         "tiers": { "const": ["strong", "standard", "cheap"] }
       }
     },
-    "noopResult": {
+    "primaryModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "contextWindow"],
+      "properties": {
+        "provider": { "const": "openai-codex" },
+        "model": { "const": "gpt-5.6-sol" },
+        "contextWindow": { "const": 872000 }
+      }
+    },
+    "lifecycleResult": {
       "type": "object",
       "additionalProperties": false,
       "required": ["changed", "actions"],
       "properties": {
-        "changed": { "const": false },
-        "actions": { "type": "array", "maxItems": 0 }
+        "changed": { "type": "boolean" },
+        "actions": {
+          "type": "array",
+          "maxItems": 9,
+          "items": { "$ref": "#/$defs/lifecycleAction" }
+        }
       }
+    },
+    "lifecycleAction": {
+      "enum": [
+        "created:settings.defaultProvider",
+        "created:settings.defaultModel",
+        "created:models.providers.openai-codex.modelOverrides.gpt-5.6-sol.contextWindow",
+        "released:settings.defaultProvider",
+        "released:settings.defaultModel",
+        "released:models.providers.openai-codex.modelOverrides.gpt-5.6-sol.contextWindow",
+        "removed:settings.defaultProvider",
+        "removed:settings.defaultModel",
+        "removed:models.providers.openai-codex.modelOverrides.gpt-5.6-sol.contextWindow",
+        "created:models.providers",
+        "created:models.providers.openai-codex",
+        "created:models.providers.openai-codex.modelOverrides",
+        "created:models.providers.openai-codex.modelOverrides.gpt-5.6-sol",
+        "pruned:models.providers",
+        "pruned:models.providers.openai-codex",
+        "pruned:models.providers.openai-codex.modelOverrides",
+        "pruned:models.providers.openai-codex.modelOverrides.gpt-5.6-sol",
+        "created:settings.json",
+        "created:models.json",
+        "removed:settings.json",
+        "removed:models.json"
+      ]
     },
     "emptyResult": {
       "type": "object",
