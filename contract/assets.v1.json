@@ -14,7 +14,26 @@
     "snapshot/agents",
     "themes"
   ],
-  "managedExternalWrites": [],
+  "managedExternalWrites": [
+    {
+      "owner": "jorgex-pi",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "settings.json",
+      "semantics": "merge a missing or matching partial defaultProvider=openai-codex and defaultModel=gpt-5.6-sol pair; preserve foreign halves; cleanup removes only receipt-owned exact values"
+    },
+    {
+      "owner": "jorgex-pi",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "models.json",
+      "semantics": "merge missing providers.openai-codex.modelOverrides.gpt-5.6-sol.contextWindow=872000; cleanup removes only receipt-owned exact values"
+    },
+    {
+      "owner": "jorgex-pi",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "jorgex-pi/sol-lifecycle.v1.json",
+      "semantics": "record field, container, and file ownership; remove the receipt when empty"
+    }
+  ],
   "preservedExternalState": [
     {
       "owner": "@gotgenes/pi-permission-system",
