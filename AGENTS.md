@@ -34,7 +34,7 @@ La ventana de 24 horas no bloquea desarrollo, PRs, merges, publicación ni valid
 
 Nunca enlazar ambos repos mediante `latest`, un checkout vivo o descargas sin integridad.
 
-Los cambios compartidos recientes adoptados en esta línea son Stack PR #59 (contexto de trabajo de `xreview`, con regeneración de agentes afectados) y Stack PR #62 (hardening de `lean-code` y policy compartida). El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el protocolo Engram solo se activa cuando el bridge gestionado está operativo.
+Los cambios compartidos recientes adoptados en esta línea son Stack PR #59 (contexto de trabajo de `xreview`, con regeneración de agentes afectados) y Stack PR #62 (hardening de `lean-code` y policy compartida). El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
 
 El trabajo cross-repo no se cierra tras fusionar Pi: debe completar los PRs secuenciales requeridos en Stack y verificar el resultado final. De forma simétrica, un cambio de Stack tampoco se da por cerrado si deja pendiente la PR de Pi necesaria para publicar o adoptar su proyección.
 
