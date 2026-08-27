@@ -4,11 +4,11 @@ Paquete Pi-native del harness JorgeX. Este archivo define la relación operativa
 
 ## Relación con JorgeX Stack
 
-`jorgex-pi` se puede instalar directamente mediante el gestor de paquetes de Pi, pero su canal principal es JorgeX Stack. Los repos tienen responsabilidades distintas:
+`jorgex-pi` se puede instalar directamente mediante el gestor de paquetes de Pi, pero su canal gestionado es JorgeX Stack. En `0.4.0`, Pi fija la snapshot de Stack `5353c83c212a8603ab3e3bd5cac54dde4c75037c` mediante parity v2. Los repos tienen responsabilidades distintas:
 
 - **JorgeX Stack** es la fuente canónica de agentes, skills, system prompt y políticas compartidas, además del fleet manager que instala y verifica Pi.
 - **JorgeX Pi** posee la traducción Pi-native, el bootstrap, contratos, companions, assets, runner JSON y lifecycle del paquete.
-- El contenido compartido no se mantiene a mano en ambos sitios: `contract/parity.v1.json` fija el commit canónico de Stack y los generadores producen la snapshot y la proyección Pi.
+- El contenido compartido no se mantiene a mano en ambos sitios: `contract/parity.v2.json` fija el commit canónico de Stack y los generadores producen la snapshot, los fallbacks de política/protocolo y la proyección Pi de `/lean-audit`.
 
 Todo cambio debe incluir una revisión explícita de impacto cruzado:
 
@@ -16,16 +16,27 @@ Todo cambio debe incluir una revisión explícita de impacto cruzado:
 - Si cambian versión, runner, contratos, capacidades, assets, dependencias, ownership, instalación, actualización, doctor o cleanup de Pi, comprobar si Stack debe actualizar su candidato congelado, fixtures, tests y `docs/references/pi-runtime.md`.
 - Un cambio sin impacto en el otro repo debe dejar esa conclusión anotada en el PR; no se asume automáticamente que los repos son independientes.
 
-## Releases coordinadas
+## Canales de instalación y releases coordinadas
+
+La instalación directa y la gestionada no son el mismo canal:
+
+- **Directa:** `pi install npm:jorgex-pi@0.4.0` usa los assets y el prompt empaquetados. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
+- **Gestionada futura (PR02):** Stack deberá proyectar policy, skills, prompt y secciones condicionadas a las rutas de usuario de Pi, y filtrar los duplicados del paquete. Ese PR es posterior, separado y todavía no existe; no documentar su artefacto ni tratarlo como desplegado.
 
 Publicar Pi no actualiza automáticamente JorgeX Stack. La adopción gestionada sigue este orden:
 
 1. Fusionar, verificar y publicar la versión de `jorgex-pi`.
-2. Esperar un mínimo de **24 horas en npm**, salvo excepción explícita de Jorge documentada en el PR.
-3. Abrir un PR separado en Stack que fije la versión exacta y verifique URL, tamaño, SHA-256 y SHA-512 del tarball publicado, incluidos fixture, lifecycle y rollback.
-4. Mantener el candidato anterior en Stack hasta que ese PR se fusione.
+2. Abrir el PR separado y secuencial de adopción en Stack contra el artefacto exacto publicado, verificando URL, tamaño, SHA-256 y SHA-512 del tarball, fixture, lifecycle y rollback.
+3. Esperar las **24 horas en npm** solo antes del consumo real por instalaciones gestionadas, salvo excepción explícita de Jorge documentada en ese PR.
+4. Mantener el candidato anterior en Stack hasta que ese PR se fusione y verifique.
 
-La instalación directa puede seleccionar una versión publicada explícita y queda fuera de la ventana gestionada por Stack. Nunca enlazar ambos repos mediante `latest`, un checkout vivo o descargas sin integridad.
+La ventana de 24 horas no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa puede seleccionar una versión publicada explícita y queda fuera de esa ventana.
+
+Nunca enlazar ambos repos mediante `latest`, un checkout vivo o descargas sin integridad.
+
+Los cambios compartidos recientes adoptados en esta línea son Stack PR #59 (contexto de trabajo de `xreview`, con regeneración de agentes afectados) y Stack PR #62 (hardening de `lean-code` y policy compartida). El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el protocolo Engram solo se activa cuando el bridge gestionado está operativo.
+
+El trabajo cross-repo no se cierra tras fusionar Pi: debe completar los PRs secuenciales requeridos en Stack y verificar el resultado final. De forma simétrica, un cambio de Stack tampoco se da por cerrado si deja pendiente la PR de Pi necesaria para publicar o adoptar su proyección.
 
 ## Desarrollo y verificación
 
