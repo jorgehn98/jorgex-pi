@@ -24,7 +24,7 @@ test("the public package metadata identifies the exact minor release candidate",
   const manifest = readJson(join(root, "package.json"));
   const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
 
-  assert.equal(releaseVersion, "0.3.0", "managed external writes and runner semantics require the planned minor release");
+  assert.equal(releaseVersion, "0.4.0", "parity v2 and direct-install projections require the planned minor release");
   assert.equal(manifest.version, releaseVersion);
   assert.equal(Object.hasOwn(manifest, "private"), false, "the public package must not retain the private flag");
   assert.deepEqual(manifest.repository, { type: "git", url: `${repositoryUrl}.git` });
@@ -168,7 +168,7 @@ test("non-publishing merges leave the existing immutable release tag untouched",
 test("the publish workflow is main-gated, recoverable, OIDC-only, and release-content preserving", () => {
   const workflowPath = join(root, ".github", "workflows", "publish.yml");
   assert.equal(existsSync(workflowPath), true, "the public release workflow must exist");
-  const workflow = readFileSync(workflowPath, "utf8");
+  const workflow = readFileSync(workflowPath, "utf8").replace(/\r\n/g, "\n");
 
   const triggerLines = topLevelBlock(workflow, "on").split(/\r?\n/)
     .map((line) => line.trim().replace(/^-\s*["'](.*)["']$/, "- $1"))
@@ -291,7 +291,7 @@ test("the release guide explains automatic publishing and coordinated Stack adop
   assert.match(readme, /push[^.\n]*main/i, "README must identify main pushes as the automatic release trigger");
   assert.match(readme, /patch[^.\n]*(?:automatic|automático|increment)/i, "README must explain automatic patch bumps");
   assert.match(readme, /minor[^.\n]*major[^.\n]*(?:manual|human)/i, "README must keep minor and major version decisions manual");
-  assert.match(readme, /24 horas[^.\n]*Stack/i, "README must retain the managed Stack maturity window");
+  assert.match(readme, /(?:24[- ]hour|24 horas)[^.\n]*Stack/i, "README must retain the managed Stack maturity window");
 });
 
 function topLevelBlock(yaml, key) {

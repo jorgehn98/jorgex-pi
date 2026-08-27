@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "6d2b98b1728e275bf97920f9712dd4b7928de6a7"
+    "commit": "5353c83c212a8603ab3e3bd5cac54dde4c75037c"
   },
   "agents": [
     {
@@ -16,22 +16,22 @@
       "name": "code-reviewer",
       "sourcePath": "stack/agents/code-reviewer.md",
       "targetPath": "snapshot/agents/code-reviewer.md",
-      "sourceSha256": "a6c87a744fe7974d2d9f72d3ed7dbcaebb8048fe25a8f85137d8e379c2d0f859",
-      "outputSha256": "a6c87a744fe7974d2d9f72d3ed7dbcaebb8048fe25a8f85137d8e379c2d0f859"
+      "sourceSha256": "750f73645357b2bc36ec906b6b7d94781baaf8748cc6911edc1b23829ead90dc",
+      "outputSha256": "750f73645357b2bc36ec906b6b7d94781baaf8748cc6911edc1b23829ead90dc"
     },
     {
       "name": "code-simplifier",
       "sourcePath": "stack/agents/code-simplifier.md",
       "targetPath": "snapshot/agents/code-simplifier.md",
-      "sourceSha256": "29cf25cbb9e88661d08fbe92f9fd96cb06f7e3e252e225c045c33b444c3c565a",
-      "outputSha256": "29cf25cbb9e88661d08fbe92f9fd96cb06f7e3e252e225c045c33b444c3c565a"
+      "sourceSha256": "c74db5358fec3321e91a299012f48295de4f72dd86e48cf2ed50315b2384a5d8",
+      "outputSha256": "c74db5358fec3321e91a299012f48295de4f72dd86e48cf2ed50315b2384a5d8"
     },
     {
       "name": "comment-fixer",
       "sourcePath": "stack/agents/comment-fixer.md",
       "targetPath": "snapshot/agents/comment-fixer.md",
-      "sourceSha256": "9c333488327fa08e692368d91955999bb7e046a9226f6d47828602eee6a8972b",
-      "outputSha256": "9c333488327fa08e692368d91955999bb7e046a9226f6d47828602eee6a8972b"
+      "sourceSha256": "376ab565dd5151b618daf53cb555fc794ceef18a3ca0faa438ce6218f6411a6c",
+      "outputSha256": "376ab565dd5151b618daf53cb555fc794ceef18a3ca0faa438ce6218f6411a6c"
     },
     {
       "name": "docs-maintainer",
@@ -72,22 +72,22 @@
       "name": "security-auditor",
       "sourcePath": "stack/agents/security-auditor.md",
       "targetPath": "snapshot/agents/security-auditor.md",
-      "sourceSha256": "c7ef698e47ee31f5bb55a4d5731446a06df80eb3887678ad648ee9b921e3fb13",
-      "outputSha256": "c7ef698e47ee31f5bb55a4d5731446a06df80eb3887678ad648ee9b921e3fb13"
+      "sourceSha256": "9b88b7117acf20c0ffec630048cc5da2efe2cb84eb2d0f8cb746e153907ec374",
+      "outputSha256": "9b88b7117acf20c0ffec630048cc5da2efe2cb84eb2d0f8cb746e153907ec374"
     },
     {
       "name": "silent-failure-hunter",
       "sourcePath": "stack/agents/silent-failure-hunter.md",
       "targetPath": "snapshot/agents/silent-failure-hunter.md",
-      "sourceSha256": "3a3cc65026bafe1735936c416e2f6e1550ed30477b4bff62637fb0db0e106efd",
-      "outputSha256": "3a3cc65026bafe1735936c416e2f6e1550ed30477b4bff62637fb0db0e106efd"
+      "sourceSha256": "25050097c6ca225c1e36ed0a761927b8ec2af22371730c98d1682a87737cdb87",
+      "outputSha256": "25050097c6ca225c1e36ed0a761927b8ec2af22371730c98d1682a87737cdb87"
     },
     {
       "name": "test-analyzer",
       "sourcePath": "stack/agents/test-analyzer.md",
       "targetPath": "snapshot/agents/test-analyzer.md",
-      "sourceSha256": "5933203d8e98cbe7f185281e3bd98ff91ca9380e75720b4c4e32358b1ecbb4bb",
-      "outputSha256": "5933203d8e98cbe7f185281e3bd98ff91ca9380e75720b4c4e32358b1ecbb4bb"
+      "sourceSha256": "a426f31eacaa4c1c63d7c2a3a50740b4474d6e3f589cf90dc8450ff0bb559bea",
+      "outputSha256": "a426f31eacaa4c1c63d7c2a3a50740b4474d6e3f589cf90dc8450ff0bb559bea"
     },
     {
       "name": "tester",
@@ -107,8 +107,8 @@
       "name": "type-design-analyzer",
       "sourcePath": "stack/agents/type-design-analyzer.md",
       "targetPath": "snapshot/agents/type-design-analyzer.md",
-      "sourceSha256": "c6b46f17855beeeb283825843df0d13a2e71a80d2ebfc40b76939d7897482026",
-      "outputSha256": "c6b46f17855beeeb283825843df0d13a2e71a80d2ebfc40b76939d7897482026"
+      "sourceSha256": "1f69ba19459d0850b486908653aa10e42f51b32d233aa507a6be472f9ec3a381",
+      "outputSha256": "1f69ba19459d0850b486908653aa10e42f51b32d233aa507a6be472f9ec3a381"
     }
   ],
   "skills": [
@@ -175,7 +175,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "f53b9754f8f42647c6b0cee99899146a08d0bd1076322197668ec4d19ad60b94"
+          "sha256": "f904907a5910658fabdd06643b7b44e97de8a0006c6a0657c7292b3cc9617deb"
         }
       ]
     },
@@ -233,7 +233,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "4bd53047ff2d451476a866df1f670c22d2aba5333f1f60999fcc4e9cc879a7a0"
+          "sha256": "cd5984fd9e1a202dbaeecdecee8b6c1f9d85361405967173c8e42760d590f9b0"
         }
       ]
     },
@@ -611,9 +611,68 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "730f3f89b5c5329f395f51d5e0520229bf4b961b0cf061646e5d5fac5a1ee70b"
+          "sha256": "f9461ab87631aaa1eb0b1b4fc1fcd5f4eff493ec377f3dff925e321f3903b634"
         }
       ]
+    }
+  ],
+  "policy": {
+    "sourcePath": "stack/system-prompt/AGENTS.md",
+    "targetPath": "assets/system-prompt/AGENTS.md",
+    "sourceSha256": "5d3cf012f77636e46448d0648bf18b0f8e7871c9043ebe6be75361296963bf35",
+    "outputSha256": "5d3cf012f77636e46448d0648bf18b0f8e7871c9043ebe6be75361296963bf35"
+  },
+  "engramProtocol": {
+    "sourcePath": "stack/system-prompt/engram-protocol.md",
+    "targetPath": "assets/system-prompt/engram-protocol.md",
+    "sourceSha256": "d3902bd33617b7765f24e06356f2d45f66cad50dc7605abdc130ad674825d05f",
+    "outputSha256": "d3902bd33617b7765f24e06356f2d45f66cad50dc7605abdc130ad674825d05f"
+  },
+  "commands": [
+    {
+      "name": "lean-audit",
+      "sourcePath": "stack/commands/lean-audit.md",
+      "targetPath": "prompts/lean-audit.md",
+      "sourceSha256": "6070870fd5683a65e03509fc7c7b67f825bc444c29879d61aae62a86055b9e30",
+      "outputSha256": "cf3ad768f887b8f11f7ffa076b31d43ec2b22c0fbe0116214b35b39ef2552245"
+    }
+  ],
+  "exclusions": [
+    {
+      "kind": "capability-integration",
+      "id": "chrome-devtools-capability-handoff"
+    },
+    {
+      "kind": "capability-integration",
+      "id": "context7-mcp"
+    },
+    {
+      "kind": "capability-integration",
+      "id": "post-pr-shell-hook-translation"
+    },
+    {
+      "kind": "capability-integration",
+      "id": "programmatic-mode-negotiation"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/commands/claude-code/xreview.md"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/commands/opencode/goal.md"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/commands/opencode/xreview.md"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/system-prompt/browser-chrome-devtools.md"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/system-prompt/browser-playwright.md"
     }
   ]
 }

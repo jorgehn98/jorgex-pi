@@ -1,8 +1,8 @@
 {
-  "parityPath": "contract/parity.v1.json",
-  "schemaVersion": 1,
+  "parityPath": "contract/parity.v2.json",
+  "schemaVersion": 2,
   "sourceRepository": "https://github.com/jorgehn98/jorgex-stack",
-  "sourceCommit": "6d2b98b1728e275bf97920f9712dd4b7928de6a7",
+  "sourceCommit": "5353c83c212a8603ab3e3bd5cac54dde4c75037c",
   "agentCount": 15,
   "agentNames": [
     "backend-analyst",
@@ -41,5 +41,58 @@
     "to-prd",
     "work-lifecycle",
     "xreview"
+  ],
+  "policy": {
+    "sourcePath": "stack/system-prompt/AGENTS.md",
+    "targetPath": "assets/system-prompt/AGENTS.md"
+  },
+  "engramProtocol": {
+    "sourcePath": "stack/system-prompt/engram-protocol.md",
+    "targetPath": "assets/system-prompt/engram-protocol.md"
+  },
+  "commands": [
+    {
+      "name": "lean-audit",
+      "sourcePath": "stack/commands/lean-audit.md",
+      "targetPath": "prompts/lean-audit.md"
+    }
+  ],
+  "exclusions": [
+    {
+      "kind": "capability-integration",
+      "id": "chrome-devtools-capability-handoff"
+    },
+    {
+      "kind": "capability-integration",
+      "id": "context7-mcp"
+    },
+    {
+      "kind": "capability-integration",
+      "id": "post-pr-shell-hook-translation"
+    },
+    {
+      "kind": "capability-integration",
+      "id": "programmatic-mode-negotiation"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/commands/claude-code/xreview.md"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/commands/opencode/goal.md"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/commands/opencode/xreview.md"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/system-prompt/browser-chrome-devtools.md"
+    },
+    {
+      "kind": "runtime-specific-overlay",
+      "sourcePath": "stack/system-prompt/browser-playwright.md"
+    }
   ]
 }

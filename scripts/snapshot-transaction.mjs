@@ -1,14 +1,22 @@
 import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-const DESTINATIONS = ["snapshot", "skills", "contract/parity.v1.json"];
+const LEGACY_DESTINATIONS = ["snapshot", "skills", "contract/parity.v1.json"];
+const V2_DESTINATIONS = [
+  "snapshot",
+  "skills",
+  "assets/system-prompt",
+  "prompts",
+  "contract/parity.v2.json",
+  { path: "contract/parity.v1.json", remove: true },
+];
 
 export function commitSnapshot({ root, stage, move = renameSync }) {
   return commitTransaction({
     root,
     stage,
     move,
-    destinations: DESTINATIONS,
+    destinations: existsSync(join(stage, "contract", "parity.v2.json")) ? V2_DESTINATIONS : LEGACY_DESTINATIONS,
     backupName: ".snapshot-backup",
     label: "Snapshot",
     preserveFlag: "preserveSnapshotStage",
@@ -17,17 +25,21 @@ export function commitSnapshot({ root, stage, move = renameSync }) {
 
 export function commitTransaction({ root, stage, move = renameSync, destinations, backupName, label, preserveFlag }) {
   const backupRoot = join(stage, backupName);
-  const states = destinations.map((path) => ({
-    path,
-    source: join(stage, path),
-    target: join(root, path),
-    backup: join(backupRoot, path),
-    backedUp: false,
-    published: false,
-  }));
+  const states = destinations.map((destination) => {
+    const { path, remove = false } = typeof destination === "string" ? { path: destination } : destination;
+    return {
+      path,
+      remove,
+      source: join(stage, path),
+      target: join(root, path),
+      backup: join(backupRoot, path),
+      backedUp: false,
+      published: false,
+    };
+  });
 
   for (const state of states) {
-    if (!existsSync(state.source)) throw new Error(`${label} stage is missing ${state.path}`);
+    if (!state.remove && !existsSync(state.source)) throw new Error(`${label} stage is missing ${state.path}`);
   }
 
   let publicationError;
@@ -38,6 +50,10 @@ export function commitTransaction({ root, stage, move = renameSync, destinations
         mkdirSync(dirname(state.backup), { recursive: true });
         move(state.target, state.backup);
         state.backedUp = true;
+      }
+      if (state.remove) {
+        state.published = true;
+        continue;
       }
       mkdirSync(dirname(state.target), { recursive: true });
       move(state.source, state.target);
@@ -70,7 +86,7 @@ function rollback(states, move) {
   const errors = [];
   for (const state of [...states].reverse()) {
     try {
-      if (state.published) rmSync(state.target, { recursive: true, force: true });
+      if (state.published && !state.remove) rmSync(state.target, { recursive: true, force: true });
       if (state.backedUp) {
         mkdirSync(dirname(state.target), { recursive: true });
         move(state.backup, state.target);

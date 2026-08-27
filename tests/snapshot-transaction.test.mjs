@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 
-test("snapshot publication rolls back every owned root and preserves the original failure", async () => {
+test("snapshot parity v1-to-v2 migration rolls back every owned root and retains v1 when prompt publication fails", async () => {
   const { commitSnapshot } = await import("../scripts/snapshot-transaction.mjs");
   assert.equal(typeof commitSnapshot, "function", "snapshot transaction seam must export commitSnapshot");
 
@@ -18,12 +18,15 @@ test("snapshot publication rolls back every owned root and preserves the origina
   const previous = {
     "snapshot/agents/original.md": "original agent\n",
     "skills/original/SKILL.md": "original skill\n",
-    "contract/parity.v1.json": "{\"generation\":\"original\"}\n",
+    "contract/parity.v1.json": "{\"schemaVersion\":1,\"generation\":\"original\"}\n",
   };
   const replacement = {
     "snapshot/agents/replacement.md": "replacement agent\n",
     "skills/replacement/SKILL.md": "replacement skill\n",
-    "contract/parity.v1.json": "{\"generation\":\"replacement\"}\n",
+    "assets/system-prompt/AGENTS.md": "replacement policy\n",
+    "assets/system-prompt/engram-protocol.md": "replacement protocol\n",
+    "prompts/lean-audit.md": "replacement prompt\n",
+    "contract/parity.v2.json": "{\"schemaVersion\":2,\"generation\":\"replacement\"}\n",
   };
   writeTree(packageRoot, previous);
   writeTree(stage, replacement);
@@ -38,7 +41,7 @@ test("snapshot publication rolls back every owned root and preserves the origina
         root: packageRoot,
         stage,
         move(source, target) {
-          if (!failedOnce && target === join(packageRoot, "skills")) {
+          if (!failedOnce && target === join(packageRoot, "prompts")) {
             failedOnce = true;
             throw injected;
           }
@@ -49,10 +52,10 @@ test("snapshot publication rolls back every owned root and preserves the origina
       caught = error;
     }
 
-    assert.equal(failedOnce, true, "the test must reach a mid-publication failure after snapshot is considered");
+    assert.equal(failedOnce, true, "the test must reach a mid-v2-publication failure after the policy roots are published");
     assert.ok(caught, "the transaction must reject when publication fails");
     assert.ok(errorChain(caught).includes(injected), "the injected publication error must remain observable as the error or its cause");
-    assert.deepEqual(readTree(packageRoot), before, "a failed publication must preserve every prior snapshot, skill, and parity byte");
+    assert.deepEqual(readTree(packageRoot), before, "a failed v1-to-v2 migration must restore every prior byte, including the legacy parity v1 contract");
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
   }

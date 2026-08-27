@@ -8,6 +8,22 @@
   "themes": [
     "./themes/JorgeX.json"
   ],
+  "prompts": [
+    "./prompts/lean-audit.md"
+  ],
+  "directInstall": {
+    "policy": {
+      "path": "assets/system-prompt/AGENTS.md",
+      "marker": "jorgex:system-prompt"
+    },
+    "engramProtocol": {
+      "path": "assets/system-prompt/engram-protocol.md",
+      "marker": "jorgex:engram-protocol"
+    },
+    "browser": {
+      "marker": "jorgex:browser"
+    }
+  },
   "skills": [
     "./skills/agent-delegation",
     "./skills/deploy-to-vercel",

@@ -11,7 +11,27 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const SOURCE_COMMIT = "6d2b98b1728e275bf97920f9712dd4b7928de6a7";
+const SOURCE_COMMIT = "5353c83c212a8603ab3e3bd5cac54dde4c75037c";
+const POLICY_SOURCE_PATH = "stack/system-prompt/AGENTS.md";
+const ENGRAM_PROTOCOL_SOURCE_PATH = "stack/system-prompt/engram-protocol.md";
+const COMMAND_SOURCES = [
+  {
+    name: "lean-audit",
+    sourcePath: "stack/commands/lean-audit.md",
+    targetPath: "prompts/lean-audit.md",
+  },
+];
+const EXCLUSIONS = [
+  { kind: "capability-integration", id: "chrome-devtools-capability-handoff" },
+  { kind: "capability-integration", id: "context7-mcp" },
+  { kind: "capability-integration", id: "post-pr-shell-hook-translation" },
+  { kind: "capability-integration", id: "programmatic-mode-negotiation" },
+  { kind: "runtime-specific-overlay", sourcePath: "stack/commands/claude-code/xreview.md" },
+  { kind: "runtime-specific-overlay", sourcePath: "stack/commands/opencode/goal.md" },
+  { kind: "runtime-specific-overlay", sourcePath: "stack/commands/opencode/xreview.md" },
+  { kind: "runtime-specific-overlay", sourcePath: "stack/system-prompt/browser-chrome-devtools.md" },
+  { kind: "runtime-specific-overlay", sourcePath: "stack/system-prompt/browser-playwright.md" },
+];
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(scriptDir, "..");
 const stackDir = process.env.JORGEX_STACK_DIR;
@@ -35,13 +55,17 @@ try {
   );
   const skillSources = listGitFiles("stack/skills");
   const parity = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     source: { repository: SOURCE_REPOSITORY, commit: SOURCE_COMMIT },
     agents: agentSources.map(generateAgent),
     skills: generateSkills(skillSources),
+    policy: generateCopyProjection(POLICY_SOURCE_PATH, "assets/system-prompt/AGENTS.md"),
+    engramProtocol: generateCopyProjection(ENGRAM_PROTOCOL_SOURCE_PATH, "assets/system-prompt/engram-protocol.md"),
+    commands: COMMAND_SOURCES.map(generateCommand),
+    exclusions: EXCLUSIONS,
   };
 
-  writeJson(join(stage, "contract", "parity.v1.json"), parity);
+  writeJson(join(stage, "contract", "parity.v2.json"), parity);
   commitSnapshot({ root, stage });
 } catch (error) {
   generationError = error;
@@ -97,6 +121,30 @@ function generateSkills(sourcePaths) {
   return [...byName.values()].sort((a, b) => compareCodePoints(a.name, b.name));
 }
 
+function generateCopyProjection(sourcePath, targetPath) {
+  const bytes = gitBytes(sourcePath);
+  writeBytes(join(stage, targetPath), bytes);
+  return {
+    sourcePath,
+    targetPath,
+    sourceSha256: sha256(bytes),
+    outputSha256: sha256(bytes),
+  };
+}
+
+function generateCommand({ name, sourcePath, targetPath }) {
+  const sourceBytes = gitBytes(sourcePath);
+  const outputBytes = translatePromptArguments(sourceBytes, sourcePath);
+  writeBytes(join(stage, targetPath), outputBytes);
+  return {
+    name,
+    sourcePath,
+    targetPath,
+    sourceSha256: sha256(sourceBytes),
+    outputSha256: sha256(outputBytes),
+  };
+}
+
 function listGitFiles(prefix) {
   const output = execFileSync(
     "git",
@@ -128,6 +176,12 @@ function sha256(bytes) {
 
 function normalizeLf(bytes) {
   return Buffer.from(bytes.toString("utf8").replace(/\r\n?/g, "\n"), "utf8");
+}
+
+function translatePromptArguments(bytes, sourcePath) {
+  const source = bytes.toString("utf8");
+  if (!source.includes("{{input}}")) throw new Error(`${sourcePath} must declare the {{input}} placeholder`);
+  return Buffer.from(source.replaceAll("{{input}}", "$ARGUMENTS"), "utf8");
 }
 
 function compareCodePoints(left, right) {
