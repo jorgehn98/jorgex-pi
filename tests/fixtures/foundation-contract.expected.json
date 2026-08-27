@@ -1,5 +1,9 @@
 {
   "contractPath": "contract/jorgex-pi.v1.json",
+  "snapshot": {
+    "contractPath": "contract/parity.v2.json",
+    "schemaVersion": 2
+  },
   "componentInventoryPath": "contract/components.v1.json",
   "assetManifestPath": "contract/assets.v1.json",
   "parityV2": {

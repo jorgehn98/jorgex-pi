@@ -195,7 +195,7 @@ test("the real tarball contains the closed runtime assets and audited dependency
     assert.deepEqual(packedManifest.pi, {
       extensions: bootstrapExpected.extensions,
       skills: bootstrapExpected.skills,
-      prompts: [],
+      prompts: bootstrapExpected.prompts,
       themes: bootstrapExpected.themes,
     });
 

@@ -61,8 +61,32 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
+      - name: Resolve pinned public Stack snapshot
+        id: stack-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const parity = JSON.parse(readFileSync("contract/parity.v2.json", "utf8"));
+            const repository = parity?.source?.repository;
+            const commit = parity?.source?.commit;
+            if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? "")) throw new Error("parity.v2.source.repository must be a public GitHub repository");
+            if (!/^[a-f0-9]{40}$/.test(commit ?? "")) throw new Error("parity.v2.source.commit must be a full lowercase SHA");
+            console.log(`repository=${repository.slice("https://github.com/".length)}`);
+            console.log(`commit=${commit}`);
+          ' >> "$GITHUB_OUTPUT"
+      - name: Check out pinned Stack snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ steps.stack-source.outputs.repository }}
+          ref: ${{ steps.stack-source.outputs.commit }}
+          path: .jorgex-stack
+          fetch-depth: 1
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      - name: Verify cross-repo parity against the pinned Stack snapshot
+        run: JORGEX_STACK_DIR="${{ github.workspace }}/.jorgex-stack" node --test tests/cross-repo/snapshot-parity.test.mjs
       - run: pnpm pack --pack-destination .validation-artifacts
 
   plan:

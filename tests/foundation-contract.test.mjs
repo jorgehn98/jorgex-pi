@@ -45,6 +45,17 @@ test("parity v2 records the direct-install policy, Engram protocol, and portable
   );
 });
 
+test("package prompt activation matches the parity command targets", () => {
+  const manifest = readJson(join(root, "package.json"), "package manifest");
+  const parity = readJson(join(root, expected.parityV2.path), "versioned parity v2 contract");
+
+  assert.deepEqual(
+    manifest.pi?.prompts,
+    parity.commands.map(({ targetPath }) => `./${targetPath}`),
+    "package.json pi.prompts must activate exactly the portable commands recorded by parity v2",
+  );
+});
+
 test("contract v1 describes a pinned, closed compatibility boundary", () => {
   const packageManifest = readJson(join(root, "package.json"), "package manifest");
   const contract = readJson(join(root, expected.contractPath), "versioned jorgex-pi contract");
@@ -64,6 +75,7 @@ test("contract v1 describes a pinned, closed compatibility boundary", () => {
     "the local Pi development dependency must match the tested Pi authority exactly",
   );
   assert.deepEqual(contract.capabilities, expected.capabilities, "contract capabilities must enumerate the activated versioned boundary");
+  assert.deepEqual(contract.snapshot, expected.snapshot, "root contract must link the versioned Stack snapshot it advertises");
   assert.deepEqual(contract.runtimeAgents, expected.runtimeAgents, "root contract must link the runtime-agent contract");
   assert.equal(contract.assets?.manifestVersion, expected.foundationAssetManifest.manifestVersion);
   assert.equal(contract.assets?.manifestPath, expected.assetManifestPath);

@@ -26,6 +26,10 @@
     "tui-branding-v1",
     "managed-primary-model-v1"
   ],
+  "snapshot": {
+    "contractPath": "contract/parity.v2.json",
+    "schemaVersion": 2
+  },
   "assets": {
     "manifestVersion": 1,
     "manifestPath": "contract/assets.v1.json"
