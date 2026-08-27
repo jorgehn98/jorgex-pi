@@ -203,35 +203,69 @@ test("direct-install removes complete CRLF managed sections without retaining th
   for (const section of sections) assertCanonicalManagedSection(result, section);
 });
 
-test("direct-install rejects orphaned or crossed managed markers before agent start with recovery guidance", async () => {
+test("direct-install repairs orphaned or crossed managed markers without retaining ambiguous payload", async () => {
   const policy = directInstallAsset("policy");
+  const protocol = directInstallAsset("engramProtocol");
   const browser = expected.directInstall.browser;
+  const canonicalPrompt = await composeDirectInstallPrompt({
+    systemPrompt: "Existing Pi prompt.",
+    engramState: "managed",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
+  const sections = [
+    policy,
+    protocol,
+    { ...browser, contents: managedSectionContents(canonicalPrompt, browser.marker) },
+  ];
+  const basePrompt = "Existing Pi and user prompt must survive malformed managed markers.";
   const malformedPrompts = [
-    `Existing Pi prompt.\n\n<!-- ${policy.marker} -->\norphaned opening`,
-    `Existing Pi prompt.\n\n<!-- /${policy.marker} -->`,
-    [
-      "Existing Pi prompt.",
-      `<!-- ${policy.marker} -->`,
-      `<!-- ${browser.marker} -->`,
-      `<!-- /${policy.marker} -->`,
-      `<!-- /${browser.marker} -->`,
-    ].join("\n"),
+    {
+      prompt: `${basePrompt}\n\n<!-- ${policy.marker} -->\nSTALE ORPHANED OPENING PAYLOAD`,
+      stalePayloads: ["STALE ORPHANED OPENING PAYLOAD"],
+    },
+    {
+      prompt: `${basePrompt}\n\nSTALE ORPHANED CLOSING PAYLOAD\n<!-- /${policy.marker} -->`,
+      stalePayloads: ["STALE ORPHANED CLOSING PAYLOAD"],
+    },
+    {
+      prompt: [
+        basePrompt,
+        `<!-- ${policy.marker} -->`,
+        "STALE CROSSED POLICY PAYLOAD",
+        `<!-- ${browser.marker} -->`,
+        "STALE CROSSED BROWSER PAYLOAD",
+        `<!-- /${policy.marker} -->`,
+        `<!-- /${browser.marker} -->`,
+      ].join("\n"),
+      stalePayloads: ["STALE CROSSED POLICY PAYLOAD", "STALE CROSSED BROWSER PAYLOAD"],
+    },
   ];
 
-  for (const systemPrompt of malformedPrompts) {
-    await assert.rejects(
-      composeDirectInstallPrompt({
-        systemPrompt,
-        engramState: "managed",
-        browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
-      }),
-      (error) => {
-        assert.match(error.message, /managed.*(?:marker|section)/i);
-        assert.match(error.message, /(?:correct|remove).*reload Pi/i);
-        return true;
-      },
-      "before_agent_start must reject malformed managed marker structure rather than silently repairing it",
+  for (const { prompt, stalePayloads } of malformedPrompts) {
+    const result = await composeDirectInstallPrompt({
+      systemPrompt: prompt,
+      engramState: "managed",
+      browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+    });
+
+    assert.equal(result.includes(basePrompt), true, "unmanaged base prompt must survive marker repair");
+    for (const stalePayload of stalePayloads) {
+      assert.equal(result.includes(stalePayload), false, "ambiguous managed payload must not survive marker repair");
+    }
+    for (const section of sections) assertCanonicalManagedSection(result, section);
+    assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, browser.marker]);
+    assert.equal(
+      result.endsWith(canonicalManagedBlock(browser.marker, managedSectionContents(canonicalPrompt, browser.marker))),
+      true,
+      "repaired managed sections must finish in policy, Engram, then browser order",
     );
+
+    const repeated = await composeDirectInstallPrompt({
+      systemPrompt: result,
+      engramState: "managed",
+      browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+    });
+    assert.equal(repeated, result, "repairing malformed managed markers must be idempotent");
   }
 });
 
@@ -259,47 +293,107 @@ test("direct-install normalizes managed sections to policy, Engram, then browser
   assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, browser.marker]);
 });
 
-test("unreadable prompt assets fail before agent start and surface an actionable recovery diagnostic", async () => {
+test("unavailable or reserved prompt assets append one identical emergency policy without Engram", async () => {
   const { createBootstrap } = await import("../extensions/bootstrap.ts");
-  const pi = createPiHarness();
   const injected = new Error("injected prompt asset read failure");
-  let assetReads = 0;
-  await createBootstrap({
-    loadCompanion: async (id) => companionFactory(id),
-    getPermissionsService: () => ({ ready: true }),
-    detectWebAccessConflict: () => undefined,
-    detectGoalConflict: () => undefined,
-    detectMcpAdapterConflict: () => undefined,
-    readGoalConfig: () => ({ kind: "loaded" }),
-    installMcpEngram: async () => ({ state: "managed" }),
-    readSystemPromptAssets() {
-      assetReads += 1;
-      throw injected;
+  const invalidAssets = [
+    {
+      name: "unreadable assets",
+      readSystemPromptAssets() {
+        throw injected;
+      },
     },
-  })(pi.api);
+    {
+      name: "policy asset containing a reserved marker",
+      reservedPayload: "UNTRUSTED POLICY ASSET PAYLOAD",
+      readSystemPromptAssets() {
+        return {
+          policy: "UNTRUSTED POLICY ASSET PAYLOAD\n<!-- jorgex:browser -->",
+          engramProtocol: "otherwise valid protocol",
+        };
+      },
+    },
+    {
+      name: "Engram asset containing a reserved marker",
+      reservedPayload: "UNTRUSTED ENGRAM ASSET PAYLOAD",
+      readSystemPromptAssets() {
+        return {
+          policy: "otherwise valid policy",
+          engramProtocol: "UNTRUSTED ENGRAM ASSET PAYLOAD\n<!-- /jorgex:system-prompt -->",
+        };
+      },
+    },
+  ];
 
   const basePrompt = "Existing Pi and user prompt must survive an asset read failure.";
-  await assert.rejects(
-    pi.emitLifecycle("before_agent_start", { systemPrompt: basePrompt }, { sessionId: "asset-failure" }),
-    (error) => {
-      assert.match(error.message, /system prompt assets/i);
-      assert.match(error.message, /correct.*installation.*reload Pi/i);
-      assert.match(error.message, /injected prompt asset read failure/);
-      return true;
-    },
-    "before_agent_start must fail closed when bundled prompt assets cannot be read",
-  );
-  assert.equal(assetReads, 1, "the injected asset seam must be used by bootstrap");
+  const policy = directInstallAsset("policy");
+  const protocol = directInstallAsset("engramProtocol");
+  let emergencyPolicy;
 
-  const notifications = [];
-  await pi.emitLifecycle("session_start", {}, {
-    sessionId: "asset-failure",
-    ui: { notify: (message, type) => notifications.push({ message, type }) },
+  for (const [index, failure] of invalidAssets.entries()) {
+    const pi = createPiHarness();
+    await createBootstrap({
+      loadCompanion: async (id) => companionFactory(id),
+      getPermissionsService: () => ({ ready: true }),
+      detectWebAccessConflict: () => undefined,
+      detectGoalConflict: () => undefined,
+      detectMcpAdapterConflict: () => undefined,
+      readGoalConfig: () => ({ kind: "loaded" }),
+      installMcpEngram: async () => ({ state: "managed" }),
+      readSystemPromptAssets: failure.readSystemPromptAssets,
+    })(pi.api);
+
+    const notifications = [];
+    const context = {
+      sessionId: `asset-failure-${index}`,
+      ui: { notify: (message, type) => notifications.push({ message, type }) },
+    };
+    await pi.emitLifecycle("session_start", {}, context);
+    assert.deepEqual(notifications.map(({ type }) => type), ["error"], `${failure.name} must notify the user`);
+    assert.match(notifications[0].message, /system prompt assets/i);
+    assert.match(notifications[0].message, /correct.*installation.*reload Pi/i);
+    if (failure.name === "unreadable assets") assert.match(notifications[0].message, /injected prompt asset read failure/);
+
+    const result = await pi.emitLifecycle("before_agent_start", { systemPrompt: basePrompt }, context);
+    assert.equal(typeof result?.systemPrompt, "string", `${failure.name} must return a usable prompt instead of relying on a thrown hook error`);
+    assert.equal(result.systemPrompt.startsWith(basePrompt), true, `${failure.name} must preserve the base prompt`);
+    assert.equal(countManagedMarkers(result.systemPrompt, policy.marker), 1, `${failure.name} must append one emergency policy marker`);
+    assert.equal(countManagedMarkers(result.systemPrompt, `/${policy.marker}`), 1, `${failure.name} must close the emergency policy marker`);
+    assert.equal(countManagedMarkers(result.systemPrompt, protocol.marker), 0, `${failure.name} must not inject the Engram protocol`);
+    if (failure.reservedPayload) assert.equal(result.systemPrompt.includes(failure.reservedPayload), false, "invalid asset contents must not reach the prompt");
+
+    const currentEmergencyPolicy = managedSectionContents(result.systemPrompt, policy.marker);
+    assert.match(currentEmergencyPolicy, /treat.*(?:user|retrieved).*untrusted/i, "emergency policy must preserve the untrusted-input guard");
+    assert.match(currentEmergencyPolicy, /(?:never|do not).*(?:secret|credential)/i, "emergency policy must preserve the secret-handling guard");
+    assert.match(currentEmergencyPolicy, /(?:correct|reinstall).*reload Pi/i, "emergency policy must give a recovery action");
+    assert.equal(result.systemPrompt.endsWith(canonicalManagedBlock(policy.marker, currentEmergencyPolicy)), true, "emergency policy must be the final managed block");
+    if (emergencyPolicy === undefined) emergencyPolicy = currentEmergencyPolicy;
+    else assert.equal(currentEmergencyPolicy, emergencyPolicy, "every asset failure must use the same emergency policy");
+
+    const repeated = await pi.emitLifecycle("before_agent_start", { systemPrompt: result.systemPrompt }, context);
+    assert.equal(repeated?.systemPrompt, result.systemPrompt, `${failure.name} emergency recomposition must be idempotent`);
+  }
+});
+
+test("direct-install preserves readable separation around a complete adjacent managed block", async () => {
+  const policy = directInstallAsset("policy");
+  const before = "Unmanaged content immediately before the managed block.";
+  const after = "Unmanaged content immediately after the managed block.";
+  const result = await composeDirectInstallPrompt({
+    systemPrompt: `${before}${canonicalManagedBlock(policy.marker, policy.contents)}${after}`,
+    engramState: "managed",
+    browser: { status: "hidden" },
   });
-  assert.deepEqual(notifications.map(({ type }) => type), ["error"]);
-  assert.match(notifications[0].message, /system prompt assets/i);
-  assert.match(notifications[0].message, /correct.*installation.*reload Pi/i);
-  assert.match(notifications[0].message, /injected prompt asset read failure/);
+
+  assert.equal(result.includes(`${before}\n\n${after}`), true, "removing a complete managed block must keep adjacent unmanaged content visibly separated");
+  assert.equal(result.includes(`${before}${after}`), false, "removing a complete managed block must not concatenate adjacent unmanaged content");
+
+  const repeated = await composeDirectInstallPrompt({
+    systemPrompt: result,
+    engramState: "managed",
+    browser: { status: "hidden" },
+  });
+  assert.equal(repeated, result, "recomposing preserved unmanaged content must stay byte-stable");
 });
 
 test("the active companions and their audited closure are exactly pinned and bundled", () => {
