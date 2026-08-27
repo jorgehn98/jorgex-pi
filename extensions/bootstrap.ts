@@ -6,6 +6,11 @@ import { installMcpEngram } from "./mcp-engram.ts";
 const companionIds = ["permission", "ask", "subagents", "web", "goal"];
 const staticCompanionTools = ["ask_user_question", "subagent", "subagent_wait"];
 const webWorkflows = new Set(["none", "summary-review", "auto-summary"]);
+const systemPromptPolicy = readFileSync(new URL("../assets/system-prompt/AGENTS.md", import.meta.url), "utf8");
+const engramProtocol = readFileSync(new URL("../assets/system-prompt/engram-protocol.md", import.meta.url), "utf8");
+const systemPromptMarker = "jorgex:system-prompt";
+const engramProtocolMarker = "jorgex:engram-protocol";
+const browserMarker = "jorgex:browser";
 
 export function createBootstrap({
   loadCompanion = loadDefaultCompanion,
@@ -36,6 +41,7 @@ export function createBootstrap({
     let goalConfigFailureNotified = false;
     let mcpEngramFailure;
     let mcpEngramFailureNotified = false;
+    let mcpEngramState;
     let mcpAdapterConflict;
     let mcpAdapterConflictNotified = false;
     let currentSessionId;
@@ -189,6 +195,7 @@ export function createBootstrap({
     if (!bootstrapFailure && !mcpAdapterConflict) {
       try {
         const resolution = await mcpInstaller(createToolCaptureApi(pi, companionTools));
+        mcpEngramState = resolution.state;
         if (resolution.state !== "managed") {
           mcpEngramFailure = resolution.state === "collision"
             ? "an existing MCP server named engram was preserved; remove the conflict and reload Pi to use the managed bridge"
@@ -215,7 +222,13 @@ export function createBootstrap({
         }
         if (ctx?.hasUI === false) hideCompanionTools(pi, ["ask_user_question"]);
       }
-      return { systemPrompt: appendRouting(agentEvent?.systemPrompt, browserRouting(resolvePlaywrightCapability)) };
+      return {
+        systemPrompt: composeDirectInstallPrompt(
+          agentEvent?.systemPrompt,
+          mcpEngramState === "managed",
+          browserRouting(resolvePlaywrightCapability),
+        ),
+      };
     });
 
     function goalAvailability(ctx) {
@@ -538,6 +551,22 @@ function appendRouting(systemPrompt, routing) {
   return typeof systemPrompt === "string" && systemPrompt.length > 0
     ? `${systemPrompt}\n\n${routing}`
     : routing;
+}
+
+function composeDirectInstallPrompt(systemPrompt, hasManagedEngram, routing) {
+  let prompt = appendManagedSection(systemPrompt, systemPromptMarker, systemPromptPolicy);
+  if (hasManagedEngram) prompt = appendManagedSection(prompt, engramProtocolMarker, engramProtocol);
+  return appendManagedSection(prompt, browserMarker, routing);
+}
+
+function appendManagedSection(prompt, marker, contents) {
+  if (hasManagedMarker(prompt, marker)) return prompt;
+  const lineBreak = contents.endsWith("\n") ? "" : "\n";
+  return appendRouting(prompt, `<!-- ${marker} -->\n${contents}${lineBreak}<!-- /${marker} -->`);
+}
+
+function hasManagedMarker(prompt, marker) {
+  return typeof prompt === "string" && prompt.includes(`<!-- ${marker} -->`);
 }
 
 function normalizeFailure(failure) {
