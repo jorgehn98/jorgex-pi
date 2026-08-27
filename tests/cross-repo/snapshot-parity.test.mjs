@@ -84,10 +84,18 @@ test("replacement refs cannot redirect generation away from raw pinned objects",
   const realReplaceRefsBefore = replaceRefs(stackDir);
   try {
     execFileSync("git", ["clone", "--shared", "--no-checkout", stackDir, replacementStack], { stdio: "pipe" });
-    const replacementCommit = findDifferentAssetCommit(replacementStack);
-    assert.ok(replacementCommit, "Stack history must provide a different reviewed asset commit for the replace-ref regression");
+    const replacementCommit = createAdversarialReplacementCommit(replacementStack);
+    assert.equal(
+      execFileSync("git", ["-C", replacementStack, "ls-tree", "-r", "--name-only", replacementCommit], { encoding: "utf8" }).trim(),
+      "",
+      "the adversarial replacement commit must omit every Stack asset",
+    );
     execFileSync("git", ["-C", replacementStack, "replace", expected.sourceCommit, replacementCommit], { stdio: "pipe" });
     assert.notEqual(replaceRefs(replacementStack), "", "the isolated clone must contain the adversarial replacement ref");
+    assert.throws(
+      () => execFileSync("git", ["-C", replacementStack, "show", `${expected.sourceCommit}:stack/agents`], { stdio: "pipe" }),
+      "ordinary Git object access must follow the adversarial replacement ref",
+    );
 
     runGenerator(packageRoot, replacementStack);
     assert.deepEqual(generatedTree(packageRoot), generatedTree(root), "generation must read the pinned commit's raw objects, ignoring replacement refs");
@@ -186,29 +194,20 @@ function assertCopyProjection(stackDir, modes, projection, projectionExpected, l
   assert.deepEqual(readFileSync(join(root, projection.targetPath)), source, `${label} fallback must remain byte-exact`);
 }
 
-function findDifferentAssetCommit(stackDir) {
-  const pinnedTrees = assetTrees(stackDir, expected.sourceCommit);
-  const commits = execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-list", "--all"], { encoding: "utf8" }).trim().split(/\r?\n/);
-  for (const commit of commits) {
-    if (!commit || commit === expected.sourceCommit) continue;
-    try {
-      const trees = assetTrees(stackDir, commit);
-      if (Object.keys(pinnedTrees).some((key) => trees[key] !== pinnedTrees[key])) return commit;
-    } catch {
-      // Older commits that predate either owned tree are not usable replacement fixtures.
-    }
-  }
-  return undefined;
-}
-
-function assetTrees(stackDir, commit) {
-  return {
-    agents: execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-parse", `${commit}:stack/agents`], { encoding: "utf8" }).trim(),
-    skills: execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-parse", `${commit}:stack/skills`], { encoding: "utf8" }).trim(),
-    policy: execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-parse", `${commit}:stack/system-prompt/AGENTS.md`], { encoding: "utf8" }).trim(),
-    engramProtocol: execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-parse", `${commit}:stack/system-prompt/engram-protocol.md`], { encoding: "utf8" }).trim(),
-    leanAudit: execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-parse", `${commit}:stack/commands/lean-audit.md`], { encoding: "utf8" }).trim(),
-  };
+function createAdversarialReplacementCommit(stackDir) {
+  const emptyTree = execFileSync("git", ["-C", stackDir, "mktree"], { encoding: "utf8", input: "" }).trim();
+  return execFileSync("git", ["-C", stackDir, "commit-tree", emptyTree, "-m", "Adversarial empty replacement"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "JorgeX Pi test",
+      GIT_AUTHOR_EMAIL: "parity-test@example.invalid",
+      GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z",
+      GIT_COMMITTER_NAME: "JorgeX Pi test",
+      GIT_COMMITTER_EMAIL: "parity-test@example.invalid",
+      GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z",
+    },
+  }).trim();
 }
 
 function replaceRefs(stackDir) {

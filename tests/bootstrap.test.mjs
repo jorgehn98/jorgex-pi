@@ -269,6 +269,49 @@ test("direct-install repairs orphaned or crossed managed markers without retaini
   }
 });
 
+test("direct-install preserves legitimate text before an inline orphan closing marker", async () => {
+  const policy = directInstallAsset("policy");
+  const protocol = directInstallAsset("engramProtocol");
+  const browser = expected.directInstall.browser;
+  const canonicalPrompt = await composeDirectInstallPrompt({
+    systemPrompt: "Existing Pi prompt.",
+    engramState: "managed",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
+  const sections = [
+    policy,
+    protocol,
+    { ...browser, contents: managedSectionContents(canonicalPrompt, browser.marker) },
+  ];
+  const userText = "Legitimate user text must survive an inline orphan closing marker.";
+  const result = await composeDirectInstallPrompt({
+    systemPrompt: `Existing Pi prompt.\n\n${userText}<!-- /${policy.marker} -->`,
+    engramState: "managed",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
+
+  assert.equal(result.includes(userText), true, "an inline orphan close must not remove legitimate preceding user text");
+  assert.equal(
+    result.slice(0, result.indexOf(`<!-- ${policy.marker} -->`)).includes(`<!-- /${policy.marker} -->`),
+    false,
+    "the corrupt inline closing marker must be removed from the preserved prompt",
+  );
+  for (const section of sections) assertCanonicalManagedSection(result, section);
+  assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, browser.marker]);
+  assert.equal(
+    result.endsWith(canonicalManagedBlock(browser.marker, managedSectionContents(canonicalPrompt, browser.marker))),
+    true,
+    "canonical managed sections must remain final after recovering an inline orphan close",
+  );
+
+  const repeated = await composeDirectInstallPrompt({
+    systemPrompt: result,
+    engramState: "managed",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
+  assert.equal(repeated, result, "recovering an inline orphan close must be idempotent");
+});
+
 test("direct-install normalizes managed sections to policy, Engram, then browser even when browser already precedes Engram", async () => {
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");

@@ -639,7 +639,7 @@ function managedSectionRanges(prompt) {
       continue;
     }
     if (!activeRegion) {
-      sections.push({ start: orphanPayloadStart(prompt, start, sections.at(-1)?.end ?? 0), end });
+      sections.push({ start: orphanPayloadStart(prompt, start, end, sections.at(-1)?.end ?? 0), end });
       continue;
     }
     const openingIndex = activeRegion.openings.findLastIndex((opening) => opening.marker === marker);
@@ -661,7 +661,12 @@ function managedSectionRanges(prompt) {
   return mergeManagedRanges(sections);
 }
 
-function orphanPayloadStart(prompt, markerStart, floor) {
+function orphanPayloadStart(prompt, markerStart, markerEnd, floor) {
+  const lineStart = prompt.lastIndexOf("\n", markerStart - 1) + 1;
+  const lineEnd = prompt.indexOf("\n", markerEnd);
+  if (/\S/.test(prompt.slice(lineStart, markerStart)) || /\S/.test(prompt.slice(markerEnd, lineEnd === -1 ? prompt.length : lineEnd))) {
+    return markerStart;
+  }
   const prefix = prompt.slice(floor, markerStart);
   const blankLine = /(?:\r?\n){2,}/g;
   let match;
