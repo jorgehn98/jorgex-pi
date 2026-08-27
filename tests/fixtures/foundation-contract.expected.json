@@ -1,7 +1,37 @@
 {
   "contractPath": "contract/jorgex-pi.v1.json",
+  "snapshot": {
+    "contractPath": "contract/parity.v2.json",
+    "schemaVersion": 2
+  },
   "componentInventoryPath": "contract/components.v1.json",
   "assetManifestPath": "contract/assets.v1.json",
+  "parityV2": {
+    "path": "contract/parity.v2.json",
+    "schemaVersion": 2,
+    "ownedTargetCount": 114,
+    "policy": {
+      "sourcePath": "stack/system-prompt/AGENTS.md",
+      "targetPath": "assets/system-prompt/AGENTS.md"
+    },
+    "engramProtocol": {
+      "sourcePath": "stack/system-prompt/engram-protocol.md",
+      "targetPath": "assets/system-prompt/engram-protocol.md"
+    },
+    "commands": [
+      {
+        "name": "lean-audit",
+        "sourcePath": "stack/commands/lean-audit.md",
+        "targetPath": "prompts/lean-audit.md"
+      }
+    ],
+    "requiredPackagePaths": [
+      "contract/parity.v2.json",
+      "assets/system-prompt/AGENTS.md",
+      "assets/system-prompt/engram-protocol.md",
+      "prompts/lean-audit.md"
+    ]
+  },
   "schemaVersion": 1,
   "foundationAssetManifest": {
     "schemaVersion": 1,
@@ -11,10 +41,12 @@
       "DESIGN.md",
       "agents",
       "assets/brand/eye-logo.svg",
-      "contract/parity.v1.json",
+      "assets/system-prompt",
+      "contract/parity.v2.json",
       "contract/runtime-agents.v1.json",
       "extensions",
       "primary",
+      "prompts",
       "skills",
       "snapshot/agents",
       "themes"
@@ -114,7 +146,7 @@
   },
   "capabilities": [
     "foundation-contract-v1",
-    "stack-snapshot-v1",
+    "stack-snapshot-v2",
     "runtime-agents-v1",
     "permission-gated-tools-v1",
     "structured-questions-v1",

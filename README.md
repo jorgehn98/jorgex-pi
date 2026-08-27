@@ -1,22 +1,31 @@
 # JorgeX Pi
 
-`jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle.
+`jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle. Version `0.4.0` carries parity snapshot v2 from Stack commit `5353c83c212a8603ab3e3bd5cac54dde4c75037c`.
 
-The version in `package.json` is the release authority. Minor and major remain manual decisions; after merge, the automatic release workflow preserves and publishes an unpublished selection from `main`. Later publicable changes increment the patch automatically. The current line adds the native opt-in JorgeX theme and TUI-only startup branding while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned JorgeX Stack snapshot.
+The version in `package.json` is the release authority. Minor and major remain manual decisions; after merge, the automatic release workflow preserves and publishes an unpublished selection from `main`. Later publicable changes increment the patch automatically. The current line adds the native opt-in JorgeX theme and TUI-only startup branding, shared system-policy and Engram-protocol assets, and the `/lean-audit` prompt while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned Stack snapshot.
 
 ## Current boundary
 
 | Area | Current state |
 | --- | --- |
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
-| Pi resources | Bootstrap and TUI branding extensions plus 16 reviewed JorgeX skills are active. The `JorgeX` theme is available but opt-in. Prompts remain empty. |
-| Canonical snapshot | 15 agents and 17 complete skill trees (96 files) from JorgeX Stack commit `6d2b98b1728e275bf97920f9712dd4b7928de6a7`. |
+| Pi resources | Bootstrap and TUI branding extensions, 16 reviewed JorgeX skills, the canonical policy/protocol fallbacks, and the `/lean-audit` prompt are active. The `JorgeX` theme is available but opt-in. |
+| Canonical snapshot | 15 agents and 17 complete skill trees (96 files) from JorgeX Stack commit `5353c83c212a8603ab3e3bd5cac54dde4c75037c`. |
 | Runtime agents | 14 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
 | Package assets | `contract/assets.v1.json` owns the packaged extensions, theme, runtime agents, snapshot, skills, and contracts; it declares the bounded Sol lifecycle writes and preserves fourteen companion-owned state paths. |
 | Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, `@narumitw/pi-goal@0.53.0`, and `pi-mcp-adapter@2.27.0`. |
 | Model policy | The managed primary is `openai-codex/gpt-5.6-sol`; Pi session thinking remains user/session policy. The local `contextWindow` request is `872000`. |
 
-The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive.
+The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive. The parity v2 contract records agents, skills, the shared policy, the Engram protocol, the portable command projection, and deliberate exclusions in `contract/parity.v2.json`.
+
+### Direct package versus managed Stack
+
+There are two intentionally distinct channels:
+
+- **Direct package:** `pi install npm:jorgex-pi@0.4.0` installs the reviewed snapshot, policy/protocol assets, and `/lean-audit` prompt bundled in this package. The extension uses those assets as marker-aware fallbacks: it appends each missing `<!-- jorgex:... -->` section without replacing user prompt content or duplicating a section already supplied by Stack.
+- **Future managed Stack adoption (PR02):** a later, separate Stack PR is expected to project the same policy, skills, prompt and capability-conditioned sections into Pi's user-level paths, then filter the packaged duplicates. That PR is not part of this package release and is not assumed to exist; until it is merged, managed installations keep their previously frozen Pi artifact.
+
+The direct fallback is not a second managed installation mechanism. It is a safe package-local fallback for direct installs; Stack-owned markers remain authoritative whenever they are present.
 
 ### Managed Sol model lifecycle
 
@@ -57,9 +66,9 @@ This atomic safety guarantee applies to the tool-call flow. A bundled healthy Go
 
 The bundled `pi-mcp-adapter@2.27.0` receives a programmatic configuration containing exactly one lazy local server named `engram`. JorgeX does not call the adapter's ambient config loader, import host MCP configuration, preserve foreign server definitions inside its adapter instance, or enable HTTP transport. User MCP configuration remains external and untouched; it is neither adopted nor managed by this package.
 
-The managed bridge resolves Engram in a strict order: a validated absolute `ENGRAM_BIN` supplied by the user first; otherwise the exact installed JorgeX Stack receipt at `~/.jorgex-stack/pi-receipt.json`, when it matches this package's name, version, npm source, real Pi agent directory, and an executable binary path. It never searches `PATH`. On Windows it accepts only a native `.exe` path because the wrapper launches the executable without a shell as `engram mcp --tools=agent`. If neither source resolves, the bridge remains unavailable and the adapter is not loaded. The receipt is a discovery hand-off from Stack; Pi does not install, update, remove, or otherwise own the Engram binary or database. The child receives only the documented portability and Engram data/project/timezone environment allowlist—not ambient secrets, proxy variables, Node options, cloud autosync credentials, or npm configuration. Passive capture is excluded, so `mem_capture_passive` is never advertised.
+The managed bridge resolves Engram in a strict order: a validated absolute `ENGRAM_BIN` supplied by the user first; otherwise the exact installed JorgeX Stack receipt at `~/.jorgex-stack/pi-receipt.json`, when it matches this package's name, version, npm source, real Pi agent directory, and an executable binary path. It never searches `PATH`. On Windows it accepts only a native `.exe` path because the wrapper launches the executable without a shell as `engram mcp --tools=agent`. If neither source resolves, the bridge remains unavailable and the adapter is not loaded. A successful resolution is `validated and registered as managed lazy bridge`; that state does not promise an Engram handshake or operational readiness. The full bundled Engram protocol is appended to the direct-install prompt only while Engram state is `managed`; an unavailable or colliding bridge does not advertise the protocol or memory tools. The receipt is a discovery hand-off from Stack; Pi does not install, update, remove, or otherwise own the Engram binary or database. The child receives only the documented portability and Engram data/project/timezone environment allowlist—not ambient secrets, proxy variables, Node options, cloud autosync credentials, or npm configuration. Passive capture is excluded, so `mem_capture_passive` is never advertised.
 
-With a healthy managed bridge, the main Pi session receives the 17 reviewed direct Engram tools. The `engram` subagent is deliberately narrower and read-only: it exposes only `mem_search`, `mem_context`, `mem_get_observation`, `mem_suggest_topic_key`, `mem_current_project`, and `mem_doctor`; its contract retains `requiredCapability: engram-runtime-tools-v1` so unavailable runtime state stays machine-readable. Save, update, session-write, review, pin, and unpin operations remain unavailable to that specialist.
+When Engram state is `managed`, the main Pi session receives the 17 reviewed direct Engram tools. The `engram` subagent is deliberately narrower and read-only: it exposes only `mem_search`, `mem_context`, `mem_get_observation`, `mem_suggest_topic_key`, `mem_current_project`, and `mem_doctor`; its contract retains `requiredCapability: engram-runtime-tools-v1` so unavailable runtime state stays machine-readable. Save, update, session-write, review, pin, and unpin operations remain unavailable to that specialist.
 
 The packaged adapter closure includes the audited native keyring bindings for macOS arm64/x64; Linux armhf, arm64, riscv64, and x64 variants covered by the contract; and Windows arm64/ia32/x64. FreeBSD is intentionally outside the tested bundle. Runtime compatibility remains limited to Pi `0.84.2`; the bindings expand platform packaging, not the claimed Pi-version range.
 
@@ -114,13 +123,13 @@ Tests use isolated temporary homes and fake executable Engram paths. They verify
 
 ### Refresh and verify the canonical snapshot
 
-Regenerate only from a local JorgeX Stack checkout that contains the pinned commit:
+Regenerate only from a local JorgeX Stack checkout that contains the pinned commit `5353c83c212a8603ab3e3bd5cac54dde4c75037c`:
 
 ```bash
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" pnpm snapshot:generate
 ```
 
-The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, and `contract/parity.v1.json` deterministically and publishes the three together as one transaction. If publication fails, the prior generation is restored. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
+The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
 
 Run the explicit cross-repository parity check against the same checkout:
 
@@ -128,7 +137,7 @@ Run the explicit cross-repository parity check against the same checkout:
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" node --test tests/cross-repo/snapshot-parity.test.mjs
 ```
 
-Skills are preserved byte-for-byte. Agent sources are normalized to LF for portable output, so the parity manifest records separate source and output SHA-256 hashes. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical skills; the hashes in `contract/parity.v1.json` are the parity authority.
+Skills are preserved byte-for-byte. Agent sources are normalized to LF for portable output, so `contract/parity.v2.json` records separate source and output SHA-256 hashes for agents; copied policy/protocol files and the translated prompt also record their source and output paths and hashes. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical skills; the v2 manifest is the parity authority.
 
 Regenerate the Pi-native agent projection after refreshing the snapshot:
 
@@ -150,7 +159,14 @@ Before merging anything that may publish, configure the npm trusted publisher in
 
 A push to `main` starts the release workflow. If the version declared in `package.json` is absent from npm, it is published unchanged; this preserves a manual minor or major decision. If it already exists and the push changes packaged runtime content, the workflow selects the next free patch, updates `package.json` and the root contract together, verifies the resulting commit, publishes its exact `pnpm pack` tarball with npm provenance through OIDC, and creates the immutable `v<version>` tag. Tests, work state, release scripts, workflow-only changes and operational `AGENTS.md` edits do not create another patch once the declared version is published. `workflow_dispatch` can recover an unpublished version or missing tag only from a verified SHA belonging to `main`.
 
-Publication does not update JorgeX Stack. After at least **24 horas** on npm, Stack may adopt the Pi release in a separate PR with the exact tarball URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate; an earlier adoption requires Jorge's explicit exception in that PR. Until it merges, managed installations continue using the previous frozen Pi version.
+Publication does not update JorgeX Stack. The 24-hour npm maturity window applies only to real consumption by managed Stack installations: Pi development, sequential PRs, merges, publication, and validation of the future Stack adoption may proceed immediately after this package is published. A later Stack PR may adopt the exact artifact with its tarball URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate; an earlier managed consumption requires Jorge's explicit exception. Until that adoption PR is merged, managed installations continue using the previous frozen Pi version.
+
+### Recent Stack content adopted in 0.4.0
+
+- Stack PR #59 updated the shared `xreview` work-context policy and the affected canonical agents, including `orchestrator` and `xreview`.
+- Stack PR #62 hardened `lean-code`; this release regenerates that skill and bundles Stack's shared policy projection, including the canonical `/lean-audit` command.
+
+These changes are represented by parity v2 and the pinned Stack commit above; they do not imply that the future managed Stack adoption PR has already been created or merged.
 
 ## Paths, state, and ownership
 

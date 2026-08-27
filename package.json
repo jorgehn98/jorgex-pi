@@ -1,6 +1,6 @@
 {
   "name": "jorgex-pi",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Pi-native runtime package for the JorgeX harness.",
   "license": "MIT",
   "repository": {
@@ -31,6 +31,7 @@
     "contract",
     "extensions",
     "primary",
+    "prompts",
     "skills",
     "snapshot/agents",
     "themes",
@@ -67,7 +68,9 @@
       "./skills/work-lifecycle",
       "./skills/xreview"
     ],
-    "prompts": [],
+    "prompts": [
+      "./prompts/lean-audit.md"
+    ],
     "themes": [
       "./themes/JorgeX.json"
     ]

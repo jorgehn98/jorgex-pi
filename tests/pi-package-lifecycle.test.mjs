@@ -141,7 +141,7 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.deepEqual(installedManifest.pi, {
       extensions: bootstrapExpected.extensions,
       skills: bootstrapExpected.skills,
-      prompts: [],
+      prompts: bootstrapExpected.prompts,
       themes: bootstrapExpected.themes,
     });
     const firstPackageDigest = digestTree(installedPackageDir);

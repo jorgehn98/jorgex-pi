@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
@@ -21,7 +21,7 @@ test("package manifest exposes the activated JorgeX resources", () => {
   const expectedResources = {
     extensions: bootstrapExpected.extensions,
     skills: bootstrapExpected.skills,
-    prompts: [],
+    prompts: bootstrapExpected.prompts,
     themes: bootstrapExpected.themes,
   };
   for (const kind of expected.requiredPiResourceKinds) {
@@ -29,6 +29,31 @@ test("package manifest exposes the activated JorgeX resources", () => {
     assert.deepEqual(manifest.pi[kind], expectedResources[kind], `package.json pi.${kind} must match the T09 activation boundary`);
   }
   assert.ok(Array.isArray(manifest.files) && manifest.files.includes("contract"), "package.json files must publish the contract directory");
+  assert.ok(manifest.files.includes("assets"), "package.json files must publish direct-install system-prompt assets");
+  assert.ok(manifest.files.includes("prompts"), "package.json files must publish the active portable prompt");
+});
+
+test("parity v2 records the direct-install policy, Engram protocol, and portable lean-audit projection", () => {
+  const parity = readJson(join(root, expected.parityV2.path), "versioned parity v2 contract");
+  assert.equal(parity.schemaVersion, expected.parityV2.schemaVersion);
+  assert.deepEqual(projectionShape(parity.policy), expected.parityV2.policy, "parity v2 must record the system policy projection");
+  assert.deepEqual(projectionShape(parity.engramProtocol), expected.parityV2.engramProtocol, "parity v2 must record the Engram protocol projection");
+  assert.deepEqual(
+    parity.commands?.map((command) => ({ name: command.name, ...projectionShape(command) })),
+    expected.parityV2.commands,
+    "parity v2 must record the portable lean-audit projection",
+  );
+});
+
+test("package prompt activation matches the parity command targets", () => {
+  const manifest = readJson(join(root, "package.json"), "package manifest");
+  const parity = readJson(join(root, expected.parityV2.path), "versioned parity v2 contract");
+
+  assert.deepEqual(
+    manifest.pi?.prompts,
+    parity.commands.map(({ targetPath }) => `./${targetPath}`),
+    "package.json pi.prompts must activate exactly the portable commands recorded by parity v2",
+  );
 });
 
 test("contract v1 describes a pinned, closed compatibility boundary", () => {
@@ -50,6 +75,7 @@ test("contract v1 describes a pinned, closed compatibility boundary", () => {
     "the local Pi development dependency must match the tested Pi authority exactly",
   );
   assert.deepEqual(contract.capabilities, expected.capabilities, "contract capabilities must enumerate the activated versioned boundary");
+  assert.deepEqual(contract.snapshot, expected.snapshot, "root contract must link the versioned Stack snapshot it advertises");
   assert.deepEqual(contract.runtimeAgents, expected.runtimeAgents, "root contract must link the runtime-agent contract");
   assert.equal(contract.assets?.manifestVersion, expected.foundationAssetManifest.manifestVersion);
   assert.equal(contract.assets?.manifestPath, expected.assetManifestPath);
@@ -89,7 +115,8 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
   readJson(join(root, "package.json"), "package manifest required before pnpm pack");
   const packDir = mkdtempSync(join(tmpdir(), "jorgex-pi-pack-"));
   try {
-    execFileSync("pnpm", ["pack", "--pack-destination", packDir], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const packageManager = resolvePnpm();
+    execFileSync(packageManager.command, [...packageManager.args, "pack", "--pack-destination", packDir], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     const packedFiles = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
     assert.equal(packedFiles.length, 1, "pnpm pack must produce exactly one tarball");
     const tarball = join(packDir, packedFiles[0]);
@@ -98,13 +125,15 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     const entries = new Set(archive.keys());
     const packageManifest = readPackedJson(archive, "package/package.json");
     const contract = readPackedJson(archive, `package/${expected.contractPath}`);
-    const parity = readPackedJson(archive, "package/contract/parity.v1.json");
+    assert.equal(entries.has("package/contract/parity.v1.json"), false, "packed artifact must retire the legacy parity v1 contract");
+    const parity = readPackedJson(archive, `package/${expected.parityV2.path}`);
     readPackedJson(archive, `package/${expected.componentInventoryPath}`);
     const requiredPaths = new Set([
       "package/package.json",
       `package/${expected.contractPath}`,
       `package/${expected.componentInventoryPath}`,
       `package/${expected.assetManifestPath}`,
+      ...expected.parityV2.requiredPackagePaths.map((path) => `package/${normalizePackagePath(path)}`),
       ...expected.foundationAssetManifest.resources.map((path) => `package/${normalizePackagePath(path)}`),
       ...expected.requiredPiResourceKinds.flatMap((kind) =>
         (packageManifest.pi[kind] ?? []).map((path) => `package/${normalizePackagePath(path)}`),
@@ -115,7 +144,7 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     for (const path of expected.forbiddenTarPaths) {
       assert.equal(entries.has(path), false, `packed artifact must exclude build-only path ${path}`);
     }
-    const allowedRoots = new Set(["agents", "assets", "bin", "contract", "extensions", "node_modules", "primary", "skills", "themes"]);
+    const allowedRoots = new Set(["agents", "assets", "bin", "contract", "extensions", "node_modules", "primary", "prompts", "skills", "themes"]);
     const allowedFiles = new Set(["package.json", "DESIGN.md", "LICENSE", "README.md"]);
     for (const path of entries) {
       const relativePath = path.replace(/^package\//, "");
@@ -156,10 +185,18 @@ function assertPackedParityTargets(archive, entries, parity) {
   for (const skill of parity.skills) {
     for (const file of skill.files) expectedTargets.set(`package/${skill.targetPath}/${file.path}`, file.sha256);
   }
-  assert.equal(expectedTargets.size, 111, "the packed snapshot must contain the approved 15 agents and 96 skill files");
+  expectedTargets.set(`package/${parity.policy.targetPath}`, parity.policy.outputSha256);
+  expectedTargets.set(`package/${parity.engramProtocol.targetPath}`, parity.engramProtocol.outputSha256);
+  for (const command of parity.commands) expectedTargets.set(`package/${command.targetPath}`, command.outputSha256);
+  assert.equal(expectedTargets.size, expected.parityV2.ownedTargetCount, "the packed snapshot must contain every parity v2 target");
 
   const actualOwnedFiles = [...entries]
-    .filter((path) => !path.endsWith("/") && (path.startsWith("package/snapshot/agents/") || path.startsWith("package/skills/")))
+    .filter((path) => !path.endsWith("/") && (
+      path.startsWith("package/snapshot/agents/")
+      || path.startsWith("package/skills/")
+      || path.startsWith("package/assets/system-prompt/")
+      || path.startsWith("package/prompts/")
+    ))
     .sort();
   assert.deepEqual(actualOwnedFiles, [...expectedTargets.keys()].sort(), "packed owned roots must contain every parity target and no untracked extras");
 
@@ -262,4 +299,18 @@ function assertTarPath(entries, expectedPath) {
 
 function normalizePackagePath(path) {
   return path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
+}
+
+function projectionShape(projection) {
+  return {
+    sourcePath: projection?.sourcePath,
+    targetPath: projection?.targetPath,
+  };
+}
+
+function resolvePnpm() {
+  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
+  return existsSync(corepackEntry)
+    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
+    : { command: "pnpm", args: [] };
 }

@@ -155,10 +155,13 @@ test("routing always explains Web Access and reveals Playwright only from an inj
     loadCompanion: async (id) => companionFactory(id, { initOrder: [], upstreamCalls: [] }),
     getPermissionsService: () => ({ ready: true }),
   })(hiddenPi.api);
-  const hiddenPrompt = await hiddenPi.beforeAgentPrompt({ sessionId: "hidden" }, "Existing JorgeX system policy");
-  assert.match(hiddenPrompt, /^Existing JorgeX system policy\n\nUse Web Access/, "routing must append to, not replace, the existing system prompt chain");
-  for (const phrase of expected.routing.webAccess) assert.match(hiddenPrompt, new RegExp(escapeRegExp(phrase), "i"));
-  assert.doesNotMatch(hiddenPrompt, /playwright/i, "PATH discovery must not advertise an unowned Playwright capability");
+  const basePrompt = "Existing JorgeX system policy";
+  const hiddenPrompt = await hiddenPi.beforeAgentPrompt({ sessionId: "hidden" }, basePrompt);
+  assert.ok(hiddenPrompt.startsWith(`${basePrompt}\n\n`), "routing must preserve and append to the existing system prompt chain");
+  extractManagedBlock(hiddenPrompt, "jorgex:system-prompt");
+  const hiddenBrowserBlock = extractManagedBlock(hiddenPrompt, "jorgex:browser");
+  for (const phrase of expected.routing.webAccess) assert.match(hiddenBrowserBlock, new RegExp(escapeRegExp(phrase), "i"));
+  assert.doesNotMatch(hiddenBrowserBlock, /playwright/i, "PATH discovery must not advertise an unowned Playwright capability");
 
   const readyPi = createPiHarness();
   await createBootstrap({
@@ -167,17 +170,19 @@ test("routing always explains Web Access and reveals Playwright only from an inj
     resolvePlaywrightCapability: () => ({ status: "ready", commandPath: "/managed/bin/playwright-cli" }),
   })(readyPi.api);
   const readyPrompt = await readyPi.beforeAgentPrompt({ sessionId: "ready" });
-  for (const phrase of expected.routing.webAccess) assert.match(readyPrompt, new RegExp(escapeRegExp(phrase), "i"));
-  for (const phrase of expected.routing.playwright) assert.match(readyPrompt, new RegExp(escapeRegExp(phrase), "i"));
-  assert.match(readyPrompt, /\/managed\/bin\/playwright-cli/);
-  assert.match(readyPrompt, /only when (?:the )?task requires browser interaction/i, "Playwright routing must establish necessity before use");
+  extractManagedBlock(readyPrompt, "jorgex:system-prompt");
+  const readyBrowserBlock = extractManagedBlock(readyPrompt, "jorgex:browser");
+  for (const phrase of expected.routing.webAccess) assert.match(readyBrowserBlock, new RegExp(escapeRegExp(phrase), "i"));
+  for (const phrase of expected.routing.playwright) assert.match(readyBrowserBlock, new RegExp(escapeRegExp(phrase), "i"));
+  assert.match(readyBrowserBlock, /\/managed\/bin\/playwright-cli/);
+  assert.match(readyBrowserBlock, /only when (?:the )?task requires browser interaction/i, "Playwright routing must establish necessity before use");
   assert.match(
-    readyPrompt,
+    readyBrowserBlock,
     /explicit (?:user )?approval[^.]*browser profiles[^.]*authenticated sessions[^.]*cookies[^.]*stored (?:browser )?(?:state|storage)/i,
     "Playwright routing must require explicit approval before accessing browser identity or stored state",
   );
   assert.match(
-    readyPrompt,
+    readyBrowserBlock,
     /(?:page )?DOM[^.]*downloads[^.]*dialogs[^.]*untrusted/i,
     "Playwright routing must classify browser-controlled DOM, downloads, and dialogs as untrusted",
   );
@@ -265,4 +270,19 @@ function readJson(path) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractManagedBlock(prompt, marker) {
+  const opening = `<!-- ${marker} -->`;
+  const closing = `<!-- /${marker} -->`;
+  assert.equal(countOccurrences(prompt, opening), 1, `${marker} must have exactly one opening marker`);
+  assert.equal(countOccurrences(prompt, closing), 1, `${marker} must have exactly one closing marker`);
+  const contentStart = prompt.indexOf(opening) + opening.length;
+  const contentEnd = prompt.indexOf(closing, contentStart);
+  assert.ok(contentEnd >= contentStart, `${marker} must close after its opening marker`);
+  return prompt.slice(contentStart, contentEnd);
+}
+
+function countOccurrences(value, needle) {
+  return value.split(needle).length - 1;
 }

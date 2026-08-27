@@ -15,7 +15,7 @@ test("generated outputs match raw pinned objects with the documented byte policy
   const stackDir = requireStackDir();
   execFileSync("git", ["-C", stackDir, "cat-file", "-e", `${expected.sourceCommit}^{commit}`], { stdio: "pipe" });
   const parity = JSON.parse(readFileSync(join(root, expected.parityPath), "utf8"));
-  const modes = rawSourceModes(stackDir);
+  const modes = rawSourceModes(stackDir, trackedSourcePaths(parity));
   assert.deepEqual(parity.source, { repository: expected.sourceRepository, commit: expected.sourceCommit });
 
   for (const agent of parity.agents) {
@@ -35,6 +35,28 @@ test("generated outputs match raw pinned objects with the documented byte policy
       assert.equal(file.sha256, sha256(source), `${sourcePath} hash must match the raw pinned object`);
       assert.deepEqual(readFileSync(join(root, skill.targetPath, file.path)), source, `${skill.targetPath}/${file.path} must remain byte-exact`);
     }
+  }
+
+  assertCopyProjection(stackDir, modes, parity.policy, expected.policy, "system policy");
+  assertCopyProjection(stackDir, modes, parity.engramProtocol, expected.engramProtocol, "Engram protocol");
+  assert.deepEqual(parity.exclusions, expected.exclusions, "parity v2 must retain every deliberate exclusion");
+  for (const exclusion of parity.exclusions.filter(({ kind }) => kind === "runtime-specific-overlay")) {
+    assert.equal(modes.get(exclusion.sourcePath), "100644", `${exclusion.sourcePath} must remain an explicit regular-file exclusion`);
+  }
+
+  assert.ok(Array.isArray(parity.commands), "parity commands must be an array");
+  assert.equal(parity.commands.length, expected.commands.length, "parity commands must be complete");
+  for (const [index, command] of parity.commands.entries()) {
+    const commandExpected = expected.commands[index];
+    assert.equal(command.name, commandExpected.name);
+    assert.equal(command.sourcePath, commandExpected.sourcePath);
+    assert.equal(command.targetPath, commandExpected.targetPath);
+    const source = rawGitBlob(stackDir, command.sourcePath);
+    const output = translatePromptArguments(source);
+    assert.equal(modes.get(command.sourcePath), "100644", `${command.sourcePath} must be a regular non-executable source file`);
+    assert.equal(command.sourceSha256, sha256(source), `${command.sourcePath} source hash must match the raw pinned object`);
+    assert.equal(command.outputSha256, sha256(output), `${command.targetPath} output hash must describe Pi argument syntax`);
+    assert.deepEqual(readFileSync(join(root, command.targetPath)), output, `${command.targetPath} must translate {{input}} to $ARGUMENTS`);
   }
 });
 
@@ -62,10 +84,18 @@ test("replacement refs cannot redirect generation away from raw pinned objects",
   const realReplaceRefsBefore = replaceRefs(stackDir);
   try {
     execFileSync("git", ["clone", "--shared", "--no-checkout", stackDir, replacementStack], { stdio: "pipe" });
-    const replacementCommit = findDifferentAssetCommit(replacementStack);
-    assert.ok(replacementCommit, "Stack history must provide a different reviewed asset commit for the replace-ref regression");
+    const replacementCommit = createAdversarialReplacementCommit(replacementStack);
+    assert.equal(
+      execFileSync("git", ["-C", replacementStack, "ls-tree", "-r", "--name-only", replacementCommit], { encoding: "utf8" }).trim(),
+      "",
+      "the adversarial replacement commit must omit every Stack asset",
+    );
     execFileSync("git", ["-C", replacementStack, "replace", expected.sourceCommit, replacementCommit], { stdio: "pipe" });
     assert.notEqual(replaceRefs(replacementStack), "", "the isolated clone must contain the adversarial replacement ref");
+    assert.throws(
+      () => execFileSync("git", ["-C", replacementStack, "show", `${expected.sourceCommit}:stack/agents`], { stdio: "pipe" }),
+      "ordinary Git object access must follow the adversarial replacement ref",
+    );
 
     runGenerator(packageRoot, replacementStack);
     assert.deepEqual(generatedTree(packageRoot), generatedTree(root), "generation must read the pinned commit's raw objects, ignoring replacement refs");
@@ -100,7 +130,10 @@ function generatedTree(packageRoot) {
   const files = [
     ...listFiles(join(packageRoot, "snapshot")),
     ...listFiles(join(packageRoot, "skills")),
-    join(packageRoot, "contract", "parity.v1.json"),
+    join(packageRoot, expected.policy.targetPath),
+    join(packageRoot, expected.engramProtocol.targetPath),
+    ...expected.commands.map(({ targetPath }) => join(packageRoot, targetPath)),
+    join(packageRoot, expected.parityPath),
   ];
   return Object.fromEntries(
     files
@@ -126,10 +159,10 @@ function rawGitBlob(stackDir, sourcePath) {
   return execFileSync("git", ["--no-replace-objects", "-C", stackDir, "show", `${expected.sourceCommit}:${sourcePath}`]);
 }
 
-function rawSourceModes(stackDir) {
+function rawSourceModes(stackDir, sourcePaths) {
   const output = execFileSync(
     "git",
-    ["--no-replace-objects", "-C", stackDir, "ls-tree", "-r", "-z", expected.sourceCommit, "--", "stack/agents", "stack/skills"],
+    ["--no-replace-objects", "-C", stackDir, "ls-tree", "-r", "-z", expected.sourceCommit, "--", ...sourcePaths],
   ).toString("utf8");
   const modes = new Map();
   for (const record of output.split("\0").filter(Boolean)) {
@@ -140,26 +173,41 @@ function rawSourceModes(stackDir) {
   return modes;
 }
 
-function findDifferentAssetCommit(stackDir) {
-  const pinnedTrees = assetTrees(stackDir, expected.sourceCommit);
-  const commits = execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-list", "--all"], { encoding: "utf8" }).trim().split(/\r?\n/);
-  for (const commit of commits) {
-    if (!commit || commit === expected.sourceCommit) continue;
-    try {
-      const trees = assetTrees(stackDir, commit);
-      if (trees.agents !== pinnedTrees.agents || trees.skills !== pinnedTrees.skills) return commit;
-    } catch {
-      // Older commits that predate either owned tree are not usable replacement fixtures.
-    }
-  }
-  return undefined;
+function trackedSourcePaths(parity) {
+  return [
+    ...parity.agents.map(({ sourcePath }) => sourcePath),
+    ...parity.skills.map(({ sourcePath }) => sourcePath),
+    parity.policy.sourcePath,
+    parity.engramProtocol.sourcePath,
+    ...parity.commands.map(({ sourcePath }) => sourcePath),
+    ...parity.exclusions.filter(({ kind }) => kind === "runtime-specific-overlay").map(({ sourcePath }) => sourcePath),
+  ];
 }
 
-function assetTrees(stackDir, commit) {
-  return {
-    agents: execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-parse", `${commit}:stack/agents`], { encoding: "utf8" }).trim(),
-    skills: execFileSync("git", ["--no-replace-objects", "-C", stackDir, "rev-parse", `${commit}:stack/skills`], { encoding: "utf8" }).trim(),
-  };
+function assertCopyProjection(stackDir, modes, projection, projectionExpected, label) {
+  assert.equal(projection.sourcePath, projectionExpected.sourcePath);
+  assert.equal(projection.targetPath, projectionExpected.targetPath);
+  const source = rawGitBlob(stackDir, projection.sourcePath);
+  assert.equal(modes.get(projection.sourcePath), "100644", `${projection.sourcePath} must be a regular non-executable source file`);
+  assert.equal(projection.sourceSha256, sha256(source), `${projection.sourcePath} source hash must match the raw pinned object`);
+  assert.equal(projection.outputSha256, sha256(source), `${projection.targetPath} output hash must describe byte-exact source`);
+  assert.deepEqual(readFileSync(join(root, projection.targetPath)), source, `${label} fallback must remain byte-exact`);
+}
+
+function createAdversarialReplacementCommit(stackDir) {
+  const emptyTree = execFileSync("git", ["-C", stackDir, "mktree"], { encoding: "utf8", input: "" }).trim();
+  return execFileSync("git", ["-C", stackDir, "commit-tree", emptyTree, "-m", "Adversarial empty replacement"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "JorgeX Pi test",
+      GIT_AUTHOR_EMAIL: "parity-test@example.invalid",
+      GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z",
+      GIT_COMMITTER_NAME: "JorgeX Pi test",
+      GIT_COMMITTER_EMAIL: "parity-test@example.invalid",
+      GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z",
+    },
+  }).trim();
 }
 
 function replaceRefs(stackDir) {
@@ -168,6 +216,12 @@ function replaceRefs(stackDir) {
 
 function normalizeLf(bytes) {
   return Buffer.from(bytes.toString("utf8").replace(/\r\n?/g, "\n"), "utf8");
+}
+
+function translatePromptArguments(source) {
+  const text = source.toString("utf8");
+  assert.match(text, /\{\{input\}\}/, "canonical command must declare its portable input placeholder");
+  return Buffer.from(text.replaceAll("{{input}}", "$ARGUMENTS"), "utf8");
 }
 
 function sha256(bytes) {

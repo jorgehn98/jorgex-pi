@@ -24,7 +24,7 @@ test("the public package metadata identifies the exact minor release candidate",
   const manifest = readJson(join(root, "package.json"));
   const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
 
-  assert.equal(releaseVersion, "0.3.0", "managed external writes and runner semantics require the planned minor release");
+  assert.equal(releaseVersion, "0.4.0", "parity v2 and direct-install projections require the planned minor release");
   assert.equal(manifest.version, releaseVersion);
   assert.equal(Object.hasOwn(manifest, "private"), false, "the public package must not retain the private flag");
   assert.deepEqual(manifest.repository, { type: "git", url: `${repositoryUrl}.git` });
@@ -168,7 +168,7 @@ test("non-publishing merges leave the existing immutable release tag untouched",
 test("the publish workflow is main-gated, recoverable, OIDC-only, and release-content preserving", () => {
   const workflowPath = join(root, ".github", "workflows", "publish.yml");
   assert.equal(existsSync(workflowPath), true, "the public release workflow must exist");
-  const workflow = readFileSync(workflowPath, "utf8");
+  const workflow = readFileSync(workflowPath, "utf8").replace(/\r\n/g, "\n");
 
   const triggerLines = topLevelBlock(workflow, "on").split(/\r?\n/)
     .map((line) => line.trim().replace(/^-\s*["'](.*)["']$/, "- $1"))
@@ -220,6 +220,7 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   assert.match(workflow, /contents:\s*write/, "version and tag jobs require narrowly scoped repository writes");
   const planJob = workflow.split("\n  plan:\n")[1]?.split("\n  publish:\n")[0] ?? "";
   const publishJob = workflow.split("\n  publish:\n")[1]?.split("\n  tag-release:\n")[0] ?? "";
+  const validationJob = workflowJobBlock(workflow, "validate");
   assert.doesNotMatch(planJob, /id-token:\s*write/, "the repository-write planning job must not receive OIDC");
   assert.match(publishJob, /contents:\s*read[\s\S]*id-token:\s*write/, "the publish job must be read-only except for OIDC");
   assert.doesNotMatch(publishJob, /contents:\s*write/, "the npm publish job must not write to the repository");
@@ -228,6 +229,7 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   assert.doesNotMatch(publishJob, /pnpm\s+(?:add|install)\s+--global\s+npm\b/, "the release job must not depend on pnpm global-bin configuration");
   assert.match(workflow, /git\s+tag/, "the verified release SHA must receive its immutable version tag");
   assert.match(workflow, /git\s+push\s+origin/, "the release commit and tag must be pushed explicitly");
+  assertCrossRepoParityGate(validationJob, "publish validation");
 });
 
 test("pull requests execute the reviewed actions in a non-privileged quality gate", () => {
@@ -240,7 +242,12 @@ test("pull requests execute the reviewed actions in a non-privileged quality gat
   assert.doesNotMatch(workflow, /id-token:\s*write|contents:\s*write|npm publish|secrets\./i);
 
   const actionUses = [...workflow.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
-  assert.deepEqual(actionUses, [...reviewedActions], "quality must use each reviewed setup action exactly once and in order");
+  assert.deepEqual(actionUses, [
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+    "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+  ], "quality must check out both Pi and the pinned Stack snapshot with reviewed actions");
   for (const action of actionUses) assert.match(action, /@[a-f0-9]{40}$/, `quality action must not use a mutable tag: ${action}`);
   for (const action of actionUses) assert.equal(reviewedActions.has(action), true, "quality action is not in the reviewed allowlist: " + action);
   assert.equal(workflow.match(/node-version:\s*["']?(\d+)["']?/)?.[1], "24", "quality must exercise the actions under Node 24");
@@ -250,6 +257,7 @@ test("pull requests execute the reviewed actions in a non-privileged quality gat
     "pnpm test",
     "pnpm pack --pack-destination .validation-artifacts",
   ]) assert.ok(workflow.includes(command), `quality workflow is missing required command: ${command}`);
+  assertCrossRepoParityGate(workflowJobBlock(workflow, "verify"), "quality");
 });
 
 test("the publish workflow publishes the exact deterministic tarball created by pnpm pack", () => {
@@ -291,7 +299,7 @@ test("the release guide explains automatic publishing and coordinated Stack adop
   assert.match(readme, /push[^.\n]*main/i, "README must identify main pushes as the automatic release trigger");
   assert.match(readme, /patch[^.\n]*(?:automatic|automático|increment)/i, "README must explain automatic patch bumps");
   assert.match(readme, /minor[^.\n]*major[^.\n]*(?:manual|human)/i, "README must keep minor and major version decisions manual");
-  assert.match(readme, /24 horas[^.\n]*Stack/i, "README must retain the managed Stack maturity window");
+  assert.match(readme, /(?:24[- ]hour|24 horas)[^.\n]*Stack/i, "README must retain the managed Stack maturity window");
 });
 
 function topLevelBlock(yaml, key) {
@@ -304,6 +312,27 @@ function topLevelBlock(yaml, key) {
     block.push(line);
   }
   return block.join("\n");
+}
+
+function workflowJobBlock(workflow, name) {
+  workflow = workflow.replace(/\r\n/g, "\n");
+  const marker = `\n  ${name}:\n`;
+  const start = workflow.indexOf(marker);
+  assert.notEqual(start, -1, `workflow is missing ${name} job`);
+  const remainder = workflow.slice(start + marker.length);
+  const next = remainder.search(/\n  [\w-]+:\n/);
+  return next === -1 ? remainder : remainder.slice(0, next);
+}
+
+function assertCrossRepoParityGate(job, label) {
+  assert.match(job, /id:\s*stack-source/, `${label} must name the parity source step`);
+  assert.match(job, /readFileSync\("contract\/parity\.v2\.json", "utf8"\)/, `${label} must read the checked-in parity contract`);
+  assert.match(job, /parity\?\.source\?\.commit/, `${label} must derive the exact Stack commit from parity.v2.source.commit`);
+  assert.match(job, /repository:\s*\$\{\{ steps\.stack-source\.outputs\.repository \}\}/, `${label} must check out the public repository recorded by parity`);
+  assert.match(job, /ref:\s*\$\{\{ steps\.stack-source\.outputs\.commit \}\}/, `${label} must check out parity's exact Stack commit`);
+  assert.match(job, /path:\s*\.jorgex-stack/, `${label} must isolate the Stack checkout from the Pi worktree`);
+  assert.match(job, /actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1/, `${label} must use the reviewed checkout action pin`);
+  assert.match(job, /JORGEX_STACK_DIR="\$\{\{ github\.workspace \}\}\/.jorgex-stack" node --test tests\/cross-repo\/snapshot-parity\.test\.mjs/, `${label} must run the cross-repo test against the isolated checkout`);
 }
 
 function readFlatMap(block) {
