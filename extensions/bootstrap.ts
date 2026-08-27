@@ -9,7 +9,6 @@ const webWorkflows = new Set(["none", "summary-review", "auto-summary"]);
 const systemPromptMarker = "jorgex:system-prompt";
 const engramProtocolMarker = "jorgex:engram-protocol";
 const browserMarker = "jorgex:browser";
-const managedPromptMarkers = [systemPromptMarker, engramProtocolMarker, browserMarker];
 
 export function createBootstrap({
   loadCompanion = loadDefaultCompanion,
@@ -234,15 +233,14 @@ export function createBootstrap({
         }
         if (ctx?.hasUI === false) hideCompanionTools(pi, ["ask_user_question"]);
       }
+      if (systemPromptAssetsFailure) throw new Error(formatSystemPromptAssetsFailure(systemPromptAssetsFailure));
       return {
-        systemPrompt: systemPromptAssetsFailure
-          ? agentEvent?.systemPrompt
-          : composeDirectInstallPrompt(
-              agentEvent?.systemPrompt,
-              systemPromptAssets,
-              mcpEngramState === "managed",
-              browserRouting(resolvePlaywrightCapability),
-            ),
+        systemPrompt: composeDirectInstallPrompt(
+          agentEvent?.systemPrompt,
+          systemPromptAssets,
+          mcpEngramState === "managed",
+          browserRouting(resolvePlaywrightCapability),
+        ),
       };
     });
 
@@ -583,64 +581,82 @@ function composeDirectInstallPrompt(systemPrompt, assets, hasManagedEngram, rout
     ...(hasManagedEngram ? [{ marker: engramProtocolMarker, contents: assets.engramProtocol }] : []),
     { marker: browserMarker, contents: routing },
   ];
-  if (hasCanonicalManagedSections(systemPrompt, sections)) return systemPrompt;
-
-  let prompt = removeManagedSections(systemPrompt);
-  for (const section of sections) prompt = appendManagedSection(prompt, section.marker, section.contents);
-  return prompt;
-}
-
-function hasCanonicalManagedSections(prompt, sections) {
-  if (typeof prompt !== "string") return false;
-  const expectedMarkers = sections.map(({ marker }) => marker);
-  if (!managedPromptMarkers.every((marker) => {
-    const expected = sections.find((section) => section.marker === marker);
-    if (!expected) return countManagedMarkers(prompt, marker) === 0 && countManagedMarkers(prompt, `/${marker}`) === 0;
-    return hasCanonicalManagedSection(prompt, expected);
-  })) return false;
-  return managedSectionOrder(prompt).every((marker, index) => marker === expectedMarkers[index]);
-}
-
-function hasCanonicalManagedSection(prompt, { marker, contents }) {
-  const canonical = managedSection(marker, contents);
-  const legacyDelimited = `<!-- ${marker} -->\n${contents}${contents.endsWith("\n") ? "\n" : "\n\n"}<!-- /${marker} -->`;
-  return countManagedMarkers(prompt, marker) === 1
-    && countManagedMarkers(prompt, `/${marker}`) === 1
-    && (prompt.includes(canonical) || prompt.includes(legacyDelimited));
-}
-
-function removeManagedSections(systemPrompt) {
-  let prompt = typeof systemPrompt === "string" ? systemPrompt : "";
-  for (const marker of managedPromptMarkers) {
-    const opening = `<!-- ${marker} -->`;
-    const closing = `<!-- /${marker} -->`;
-    prompt = prompt.replace(new RegExp(`${escapeRegExp(opening)}\\n[\\s\\S]*?${escapeRegExp(closing)}`, "g"), "");
-    prompt = prompt.replaceAll(opening, "").replaceAll(closing, "");
+  const managedSections = managedSectionRanges(typeof systemPrompt === "string" ? systemPrompt : "");
+  const trailingNewlines = matchingSectionTrailingNewlines(managedSections, sections);
+  let prompt = removeManagedSections(systemPrompt, managedSections);
+  for (const section of sections) {
+    prompt = appendManagedSection(prompt, section.marker, section.contents, trailingNewlines.get(section.marker));
   }
   return prompt;
 }
 
-function appendManagedSection(prompt, marker, contents) {
-  const section = managedSection(marker, contents);
+function removeManagedSections(systemPrompt, sections = managedSectionRanges(typeof systemPrompt === "string" ? systemPrompt : "")) {
+  const prompt = typeof systemPrompt === "string" ? systemPrompt : "";
+  let basePrompt = "";
+  let cursor = 0;
+  for (const { start, end } of sections) {
+    basePrompt += prompt.slice(cursor, start).replace(/(?:\r?\n){1,2}$/, "");
+    cursor = end;
+  }
+  return basePrompt + prompt.slice(cursor);
+}
+
+function managedSectionRanges(prompt) {
+  const markerPattern = /<!--\s*(\/?jorgex:(?:system-prompt|engram-protocol|browser))\s*-->/g;
+  const openSections = [];
+  const sections = [];
+  for (const match of prompt.matchAll(markerPattern)) {
+    const token = match[1];
+    const marker = token.startsWith("/") ? token.slice(1) : token;
+    const start = match.index;
+    const end = start + match[0].length;
+    if (!token.startsWith("/")) {
+      if (openSections.length > 0) {
+        throw malformedManagedMarkers(`opening ${marker} appears before ${openSections.at(-1).marker} closes`);
+      }
+      openSections.push({ marker, start, end });
+      continue;
+    }
+    const opening = openSections.pop();
+    if (!opening) throw malformedManagedMarkers(`closing ${marker} has no opening marker`);
+    if (opening.marker !== marker) {
+      throw malformedManagedMarkers(`closing ${marker} crosses opening ${opening.marker}`);
+    }
+    sections.push({ marker, start: opening.start, end, contents: prompt.slice(opening.end, start) });
+  }
+  if (openSections.length > 0) {
+    throw malformedManagedMarkers(`opening ${openSections.at(-1).marker} has no closing marker`);
+  }
+  return sections.sort((left, right) => left.start - right.start);
+}
+
+function matchingSectionTrailingNewlines(managedSections, canonicalSections) {
+  const trailingNewlines = new Map();
+  for (const { marker, contents } of canonicalSections) {
+    const matches = managedSections.filter((section) => section.marker === marker);
+    if (matches.length !== 1) continue;
+    const canonicalContents = `\n${contents}${contents.endsWith("\n") ? "" : "\n"}`;
+    const suffix = matches[0].contents.slice(canonicalContents.length);
+    if (matches[0].contents.startsWith(canonicalContents) && suffix === "\n") {
+      trailingNewlines.set(marker, suffix);
+    }
+  }
+  return trailingNewlines;
+}
+
+function malformedManagedMarkers(detail) {
+  return new Error(`Malformed managed marker section: ${detail}. Correct or remove the managed markers and reload Pi.`);
+}
+
+function appendManagedSection(prompt, marker, contents, trailingNewline = "") {
+  const section = managedSection(marker, contents, trailingNewline);
   return typeof prompt === "string" && prompt.length > 0
     ? `${prompt}\n\n${section}`
     : section;
 }
 
-function managedSection(marker, contents) {
-  return `<!-- ${marker} -->\n${contents}${contents.endsWith("\n") ? "" : "\n"}<!-- /${marker} -->`;
-}
-
-function countManagedMarkers(prompt, marker) {
-  return prompt.split(`<!-- ${marker} -->`).length - 1;
-}
-
-function managedSectionOrder(prompt) {
-  return [...prompt.matchAll(/<!-- (jorgex:(?:system-prompt|engram-protocol|browser)) -->/g)].map(([, marker]) => marker);
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function managedSection(marker, contents, trailingNewline) {
+  return `<!-- ${marker} -->\n${contents}${contents.endsWith("\n") ? "" : "\n"}${trailingNewline}<!-- /${marker} -->`;
 }
 
 function normalizeFailure(failure) {
