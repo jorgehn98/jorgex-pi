@@ -54,10 +54,15 @@ test("direct-install Engram protocol is complete, bridge-gated, and marker-idemp
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");
   const browser = expected.directInstall.browser;
+  const canonicalBase = await composeDirectInstallPrompt({
+    systemPrompt: "Existing Pi prompt.",
+    engramState: "missing",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
   const precedingPrompt = [
     "Existing Pi prompt.",
-    managedBlock(policy.marker, "Stack-managed policy stays authoritative."),
-    managedBlock(browser.marker, "Stack-managed browser routing stays authoritative."),
+    managedBlock(policy.marker, policy.contents),
+    managedBlock(browser.marker, managedSectionContents(canonicalBase, browser.marker)),
   ].join("\n\n");
 
   const unavailable = await composeDirectInstallPrompt({
@@ -91,10 +96,15 @@ test("direct-install Engram protocol is complete, bridge-gated, and marker-idemp
 test("browser routing does not duplicate or bypass a managed browser marker", async () => {
   const policy = directInstallAsset("policy");
   const browser = expected.directInstall.browser;
+  const canonicalPrompt = await composeDirectInstallPrompt({
+    systemPrompt: "Existing Pi prompt.",
+    engramState: "missing",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
   const managedPrompt = [
     "Existing Pi prompt.",
-    managedBlock(policy.marker, "Stack-managed policy stays authoritative."),
-    managedBlock(browser.marker, "Stack-managed browser routing stays authoritative."),
+    managedBlock(policy.marker, policy.contents),
+    managedBlock(browser.marker, managedSectionContents(canonicalPrompt, browser.marker)),
   ].join("\n\n");
 
   const result = await composeDirectInstallPrompt({
@@ -104,6 +114,96 @@ test("browser routing does not duplicate or bypass a managed browser marker", as
   });
   assert.equal(countManagedMarkers(result, browser.marker), 1, "managed browser guidance must retain one marker");
   assert.equal(result, managedPrompt, "managed browser routing must not append a second fallback path");
+});
+
+test("direct-install repairs malformed, duplicate, or altered managed sections with the canonical policy, Engram protocol, and browser routing", async () => {
+  const policy = directInstallAsset("policy");
+  const protocol = directInstallAsset("engramProtocol");
+  const browser = expected.directInstall.browser;
+  const canonicalPrompt = await composeDirectInstallPrompt({
+    systemPrompt: "Existing Pi prompt.",
+    engramState: "managed",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
+  const sections = [
+    policy,
+    protocol,
+    { ...browser, contents: managedSectionContents(canonicalPrompt, browser.marker) },
+  ];
+
+  for (const section of sections) {
+    for (const malformed of [
+      `<!-- ${section.marker} -->\nopening without closing`,
+      `${canonicalManagedBlock(section.marker, section.contents)}\n\n${canonicalManagedBlock(section.marker, section.contents)}`,
+      canonicalManagedBlock(section.marker, `altered ${section.marker} contents`),
+    ]) {
+      const result = await composeDirectInstallPrompt({
+        systemPrompt: `Existing Pi prompt.\n\n${malformed}`,
+        engramState: "managed",
+        browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+      });
+      for (const expectedSection of sections) assertCanonicalManagedSection(result, expectedSection);
+    }
+  }
+});
+
+test("direct-install normalizes managed sections to policy, Engram, then browser even when browser already precedes Engram", async () => {
+  const policy = directInstallAsset("policy");
+  const protocol = directInstallAsset("engramProtocol");
+  const browser = expected.directInstall.browser;
+  const canonicalPrompt = await composeDirectInstallPrompt({
+    systemPrompt: "Existing Pi prompt.",
+    engramState: "managed",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
+  const browserContents = managedSectionContents(canonicalPrompt, browser.marker);
+  const result = await composeDirectInstallPrompt({
+    systemPrompt: [
+      "Existing Pi prompt.",
+      canonicalManagedBlock(policy.marker, policy.contents),
+      canonicalManagedBlock(browser.marker, browserContents),
+      canonicalManagedBlock(protocol.marker, protocol.contents),
+    ].join("\n\n"),
+    engramState: "managed",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  });
+
+  assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, browser.marker]);
+});
+
+test("unreadable prompt assets preserve the base prompt and surface an actionable recovery diagnostic", async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const pi = createPiHarness();
+  const injected = new Error("injected prompt asset read failure");
+  let assetReads = 0;
+  await createBootstrap({
+    loadCompanion: async (id) => companionFactory(id),
+    getPermissionsService: () => ({ ready: true }),
+    detectWebAccessConflict: () => undefined,
+    detectGoalConflict: () => undefined,
+    detectMcpAdapterConflict: () => undefined,
+    readGoalConfig: () => ({ kind: "loaded" }),
+    installMcpEngram: async () => ({ state: "managed" }),
+    readSystemPromptAssets() {
+      assetReads += 1;
+      throw injected;
+    },
+  })(pi.api);
+
+  const basePrompt = "Existing Pi and user prompt must survive an asset read failure.";
+  const promptResult = await pi.emitLifecycle("before_agent_start", { systemPrompt: basePrompt }, { sessionId: "asset-failure" });
+  assert.equal(assetReads, 1, "the injected asset seam must be used by bootstrap");
+  assert.equal(promptResult?.systemPrompt, basePrompt, "asset read failure must preserve the preceding prompt without partial fallbacks");
+
+  const notifications = [];
+  await pi.emitLifecycle("session_start", {}, {
+    sessionId: "asset-failure",
+    ui: { notify: (message, type) => notifications.push({ message, type }) },
+  });
+  assert.deepEqual(notifications.map(({ type }) => type), ["error"]);
+  assert.match(notifications[0].message, /system prompt assets/i);
+  assert.match(notifications[0].message, /correct.*installation.*reload Pi/i);
+  assert.match(notifications[0].message, /injected prompt asset read failure/);
 });
 
 test("the active companions and their audited closure are exactly pinned and bundled", () => {
@@ -527,6 +627,31 @@ function managedBlock(marker, contents) {
   return `<!-- ${marker} -->\n${contents}\n<!-- /${marker} -->`;
 }
 
+function canonicalManagedBlock(marker, contents) {
+  return `<!-- ${marker} -->\n${contents}${contents.endsWith("\n") ? "" : "\n"}<!-- /${marker} -->`;
+}
+
 function countManagedMarkers(prompt, marker) {
   return prompt.split(`<!-- ${marker} -->`).length - 1;
+}
+
+function managedSectionContents(prompt, marker) {
+  const expression = new RegExp(`<!-- ${escapeRegExp(marker)} -->\\n([\\s\\S]*?)<!-- /${escapeRegExp(marker)} -->`);
+  const contents = expression.exec(prompt)?.[1];
+  assert.equal(typeof contents, "string", `expected one complete ${marker} section`);
+  return contents;
+}
+
+function assertCanonicalManagedSection(prompt, section) {
+  assert.equal(countManagedMarkers(prompt, section.marker), 1, `${section.marker} must have one canonical opening marker`);
+  assert.equal(countManagedMarkers(prompt, `/${section.marker}`), 1, `${section.marker} must have one canonical closing marker`);
+  assert.equal(managedSectionContents(prompt, section.marker), section.contents, `${section.marker} must contain the bundled canonical contents`);
+}
+
+function managedSectionOrder(prompt) {
+  return [...prompt.matchAll(/<!-- (jorgex:(?:system-prompt|engram-protocol|browser)) -->/g)].map(([, marker]) => marker);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

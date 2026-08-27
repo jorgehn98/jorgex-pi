@@ -6,11 +6,10 @@ import { installMcpEngram } from "./mcp-engram.ts";
 const companionIds = ["permission", "ask", "subagents", "web", "goal"];
 const staticCompanionTools = ["ask_user_question", "subagent", "subagent_wait"];
 const webWorkflows = new Set(["none", "summary-review", "auto-summary"]);
-const systemPromptPolicy = readFileSync(new URL("../assets/system-prompt/AGENTS.md", import.meta.url), "utf8");
-const engramProtocol = readFileSync(new URL("../assets/system-prompt/engram-protocol.md", import.meta.url), "utf8");
 const systemPromptMarker = "jorgex:system-prompt";
 const engramProtocolMarker = "jorgex:engram-protocol";
 const browserMarker = "jorgex:browser";
+const managedPromptMarkers = [systemPromptMarker, engramProtocolMarker, browserMarker];
 
 export function createBootstrap({
   loadCompanion = loadDefaultCompanion,
@@ -22,6 +21,7 @@ export function createBootstrap({
   detectMcpAdapterConflict: mcpAdapterConflictDetector = detectMcpAdapterConflict,
   readGoalConfig = readDefaultGoalConfig,
   installMcpEngram: injectedMcpInstaller,
+  readSystemPromptAssets = readDefaultSystemPromptAssets,
 } = {}) {
   const mcpInstaller = injectedMcpInstaller
     ?? (loadCompanion === loadDefaultCompanion ? installMcpEngram : async () => ({ state: "managed" }));
@@ -44,8 +44,17 @@ export function createBootstrap({
     let mcpEngramState;
     let mcpAdapterConflict;
     let mcpAdapterConflictNotified = false;
+    let systemPromptAssets;
+    let systemPromptAssetsFailure;
+    let systemPromptAssetsFailureNotified = false;
     let currentSessionId;
     const companionTools = new Set(staticCompanionTools);
+
+    try {
+      systemPromptAssets = validateSystemPromptAssets(await readSystemPromptAssets());
+    } catch (error) {
+      systemPromptAssetsFailure = error;
+    }
 
     try {
       mcpAdapterConflict = mcpAdapterConflictDetector?.();
@@ -137,6 +146,9 @@ export function createBootstrap({
       if (mcpAdapterConflict && !mcpAdapterConflictNotified) {
         mcpAdapterConflictNotified = notifyError(ctx, formatMcpAdapterConflict(mcpAdapterConflict));
       }
+      if (systemPromptAssetsFailure && !systemPromptAssetsFailureNotified) {
+        systemPromptAssetsFailureNotified = notifyError(ctx, formatSystemPromptAssetsFailure(systemPromptAssetsFailure));
+      }
       if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
     });
 
@@ -223,11 +235,14 @@ export function createBootstrap({
         if (ctx?.hasUI === false) hideCompanionTools(pi, ["ask_user_question"]);
       }
       return {
-        systemPrompt: composeDirectInstallPrompt(
-          agentEvent?.systemPrompt,
-          mcpEngramState === "managed",
-          browserRouting(resolvePlaywrightCapability),
-        ),
+        systemPrompt: systemPromptAssetsFailure
+          ? agentEvent?.systemPrompt
+          : composeDirectInstallPrompt(
+              agentEvent?.systemPrompt,
+              systemPromptAssets,
+              mcpEngramState === "managed",
+              browserRouting(resolvePlaywrightCapability),
+            ),
       };
     });
 
@@ -547,26 +562,85 @@ function browserRouting(resolvePlaywrightCapability) {
     : webGuide;
 }
 
-function appendRouting(systemPrompt, routing) {
-  return typeof systemPrompt === "string" && systemPrompt.length > 0
-    ? `${systemPrompt}\n\n${routing}`
-    : routing;
+function readDefaultSystemPromptAssets() {
+  return {
+    policy: readFileSync(new URL("../assets/system-prompt/AGENTS.md", import.meta.url), "utf8"),
+    engramProtocol: readFileSync(new URL("../assets/system-prompt/engram-protocol.md", import.meta.url), "utf8"),
+  };
 }
 
-function composeDirectInstallPrompt(systemPrompt, hasManagedEngram, routing) {
-  let prompt = appendManagedSection(systemPrompt, systemPromptMarker, systemPromptPolicy);
-  if (hasManagedEngram) prompt = appendManagedSection(prompt, engramProtocolMarker, engramProtocol);
-  return appendManagedSection(prompt, browserMarker, routing);
+function validateSystemPromptAssets(assets) {
+  if (typeof assets?.policy !== "string" || assets.policy.length === 0
+    || typeof assets?.engramProtocol !== "string" || assets.engramProtocol.length === 0) {
+    throw new Error("System prompt assets must include non-empty policy and Engram protocol text.");
+  }
+  return assets;
+}
+
+function composeDirectInstallPrompt(systemPrompt, assets, hasManagedEngram, routing) {
+  const sections = [
+    { marker: systemPromptMarker, contents: assets.policy },
+    ...(hasManagedEngram ? [{ marker: engramProtocolMarker, contents: assets.engramProtocol }] : []),
+    { marker: browserMarker, contents: routing },
+  ];
+  if (hasCanonicalManagedSections(systemPrompt, sections)) return systemPrompt;
+
+  let prompt = removeManagedSections(systemPrompt);
+  for (const section of sections) prompt = appendManagedSection(prompt, section.marker, section.contents);
+  return prompt;
+}
+
+function hasCanonicalManagedSections(prompt, sections) {
+  if (typeof prompt !== "string") return false;
+  const expectedMarkers = sections.map(({ marker }) => marker);
+  if (!managedPromptMarkers.every((marker) => {
+    const expected = sections.find((section) => section.marker === marker);
+    if (!expected) return countManagedMarkers(prompt, marker) === 0 && countManagedMarkers(prompt, `/${marker}`) === 0;
+    return hasCanonicalManagedSection(prompt, expected);
+  })) return false;
+  return managedSectionOrder(prompt).every((marker, index) => marker === expectedMarkers[index]);
+}
+
+function hasCanonicalManagedSection(prompt, { marker, contents }) {
+  const canonical = managedSection(marker, contents);
+  const legacyDelimited = `<!-- ${marker} -->\n${contents}${contents.endsWith("\n") ? "\n" : "\n\n"}<!-- /${marker} -->`;
+  return countManagedMarkers(prompt, marker) === 1
+    && countManagedMarkers(prompt, `/${marker}`) === 1
+    && (prompt.includes(canonical) || prompt.includes(legacyDelimited));
+}
+
+function removeManagedSections(systemPrompt) {
+  let prompt = typeof systemPrompt === "string" ? systemPrompt : "";
+  for (const marker of managedPromptMarkers) {
+    const opening = `<!-- ${marker} -->`;
+    const closing = `<!-- /${marker} -->`;
+    prompt = prompt.replace(new RegExp(`${escapeRegExp(opening)}\\n[\\s\\S]*?${escapeRegExp(closing)}`, "g"), "");
+    prompt = prompt.replaceAll(opening, "").replaceAll(closing, "");
+  }
+  return prompt;
 }
 
 function appendManagedSection(prompt, marker, contents) {
-  if (hasManagedMarker(prompt, marker)) return prompt;
-  const lineBreak = contents.endsWith("\n") ? "" : "\n";
-  return appendRouting(prompt, `<!-- ${marker} -->\n${contents}${lineBreak}<!-- /${marker} -->`);
+  const section = managedSection(marker, contents);
+  return typeof prompt === "string" && prompt.length > 0
+    ? `${prompt}\n\n${section}`
+    : section;
 }
 
-function hasManagedMarker(prompt, marker) {
-  return typeof prompt === "string" && prompt.includes(`<!-- ${marker} -->`);
+function managedSection(marker, contents) {
+  return `<!-- ${marker} -->\n${contents}${contents.endsWith("\n") ? "" : "\n"}<!-- /${marker} -->`;
+}
+
+function countManagedMarkers(prompt, marker) {
+  return prompt.split(`<!-- ${marker} -->`).length - 1;
+}
+
+function managedSectionOrder(prompt) {
+  return [...prompt.matchAll(/<!-- (jorgex:(?:system-prompt|engram-protocol|browser)) -->/g)].map(([, marker]) => marker);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeFailure(failure) {
@@ -577,6 +651,11 @@ function normalizeFailure(failure) {
 function formatFailure({ phase, companion, error }) {
   const message = error instanceof Error ? error.message : String(error);
   return `JorgeX companion ${companion} ${phase} failure: ${message}`;
+}
+
+function formatSystemPromptAssetsFailure(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return `JorgeX system prompt assets are unavailable: ${message}. Correct the JorgeX Pi installation and reload Pi.`;
 }
 
 function notifyError(ctx, message) {

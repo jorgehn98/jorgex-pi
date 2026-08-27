@@ -61,6 +61,36 @@ test("snapshot parity v1-to-v2 migration rolls back every owned root and retains
   }
 });
 
+test("snapshot parity v1-to-v2 migration publishes every v2 root and removes the legacy v1 contract", async () => {
+  const { commitSnapshot } = await import("../scripts/snapshot-transaction.mjs");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-snapshot-transaction-success-"));
+  const packageRoot = join(sandbox, "package");
+  const stage = join(sandbox, "stage");
+  const previous = {
+    "snapshot/agents/original.md": "original agent\n",
+    "skills/original/SKILL.md": "original skill\n",
+    "contract/parity.v1.json": "{\"schemaVersion\":1,\"generation\":\"original\"}\n",
+  };
+  const replacement = {
+    "snapshot/agents/replacement.md": "replacement agent\n",
+    "skills/replacement/SKILL.md": "replacement skill\n",
+    "assets/system-prompt/AGENTS.md": "replacement policy\n",
+    "assets/system-prompt/engram-protocol.md": "replacement protocol\n",
+    "prompts/lean-audit.md": "replacement prompt\n",
+    "contract/parity.v2.json": "{\"schemaVersion\":2,\"generation\":\"replacement\"}\n",
+  };
+  writeTree(packageRoot, previous);
+  writeTree(stage, replacement);
+
+  try {
+    await commitSnapshot({ root: packageRoot, stage });
+    const expectedTree = Object.fromEntries(Object.entries(replacement).map(([path, bytes]) => [path, Buffer.from(bytes)]));
+    assert.deepEqual(readTree(packageRoot), expectedTree, "a successful migration must publish every staged v2 root and remove parity.v1.json");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 function writeTree(base, files) {
   for (const [path, bytes] of Object.entries(files)) {
     const target = join(base, path);
