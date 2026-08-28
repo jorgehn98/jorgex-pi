@@ -75,7 +75,7 @@ function gitEnvironment(source) {
   }
   return {
     ...environment,
-    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : devNull,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_OPTIONAL_LOCKS: "0",
     GIT_PAGER: "cat",

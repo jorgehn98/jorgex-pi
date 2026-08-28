@@ -112,7 +112,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     const pi = resolveLocalPi(expectedVersion);
     runPi(pi, ["--version"], isolatedEnv, cwd);
 
-    execFileSync("pnpm", ["pack", "--pack-destination", packDir], {
+    const packageManager = resolvePnpm();
+    execFileSync(packageManager.command, [...packageManager.args, "pack", "--pack-destination", packDir], {
       cwd: root,
       env: isolatedEnv,
       encoding: "utf8",
@@ -269,6 +270,13 @@ function allowedHostEnv() {
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function resolvePnpm() {
+  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
+  return existsSync(corepackEntry)
+    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
+    : { command: "pnpm", args: [] };
 }
 
 function writeJson(path, value) {

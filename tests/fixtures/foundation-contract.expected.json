@@ -23,8 +23,8 @@
       "version": 1,
       "sourcePath": "stack/contracts/quality-receipt.v1.schema.json",
       "targetPath": "contract/schemas/quality-receipt.v1.schema.json",
-      "sourceSha256": "70392ca98df7002ddc6ecd1a74c7375fcdda9dd3e20618f796da4bcf75d9b426",
-      "outputSha256": "70392ca98df7002ddc6ecd1a74c7375fcdda9dd3e20618f796da4bcf75d9b426"
+      "sourceSha256": "90225262db604974d170a337429cb8fb13869199f5f58a3144dad6e363f0644d",
+      "outputSha256": "90225262db604974d170a337429cb8fb13869199f5f58a3144dad6e363f0644d"
     },
     "commands": [
       {
@@ -165,7 +165,8 @@
     "engram-runtime-tools-v1",
     "runner-json-v1",
     "tui-branding-v1",
-    "managed-primary-model-v1"
+    "managed-primary-model-v1",
+    "quality-receipt-contract-v1"
   ],
   "runtimeAgents": {
     "contractPath": "contract/runtime-agents.v1.json"
@@ -174,7 +175,8 @@
   "sourcePrefix": "npm:jorgex-pi@",
   "requiredPiResourceKinds": ["extensions", "skills", "prompts", "themes"],
   "foundationSchemas": {
-    "runnerResponse": "contract/schemas/runner-response.v1.schema.json"
+    "runnerResponse": "contract/schemas/runner-response.v1.schema.json",
+    "qualityReceipt": "contract/schemas/quality-receipt.v1.schema.json"
   },
   "forbiddenTarPaths": [
     "package/scripts/generate-runtime-agents.mjs",

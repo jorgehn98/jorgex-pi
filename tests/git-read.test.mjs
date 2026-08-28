@@ -122,7 +122,7 @@ function assertSafeGitEnv() {
     ...Object.fromEntries(["PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec", "WINDIR", "windir", "HOME", "USERPROFILE", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "LC_CTYPE"]
       .filter((key) => process.env[key] !== undefined)
       .map((key) => [key, process.env[key]])),
-    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : devNull,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_OPTIONAL_LOCKS: "0",
     GIT_PAGER: "cat",

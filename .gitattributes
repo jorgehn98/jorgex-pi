@@ -1,0 +1,8 @@
+assets/** text eol=lf
+contract/** text eol=lf
+prompts/** text eol=lf
+skills/** text eol=lf
+snapshot/** text eol=lf
+agents/** text eol=lf
+primary/** text eol=lf
+pnpm-lock.yaml text eol=lf
