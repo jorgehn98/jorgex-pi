@@ -11,7 +11,10 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const SOURCE_COMMIT = "5353c83c212a8603ab3e3bd5cac54dde4c75037c";
+const DEFAULT_SOURCE_COMMIT = "41423ee28d6db9be04c9ba8b8efa8272353274ff";
+const SOURCE_COMMIT = process.env.JORGEX_STACK_COMMIT?.trim() || DEFAULT_SOURCE_COMMIT;
+const QUALITY_RECEIPT_SOURCE_PATH = "stack/contracts/quality-receipt.v1.schema.json";
+const QUALITY_RECEIPT_TARGET_PATH = "contract/schemas/quality-receipt.v1.schema.json";
 const POLICY_SOURCE_PATH = "stack/system-prompt/AGENTS.md";
 const ENGRAM_PROTOCOL_SOURCE_PATH = "stack/system-prompt/engram-protocol.md";
 const COMMAND_SOURCES = [
@@ -40,6 +43,9 @@ const gitArgs = ["--no-replace-objects", "-C", stackDir];
 if (!stackDir || !isAbsolute(stackDir)) {
   throw new Error("JORGEX_STACK_DIR must be an absolute path to the reviewed JorgeX Stack checkout");
 }
+if (!/^[a-f0-9]{40}$/.test(SOURCE_COMMIT)) {
+  throw new Error("JORGEX_STACK_COMMIT must be a full lowercase Stack commit SHA");
+}
 
 const resolvedCommit = gitText(["rev-parse", `${SOURCE_COMMIT}^{commit}`]).trim();
 if (resolvedCommit !== SOURCE_COMMIT) {
@@ -61,6 +67,7 @@ try {
     skills: generateSkills(skillSources),
     policy: generateCopyProjection(POLICY_SOURCE_PATH, "assets/system-prompt/AGENTS.md"),
     engramProtocol: generateCopyProjection(ENGRAM_PROTOCOL_SOURCE_PATH, "assets/system-prompt/engram-protocol.md"),
+    qualityReceipt: generateQualityReceiptProjection(),
     commands: COMMAND_SOURCES.map(generateCommand),
     exclusions: EXCLUSIONS,
   };
@@ -129,6 +136,14 @@ function generateCopyProjection(sourcePath, targetPath) {
     targetPath,
     sourceSha256: sha256(bytes),
     outputSha256: sha256(bytes),
+  };
+}
+
+function generateQualityReceiptProjection() {
+  return {
+    namespace: "jorgex.quality.receipt",
+    version: 1,
+    ...generateCopyProjection(QUALITY_RECEIPT_SOURCE_PATH, QUALITY_RECEIPT_TARGET_PATH),
   };
 }
 

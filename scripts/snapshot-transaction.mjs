@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const LEGACY_DESTINATIONS = ["snapshot", "skills", "contract/parity.v1.json"];
+const QUALITY_RECEIPT_DESTINATION = "contract/schemas/quality-receipt.v1.schema.json";
 const V2_DESTINATIONS = [
   "snapshot",
   "skills",
@@ -16,7 +17,12 @@ export function commitSnapshot({ root, stage, move = renameSync }) {
     root,
     stage,
     move,
-    destinations: existsSync(join(stage, "contract", "parity.v2.json")) ? V2_DESTINATIONS : LEGACY_DESTINATIONS,
+    destinations: existsSync(join(stage, "contract", "parity.v2.json"))
+      ? [
+          ...V2_DESTINATIONS,
+          ...(existsSync(join(stage, QUALITY_RECEIPT_DESTINATION)) ? [QUALITY_RECEIPT_DESTINATION] : []),
+        ]
+      : LEGACY_DESTINATIONS,
     backupName: ".snapshot-backup",
     label: "Snapshot",
     preserveFlag: "preserveSnapshotStage",
