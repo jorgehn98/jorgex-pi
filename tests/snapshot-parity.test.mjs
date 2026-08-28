@@ -23,7 +23,7 @@ test("the Stack snapshot stays complete and deterministic after runtime activati
   assert.deepEqual(parity.source, { repository: expected.sourceRepository, commit: expected.sourceCommit });
   assert.deepEqual(
     Object.keys(parity).sort(),
-    ["agents", "commands", "engramProtocol", "exclusions", "policy", "schemaVersion", "skills", "source"],
+    ["agents", "commands", "engramProtocol", "exclusions", "policy", "qualityReceipt", "schemaVersion", "skills", "source"],
     "parity v2 must expose every canonical source type explicitly",
   );
   assertAgentParity(parity.agents);
@@ -79,6 +79,7 @@ function assertSkillParity(skills) {
 function assertSharedProjectionParity(parity) {
   assertCopyProjection(parity.policy, expected.policy, "system policy");
   assertCopyProjection(parity.engramProtocol, expected.engramProtocol, "Engram protocol");
+  assertQualityReceiptProjection(parity.qualityReceipt, expected.qualityReceipt);
 
   assert.ok(Array.isArray(parity.commands), "parity commands must be an array");
   assert.equal(parity.commands.length, expected.commands.length, "parity commands must be complete");
@@ -106,6 +107,19 @@ function assertSharedProjectionParity(parity) {
     parity.commands.map(({ targetPath }) => targetPath).sort(),
     "the bundled prompt directory must contain only tracked canonical projections",
   );
+}
+
+function assertQualityReceiptProjection(projection, projectionExpected) {
+  assert.deepEqual(
+    Object.keys(projection).sort(),
+    ["namespace", "version", "sourcePath", "targetPath", "sourceSha256", "outputSha256"].sort(),
+    "quality receipt projection must record its versioned schema metadata",
+  );
+  assert.deepEqual(projection, projectionExpected, "quality receipt projection must match the candidate fixture");
+  assert.equal(projection.namespace, "jorgex.quality.receipt");
+  assert.equal(projection.version, 1);
+  assertSha256(projection.sourceSha256, "quality receipt source hash");
+  assert.equal(projection.outputSha256, hashFile(join(root, projection.targetPath)), "quality receipt output hash must match the projected schema");
 }
 
 function assertCopyProjection(projection, projectionExpected, label) {
