@@ -230,7 +230,7 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(digestTree(foreignTree), foreignTreeDigest, "remove must preserve the foreign extension tree");
     assert.deepEqual(readJson(absentSettingsPath), { packages: [foreignPackageDir], foreignState });
   } finally {
-    rmSync(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    rmSync(sandbox, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
   }
 });
 
