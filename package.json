@@ -43,7 +43,7 @@
     "build": "pnpm test",
     "runtime-agents:generate": "node scripts/generate-runtime-agents.mjs",
     "snapshot:generate": "node scripts/generate-snapshot.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },
   "pi": {
     "extensions": [
