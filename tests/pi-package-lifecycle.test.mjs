@@ -240,7 +240,7 @@ function runPi(pi, args, env, cwd) {
     env,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: 60_000,
+    timeout: process.platform === "win32" ? 180_000 : 60_000,
   });
 }
 
