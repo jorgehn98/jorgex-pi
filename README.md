@@ -123,13 +123,13 @@ Tests use isolated temporary homes and fake executable Engram paths. They verify
 
 ### Refresh and verify the canonical snapshot
 
-Regenerate only from a local JorgeX Stack checkout that contains the pinned commit `5353c83c212a8603ab3e3bd5cac54dde4c75037c`:
+Regenerate only from a local JorgeX Stack checkout that contains the pinned commit `e30f4af99bac7847a27fc6038e20dcb17fc58a13`:
 
 ```bash
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" pnpm snapshot:generate
 ```
 
-The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
+The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
 
 Run the explicit cross-repository parity check against the same checkout:
 

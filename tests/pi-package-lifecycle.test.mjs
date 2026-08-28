@@ -276,7 +276,9 @@ function resolvePnpm() {
   const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
   return existsSync(corepackEntry)
     ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
-    : { command: "pnpm", args: [] };
+    : process.platform === "win32"
+      ? { command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe", args: ["/d", "/s", "/c", "pnpm.cmd"] }
+      : { command: "pnpm", args: [] };
 }
 
 function writeJson(path, value) {
