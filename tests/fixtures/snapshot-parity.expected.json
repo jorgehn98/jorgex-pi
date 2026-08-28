@@ -2,7 +2,7 @@
   "parityPath": "contract/parity.v2.json",
   "schemaVersion": 2,
   "sourceRepository": "https://github.com/jorgehn98/jorgex-stack",
-  "sourceCommit": "5353c83c212a8603ab3e3bd5cac54dde4c75037c",
+  "sourceCommit": "e30f4af99bac7847a27fc6038e20dcb17fc58a13",
   "agentCount": 15,
   "agentNames": [
     "backend-analyst",
@@ -49,6 +49,14 @@
   "engramProtocol": {
     "sourcePath": "stack/system-prompt/engram-protocol.md",
     "targetPath": "assets/system-prompt/engram-protocol.md"
+  },
+  "qualityReceipt": {
+    "namespace": "jorgex.quality.receipt",
+    "version": 1,
+    "sourcePath": "stack/contracts/quality-receipt.v1.schema.json",
+    "targetPath": "contract/schemas/quality-receipt.v1.schema.json",
+    "sourceSha256": "90225262db604974d170a337429cb8fb13869199f5f58a3144dad6e363f0644d",
+    "outputSha256": "90225262db604974d170a337429cb8fb13869199f5f58a3144dad6e363f0644d"
   },
   "commands": [
     {

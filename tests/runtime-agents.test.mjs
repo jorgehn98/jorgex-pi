@@ -184,7 +184,8 @@ test("the real translator is deterministic and writes only inside its package co
 test("the real tarball contains the closed runtime assets and audited dependency closure", () => {
   const packDir = mkdtempSync(join(tmpdir(), "jorgex-pi-runtime-pack-"));
   try {
-    execFileSync("pnpm", ["pack", "--pack-destination", packDir], { cwd: root, stdio: "pipe" });
+    const packageManager = resolvePnpm();
+    execFileSync(packageManager.command, [...packageManager.args, "pack", "--pack-destination", packDir], { cwd: root, stdio: "pipe" });
     const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
     assert.equal(tarballs.length, 1);
     const archive = readTgz(join(packDir, tarballs[0]));
@@ -377,6 +378,15 @@ function readJson(path, label) {
   } catch (error) {
     assert.fail(`${label} is missing or invalid at ${relative(root, path)} (${error.code ?? error.message})`);
   }
+}
+
+function resolvePnpm() {
+  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
+  return existsSync(corepackEntry)
+    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
+    : process.platform === "win32"
+      ? { command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe", args: ["/d", "/s", "/c", "pnpm.cmd"] }
+      : { command: "pnpm", args: [] };
 }
 
 function listFiles(base) {

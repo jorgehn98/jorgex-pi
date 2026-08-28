@@ -112,7 +112,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     const pi = resolveLocalPi(expectedVersion);
     runPi(pi, ["--version"], isolatedEnv, cwd);
 
-    execFileSync("pnpm", ["pack", "--pack-destination", packDir], {
+    const packageManager = resolvePnpm();
+    execFileSync(packageManager.command, [...packageManager.args, "pack", "--pack-destination", packDir], {
       cwd: root,
       env: isolatedEnv,
       encoding: "utf8",
@@ -229,7 +230,7 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     assert.equal(digestTree(foreignTree), foreignTreeDigest, "remove must preserve the foreign extension tree");
     assert.deepEqual(readJson(absentSettingsPath), { packages: [foreignPackageDir], foreignState });
   } finally {
-    rmSync(sandbox, { recursive: true, force: true });
+    rmSync(sandbox, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
   }
 });
 
@@ -239,7 +240,7 @@ function runPi(pi, args, env, cwd) {
     env,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: 60_000,
+    timeout: process.platform === "win32" ? 180_000 : 60_000,
   });
 }
 
@@ -269,6 +270,15 @@ function allowedHostEnv() {
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function resolvePnpm() {
+  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
+  return existsSync(corepackEntry)
+    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
+    : process.platform === "win32"
+      ? { command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe", args: ["/d", "/s", "/c", "pnpm.cmd"] }
+      : { command: "pnpm", args: [] };
 }
 
 function writeJson(path, value) {

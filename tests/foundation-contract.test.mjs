@@ -96,6 +96,57 @@ test("foundation asset ownership is explicit and closed", () => {
   );
 });
 
+test("candidate quality receipt projection stays separate from install and lifecycle receipts", () => {
+  const parity = readJson(join(root, expected.parityV2.path), "versioned parity v2 contract");
+  const assetManifest = readJson(join(root, expected.assetManifestPath), "foundation asset manifest");
+
+  const qualityReceipt = parity.qualityReceipt;
+  assert.ok(
+    qualityReceipt && typeof qualityReceipt === "object" && !Array.isArray(qualityReceipt),
+    "parity v2 must expose qualityReceipt as an object",
+  );
+  assert.deepEqual(
+    Object.keys(qualityReceipt).sort(),
+    ["namespace", "version", "sourcePath", "targetPath", "sourceSha256", "outputSha256"].sort(),
+    "qualityReceipt must expose only its versioned schema projection fields",
+  );
+  assert.deepEqual(qualityReceipt, expected.parityV2.qualityReceipt, "qualityReceipt must match the candidate parity fixture");
+  assert.equal(qualityReceipt.namespace, "jorgex.quality.receipt");
+  assert.equal(qualityReceipt.version, 1);
+  assert.equal(qualityReceipt.sourcePath, "stack/contracts/quality-receipt.v1.schema.json");
+  assert.equal(qualityReceipt.targetPath, "contract/schemas/quality-receipt.v1.schema.json");
+  assert.match(qualityReceipt.sourceSha256, /^[a-f0-9]{64}$/, "qualityReceipt.sourceSha256 must be a SHA-256 without pinning the source value yet");
+  assert.match(qualityReceipt.outputSha256, /^[a-f0-9]{64}$/, "qualityReceipt.outputSha256 must be a SHA-256");
+  assert.doesNotMatch(
+    JSON.stringify(qualityReceipt),
+    /pi-receipt\.json|sol-lifecycle\.v1\.json/i,
+    "qualityReceipt must not reference the Stack installation receipt or Pi lifecycle receipt",
+  );
+
+  const targetPath = join(root, qualityReceipt.targetPath);
+  assert.equal(
+    existsSync(targetPath),
+    true,
+    `qualityReceipt target must exist at ${relative(root, targetPath)}`,
+  );
+  assert.equal(
+    createHash("sha256").update(readFileSync(targetPath)).digest("hex"),
+    qualityReceipt.outputSha256,
+    "qualityReceipt.outputSha256 must match the target schema bytes",
+  );
+
+  assert.doesNotMatch(
+    JSON.stringify(assetManifest),
+    /jorgex\.quality\.receipt|quality[._-]?receipt/i,
+    "the package asset manifest must not turn the quality receipt into Pi-managed external state",
+  );
+  assert.deepEqual(
+    assetManifest.managedExternalWrites?.map(({ relativePath }) => relativePath),
+    ["settings.json", "models.json", "jorgex-pi/sol-lifecycle.v1.json"],
+    "Pi lifecycle ownership must remain limited to its existing settings, models, and lifecycle receipt paths",
+  );
+});
+
 test("component inventory activates only the T09 companions and preserves the audited roadmap", () => {
   const inventory = readJson(join(root, expected.componentInventoryPath), "core component inventory");
   assert.equal(inventory.schemaVersion, expected.schemaVersion);
@@ -187,6 +238,7 @@ function assertPackedParityTargets(archive, entries, parity) {
   }
   expectedTargets.set(`package/${parity.policy.targetPath}`, parity.policy.outputSha256);
   expectedTargets.set(`package/${parity.engramProtocol.targetPath}`, parity.engramProtocol.outputSha256);
+  expectedTargets.set(`package/${parity.qualityReceipt.targetPath}`, parity.qualityReceipt.outputSha256);
   for (const command of parity.commands) expectedTargets.set(`package/${command.targetPath}`, command.outputSha256);
   assert.equal(expectedTargets.size, expected.parityV2.ownedTargetCount, "the packed snapshot must contain every parity v2 target");
 
@@ -196,6 +248,7 @@ function assertPackedParityTargets(archive, entries, parity) {
       || path.startsWith("package/skills/")
       || path.startsWith("package/assets/system-prompt/")
       || path.startsWith("package/prompts/")
+      || path === `package/${parity.qualityReceipt.targetPath}`
     ))
     .sort();
   assert.deepEqual(actualOwnedFiles, [...expectedTargets.keys()].sort(), "packed owned roots must contain every parity target and no untracked extras");
@@ -312,5 +365,7 @@ function resolvePnpm() {
   const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
   return existsSync(corepackEntry)
     ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
-    : { command: "pnpm", args: [] };
+    : process.platform === "win32"
+      ? { command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe", args: ["/d", "/s", "/c", "pnpm.cmd"] }
+      : { command: "pnpm", args: [] };
 }

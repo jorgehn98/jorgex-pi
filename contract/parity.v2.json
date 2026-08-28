@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "5353c83c212a8603ab3e3bd5cac54dde4c75037c"
+    "commit": "e30f4af99bac7847a27fc6038e20dcb17fc58a13"
   },
   "agents": [
     {
@@ -627,6 +627,14 @@
     "targetPath": "assets/system-prompt/engram-protocol.md",
     "sourceSha256": "d3902bd33617b7765f24e06356f2d45f66cad50dc7605abdc130ad674825d05f",
     "outputSha256": "d3902bd33617b7765f24e06356f2d45f66cad50dc7605abdc130ad674825d05f"
+  },
+  "qualityReceipt": {
+    "namespace": "jorgex.quality.receipt",
+    "version": 1,
+    "sourcePath": "stack/contracts/quality-receipt.v1.schema.json",
+    "targetPath": "contract/schemas/quality-receipt.v1.schema.json",
+    "sourceSha256": "90225262db604974d170a337429cb8fb13869199f5f58a3144dad6e363f0644d",
+    "outputSha256": "90225262db604974d170a337429cb8fb13869199f5f58a3144dad6e363f0644d"
   },
   "commands": [
     {

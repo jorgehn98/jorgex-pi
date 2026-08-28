@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -18,7 +18,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
       xdgConfig: join(sandbox, "xdg-config"),
       tempRoot: join(sandbox, "pi-subagents-temp"),
       emptyBin: join(sandbox, "empty-bin"),
-      engramBin: join(sandbox, "fake-engram"),
+      engramBin: join(sandbox, process.platform === "win32" ? "fake-engram.exe" : "fake-engram"),
     };
     for (const path of [isolation.home, isolation.agentDir, isolation.xdgConfig, isolation.tempRoot, isolation.emptyBin]) {
       mkdirSync(path, { recursive: true });
@@ -26,12 +26,12 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     const userSettings = '{"theme":"dark"}\n';
     writeFileSync(join(isolation.agentDir, "settings.json"), userSettings);
     const fakeServer = readFileSync(join(testDir, "fixtures", "fake-engram-mcp.mjs"), "utf8");
-    writeFileSync(isolation.engramBin, `#!${process.execPath}\n${fakeServer}`);
-    chmodSync(isolation.engramBin, 0o755);
+    writeFakeEngram(isolation.engramBin, sandbox, fakeServer);
     const env = {
       ...allowedHostEnv(),
       ENGRAM_BIN: isolation.engramBin,
       HOME: isolation.home,
+      USERPROFILE: isolation.home,
       PATH: isolation.emptyBin,
       PI_CODING_AGENT_DIR: isolation.agentDir,
       PI_SUBAGENTS_TEMP_ROOT: isolation.tempRoot,
@@ -85,6 +85,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     const receiptRoot = join(sandbox, "receipt-engram");
     const receiptIsolation = {
       HOME: join(receiptRoot, "home"),
+      USERPROFILE: join(receiptRoot, "home"),
       PATH: join(receiptRoot, "empty-bin"),
       PI_CODING_AGENT_DIR: join(receiptRoot, "agent"),
       PI_SUBAGENTS_TEMP_ROOT: join(receiptRoot, "pi-subagents-temp"),
@@ -97,8 +98,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     };
     for (const path of Object.values(receiptIsolation)) mkdirSync(path, { recursive: true });
     const receiptBin = join(receiptRoot, process.platform === "win32" ? "engram.exe" : "engram");
-    writeFileSync(receiptBin, `#!${process.execPath}\n${fakeServer}`);
-    chmodSync(receiptBin, 0o755);
+    writeFakeEngram(receiptBin, receiptRoot, fakeServer);
     const packageManifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
     mkdirSync(join(receiptIsolation.HOME, ".jorgex-stack"), { recursive: true });
     writeFileSync(
@@ -114,6 +114,12 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
         scope: { kind: "real", codingAgentDir: receiptIsolation.PI_CODING_AGENT_DIR },
         engram: { binary: receiptBin },
       })}\n`,
+    );
+    const { resolveConfiguredEngramBinary } = await import("../extensions/mcp-engram.ts");
+    assert.equal(
+      resolveConfiguredEngramBinary({ env: { ...allowedHostEnv(), ...receiptIsolation } }),
+      receiptBin,
+      "the exact Stack receipt must resolve its native Engram binary before Pi loads",
     );
     const receiptOutput = execFileSync(process.execPath, [join(testDir, "fixtures", "load-bootstrap-with-pi.mjs"), root], {
       cwd: receiptRoot,
@@ -131,6 +137,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     const missingRoot = join(sandbox, "missing-engram");
     const missingIsolation = {
       HOME: join(missingRoot, "home"),
+      USERPROFILE: join(missingRoot, "home"),
       PATH: join(missingRoot, "empty-bin"),
       PI_CODING_AGENT_DIR: join(missingRoot, "agent"),
       PI_SUBAGENTS_TEMP_ROOT: join(missingRoot, "pi-subagents-temp"),
@@ -163,4 +170,14 @@ function allowedHostEnv() {
     if (process.env[key] !== undefined) allowed[key] = process.env[key];
   }
   return allowed;
+}
+
+function writeFakeEngram(binary, cwd, fakeServer) {
+  if (process.platform === "win32") {
+    copyFileSync(process.execPath, binary);
+    writeFileSync(join(cwd, "mcp"), fakeServer);
+    return;
+  }
+  writeFileSync(binary, `#!${process.execPath}\n${fakeServer}`);
+  chmodSync(binary, 0o755);
 }
