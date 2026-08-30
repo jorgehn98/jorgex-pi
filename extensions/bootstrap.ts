@@ -185,6 +185,11 @@ export function createBootstrap({
         reconciledSessions.delete(sessionId);
         hiddenSelections.delete(sessionId);
       }
+      emitQualityCapabilities(pi, {
+        bootstrapReady: false,
+        policyPresent: false,
+        permissionReady: false,
+      });
       hideCompanionTools(pi, companionTools);
     });
 

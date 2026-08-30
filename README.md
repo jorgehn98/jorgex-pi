@@ -64,7 +64,7 @@ This atomic safety guarantee applies to the tool-call flow. A bundled healthy Go
 
 ## Local quality-capability diagnostics
 
-Pi emits the `jorgex:quality-capabilities` event from `extensions/bootstrap.ts` at `session_start` and again when the session observes `permissions:ready`. The report is derived from the diagnostic flags `bootstrapReady`, `policyPresent`, and `permissionReady`. It uses namespace `jorgex.quality.capabilities`, version `1`, runtime `pi`, and exactly three capability entries:
+Pi emits the `jorgex:quality-capabilities` event from `extensions/bootstrap.ts` at `session_start` and again when the session observes `permissions:ready`; `session_shutdown` invalidates the report by emitting every capability as `unavailable`. The report is derived from the diagnostic flags `bootstrapReady`, `policyPresent`, and `permissionReady`. It uses namespace `jorgex.quality.capabilities`, version `1`, runtime `pi`, and exactly three capability entries:
 
 | Capability | Pi local state | Meaning |
 | --- | --- | --- |

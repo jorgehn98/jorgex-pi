@@ -1,7 +1,7 @@
 const QUALITY_CAPABILITY_EVENT = "jorgex:quality-capabilities";
 const QUALITY_CAPABILITY_NAMESPACE = "jorgex.quality.capabilities";
 const QUALITY_CAPABILITY_VERSION = 1;
-const QUALITY_CAPABILITY_IDS = ["policy-guidance", "tool-approval", "external-verification"];
+const QUALITY_CAPABILITY_IDS = ["policy-guidance", "tool-approval", "external-verification"] as const;
 
 const policyEvidence = {
   source: "assets/system-prompt/AGENTS.md",

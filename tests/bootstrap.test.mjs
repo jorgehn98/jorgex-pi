@@ -536,6 +536,19 @@ test("bootstrap transports observed permission health as local capabilities thro
     events.every(({ payload }) => payload.capabilities.every(({ state }) => state !== "enforced")),
     "Pi capability events must never claim enforced authority",
   );
+
+  await pi.emitLifecycle("session_shutdown", {}, context);
+  events = pi.emittedEvents();
+  assert.deepEqual(
+    events.map(({ name }) => name),
+    ["jorgex:quality-capabilities", "jorgex:quality-capabilities", "jorgex:quality-capabilities"],
+    "session shutdown must publish a final degraded capability report",
+  );
+  assert.deepEqual(
+    events[2].payload.capabilities.map(({ state }) => state),
+    capabilitiesExpected.capabilityIds.map(() => "unavailable"),
+    "session shutdown must invalidate every previously reported capability",
+  );
 });
 
 test("bootstrap capability transport degrades on failure and a throwing emitter never bypasses the safety guard", async () => {
