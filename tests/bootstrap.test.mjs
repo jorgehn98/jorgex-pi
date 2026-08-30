@@ -9,6 +9,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = JSON.parse(readFileSync(join(testDir, "fixtures", "bootstrap.expected.json"), "utf8"));
 const mcpExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "mcp-engram.expected.json"), "utf8"));
+const capabilitiesExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "quality-capabilities.expected.json"), "utf8"));
 const companionToolNames = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
 test("the root manifest activates the JorgeX extensions, portable prompt, opt-in theme, and reviewed skills", () => {
@@ -447,6 +448,43 @@ test("the active companions and their audited closure are exactly pinned and bun
   assert.deepEqual([...manifest.bundledDependencies].sort(), packagedDependencies.map(({ name }) => name).sort());
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8").replace(/\r\n/g, "\n");
   for (const dependency of expected.bundledClosure) assertLockIntegrity(lock, dependency);
+});
+
+test("healthy Pi bootstrap reports guidance and manual approval without external verification", async () => {
+  const { reportPiQualityCapabilities } = await import("../extensions/quality-capabilities.ts");
+  const report = reportPiQualityCapabilities({ bootstrapReady: true, policyPresent: true, permissionReady: true });
+
+  assert.deepEqual(Object.keys(report).sort(), ["capabilities", "namespace", "runtime", "version"]);
+  assert.equal(report.namespace, capabilitiesExpected.namespace);
+  assert.equal(report.version, capabilitiesExpected.version);
+  assert.equal(report.runtime, "pi");
+  assert.deepEqual(report.capabilities.map(({ id }) => id), capabilitiesExpected.capabilityIds);
+  assert.deepEqual(report.capabilities.map(({ state }) => state), ["prompt-only", "manual", "unavailable"]);
+  for (const capability of report.capabilities) {
+    assert.equal(typeof capability.reason, "string");
+    assert.ok(capability.reason.trim().length > 0);
+    if (capability.state !== "unavailable") {
+      assert.equal(typeof capability.evidence?.source, "string");
+      assert.ok(capability.evidence.source.trim().length > 0);
+      assert.equal(typeof capability.evidence?.version, "string");
+      assert.ok(capability.evidence.version.trim().length > 0);
+    }
+  }
+});
+
+test("failed Pi bootstrap keeps every local capability unavailable despite policy and permission flags", async () => {
+  const { reportPiQualityCapabilities } = await import("../extensions/quality-capabilities.ts");
+  const report = reportPiQualityCapabilities({ bootstrapReady: false, policyPresent: true, permissionReady: true });
+
+  assert.equal(report.namespace, capabilitiesExpected.namespace);
+  assert.equal(report.version, capabilitiesExpected.version);
+  assert.equal(report.runtime, "pi");
+  assert.deepEqual(report.capabilities.map(({ id }) => id), capabilitiesExpected.capabilityIds);
+  assert.deepEqual(
+    report.capabilities.map(({ state }) => state),
+    capabilitiesExpected.capabilityIds.map(() => "unavailable"),
+    "failed bootstrap must not advertise guidance, approval, or external verification",
+  );
 });
 
 test("bootstrap keeps its guard alive and companion tools hidden after load or factory failure", async () => {
