@@ -1,8 +1,8 @@
 # JorgeX Pi
 
-`jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle. Version `0.5.0` carries parity snapshot v2 and the quality receipt v1 schema from Stack commit `e30f4af99bac7847a27fc6038e20dcb17fc58a13`.
+`jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle. `contract/parity.v2.json` records the canonical snapshot, with `source.commit` as its source authority.
 
-The version in `package.json` is the release authority. Minor and major remain manual decisions; after merge, the automatic release workflow preserves and publishes an unpublished selection from `main`. Later publicable changes increment the patch automatically. The current line adds the native opt-in JorgeX theme and TUI-only startup branding, shared system-policy and Engram-protocol assets, and the `/lean-audit` prompt while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned Stack snapshot.
+The version in `package.json` is the release authority. Minor and major remain manual decisions; after merge, the automatic release workflow preserves and publishes an unpublished selection from `main`. Later publicable changes increment the patch automatically. The current line adds the native opt-in JorgeX theme and TUI-only startup branding, shared system-policy and Engram-protocol assets, the `/lean-audit` prompt, and local quality-capability diagnostics while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned Stack snapshot.
 
 ## Current boundary
 
@@ -10,19 +10,19 @@ The version in `package.json` is the release authority. Minor and major remain m
 | --- | --- |
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
 | Pi resources | Bootstrap and TUI branding extensions, 16 reviewed JorgeX skills, the canonical policy/protocol fallbacks, and the `/lean-audit` prompt are active. The `JorgeX` theme is available but opt-in. |
-| Canonical snapshot | 15 agents and 17 complete skill trees (96 files), plus the quality receipt v1 schema, from JorgeX Stack commit `e30f4af99bac7847a27fc6038e20dcb17fc58a13`. |
+| Canonical snapshot | 15 agents and 17 complete skill trees (96 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
 | Runtime agents | 14 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
 | Package assets | `contract/assets.v1.json` owns the packaged extensions, theme, runtime agents, snapshot, skills, and contracts; it declares the bounded Sol lifecycle writes and preserves fourteen companion-owned state paths. |
 | Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, `@narumitw/pi-goal@0.53.0`, and `pi-mcp-adapter@2.27.0`. |
 | Model policy | The managed primary is `openai-codex/gpt-5.6-sol`; Pi session thinking remains user/session policy. The local `contextWindow` request is `872000`. |
 
-The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive. The parity v2 contract records agents, skills, the shared policy, the Engram protocol, the portable command projection, and deliberate exclusions in `contract/parity.v2.json`.
+The active skill list contains 16 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive. The parity v2 contract records agents, skills, the shared policy, the Engram protocol, the portable command projection, the quality-capabilities projection, and deliberate exclusions in `contract/parity.v2.json`.
 
 ### Direct package versus managed Stack
 
 There are two intentionally distinct channels:
 
-- **Direct package:** `pi install npm:jorgex-pi@0.5.0` installs the reviewed snapshot, quality receipt schema, policy/protocol assets, and `/lean-audit` prompt bundled in this package. The extension uses those assets as marker-aware fallbacks: it appends each missing `<!-- jorgex:... -->` section without replacing user prompt content or duplicating a section already supplied by Stack.
+- **Direct package:** after the selected version in `package.json` is published, install it explicitly with `pi install npm:jorgex-pi@<published-version>`. The extension uses its bundled assets as marker-aware fallbacks: it appends each missing `<!-- jorgex:... -->` section without replacing user prompt content or duplicating a section already supplied by Stack.
 - **Future managed Stack adoption (PR02):** a later, separate Stack PR is expected to project the same policy, skills, prompt and capability-conditioned sections into Pi's user-level paths, then filter the packaged duplicates. That PR is not part of this package release and is not assumed to exist; until it is merged, managed installations keep their previously frozen Pi artifact.
 
 The direct fallback is not a second managed installation mechanism. It is a safe package-local fallback for direct installs; Stack-owned markers remain authoritative whenever they are present.
@@ -61,6 +61,22 @@ Health is session-scoped and cleared on session start or shutdown. A normal sess
 The bootstrap reads Pi settings only to prevent loading Web Access, Goal, or `pi-mcp-adapter` twice. It checks global `PI_CODING_AGENT_DIR/settings.json` (default `~/.pi/agent/settings.json`) and project `.pi/settings.json` for pinned or unpinned npm entries, including object entries with `source`. Each detector latches until Pi reloads and reports its own issue only after a UI notification is actually delivered. Web Access detection retains the existing global fail-closed boundary. A Goal duplicate or unreadable Goal preflight skips only the bundled Goal. A direct `pi-mcp-adapter` entry skips only the internal Engram adapter; permission health, Web Access, Goal, and subagents remain available. Detection never rewrites settings. JorgeX Stack PR07 will add install/sync preflight and ownership-safe migration for npm, local, and Git package identities; the runtime detector intentionally recognizes only npm identities.
 
 This atomic safety guarantee applies to the tool-call flow. A bundled healthy Goal is additionally gated at its command, managed-run start, prompt, settled-continuation, and message-delivery boundaries so it cannot start provider work before permission health. A valid managed-run request rejected by that gate receives the upstream-compatible terminal `ACTIVATION_FAILED` error instead of disappearing silently. Other companion slash commands and the event/RPC bridges registered internally by `pi-subagents` retain their upstream lifecycle and error handling; this package does not claim to guard those surfaces.
+
+## Local quality-capability diagnostics
+
+Pi emits the `jorgex:quality-capabilities` event from `extensions/bootstrap.ts` at `session_start` and again when the session observes `permissions:ready`. The report is derived from the diagnostic flags `bootstrapReady`, `policyPresent`, and `permissionReady`. It uses namespace `jorgex.quality.capabilities`, version `1`, runtime `pi`, and exactly three capability entries:
+
+| Capability | Pi local state | Meaning |
+| --- | --- | --- |
+| `policy-guidance` | `prompt-only` | The bundled policy is present while bootstrap is healthy and is available as guidance; this does not prove runtime enforcement. Evidence is `assets/system-prompt/AGENTS.md`, version `1`. |
+| `tool-approval` | `manual` | Bootstrap is healthy and the Pi permission service is ready, but approval remains a manual runtime action. Evidence is `contract/jorgex-pi.v1.json`, version `1`. |
+| `external-verification` | `unavailable` | External quality verification is owned by JorgeX Stack and is not available in Pi. |
+
+Pi's report is local diagnostics, not certification of what the runtime actually enforces. The common vocabulary includes `enforced`, but a local report can emit only `prompt-only`, `manual`, or `unavailable`; a failed bootstrap leaves all three capabilities `unavailable`. `evidence.version` identifies the reviewed declaration or contract version, not a Pi, companion, runtime, or compatibility version. The report contains no raw configuration or secrets.
+
+The canonical schema is `stack/contracts/quality-capabilities.v1.schema.json` in Stack and its generated Pi projection is `contract/schemas/quality-capabilities.v1.schema.json`. `contract/parity.v2.json` records the `qualityCapabilities` projection with its namespace, version, source/target paths, and source/output SHA-256 digests. Pi emits this native event from its own bootstrap; it is not another Stack adapter and it does not produce `jorgex.quality.receipt`.
+
+Event emission is best-effort and cannot change the bootstrap safety boundary. The report is not persisted as a receipt and does not change ownership or cleanup. Keep these artifacts separate: `~/.jorgex-stack/pi-receipt.json` (managed package hand-off), `~/.jorgex-stack/pi-projection-receipt.json` (shared projection), `PI_CODING_AGENT_DIR/jorgex-pi/sol-lifecycle.v1.json` (Pi primary lifecycle), and `jorgex.quality.receipt` (quality evidence). The JSON runner commands and lifecycle remain unchanged.
 
 ## MCP and Engram
 
@@ -123,13 +139,13 @@ Tests use isolated temporary homes and fake executable Engram paths. They verify
 
 ### Refresh and verify the canonical snapshot
 
-Regenerate only from a local JorgeX Stack checkout that contains the pinned commit `e30f4af99bac7847a27fc6038e20dcb17fc58a13`:
+Regenerate only from a local JorgeX Stack checkout containing the exact commit recorded in `contract/parity.v2.json` at `source.commit`. For coordinated changes, after Stack merges, regenerate and re-pin to the merged commit before publishing Pi:
 
 ```bash
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" pnpm snapshot:generate
 ```
 
-The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
+The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, `contract/schemas/quality-capabilities.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 15 agents and all 96 files from the 17 approved skill trees.
 
 Run the explicit cross-repository parity check against the same checkout:
 
@@ -167,7 +183,7 @@ Publication does not update JorgeX Stack. The 24-hour npm maturity window applie
 - Stack PR #62 hardened `lean-code`; this release regenerates that skill and bundles Stack's shared policy projection, including the canonical `/lean-audit` command.
 - Stack PR #66 introduced the versioned quality receipt schema projected at `contract/schemas/quality-receipt.v1.schema.json`; it remains package metadata and does not become Pi-managed user state.
 
-These changes are represented by parity v2 and the pinned Stack commit above; they do not imply that the future managed Stack adoption PR has already been created or merged.
+These changes are represented by parity v2 and its `source.commit`; they do not imply that the future managed Stack adoption PR has already been created or merged.
 
 ## Paths, state, and ownership
 

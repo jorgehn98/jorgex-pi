@@ -4,7 +4,7 @@ Paquete Pi-native del harness JorgeX. Este archivo define la relación operativa
 
 ## Relación con JorgeX Stack
 
-`jorgex-pi` se puede instalar directamente mediante el gestor de paquetes de Pi, pero su canal gestionado es JorgeX Stack. En `0.4.0`, Pi fija la snapshot de Stack `5353c83c212a8603ab3e3bd5cac54dde4c75037c` mediante parity v2. Los repos tienen responsabilidades distintas:
+`jorgex-pi` se puede instalar directamente mediante el gestor de paquetes de Pi, pero su canal gestionado es JorgeX Stack. `package.json` es la autoridad de versión y `contract/parity.v2.json`, mediante `source.commit`, identifica el origen de la snapshot compartida. Los repos tienen responsabilidades distintas:
 
 - **JorgeX Stack** es la fuente canónica de agentes, skills, system prompt y políticas compartidas, además del fleet manager que instala y verifica Pi.
 - **JorgeX Pi** posee la traducción Pi-native, el bootstrap, contratos, companions, assets, runner JSON y lifecycle del paquete.
@@ -16,11 +16,15 @@ Todo cambio debe incluir una revisión explícita de impacto cruzado:
 - Si cambian versión, runner, contratos, capacidades, assets, dependencias, ownership, instalación, actualización, doctor o cleanup de Pi, comprobar si Stack debe actualizar su candidato congelado, fixtures, tests y `docs/references/pi-runtime.md`.
 - Un cambio sin impacto en el otro repo debe dejar esa conclusión anotada en el PR; no se asume automáticamente que los repos son independientes.
 
+### Diagnóstico local de capabilities
+
+Mantener la proyección de `contract/schemas/quality-capabilities.v1.schema.json` registrada en `contract/parity.v2.json` bajo `qualityCapabilities`. El evento nativo `jorgex:quality-capabilities`, sus estados diagnósticos y la separación de receipts se describen en README, sección «Local quality-capability diagnostics»; no ampliar esa declaración a certificación de enforcement ni a un nuevo lifecycle del runner. En cambios coordinados, regenerar y re-pin al commit mergeado de Stack antes de publicar Pi.
+
 ## Canales de instalación y releases coordinadas
 
 La instalación directa y la gestionada no son el mismo canal:
 
-- **Directa:** `pi install npm:jorgex-pi@0.4.0` usa los assets y el prompt empaquetados. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
+- **Directa:** después de publicar la versión seleccionada en `package.json`, instalarla explícitamente con `pi install npm:jorgex-pi@<published-version>`. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
 - **Gestionada futura (PR02):** Stack deberá proyectar policy, skills, prompt y secciones condicionadas a las rutas de usuario de Pi, y filtrar los duplicados del paquete. Ese PR es posterior, separado y todavía no existe; no documentar su artefacto ni tratarlo como desplegado.
 
 Publicar Pi no actualiza automáticamente JorgeX Stack. La adopción gestionada sigue este orden:
