@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "package": {
     "name": "jorgex-pi",
-    "version": "0.5.0",
-    "source": "npm:jorgex-pi@0.5.0"
+    "version": "0.6.0",
+    "source": "npm:jorgex-pi@0.6.0"
   },
   "pi": {
     "minimumVersion": "0.84.2",
@@ -25,7 +25,8 @@
     "runner-json-v1",
     "tui-branding-v1",
     "managed-primary-model-v1",
-    "quality-receipt-contract-v1"
+    "quality-receipt-contract-v1",
+    "quality-capabilities-contract-v1"
   ],
   "snapshot": {
     "contractPath": "contract/parity.v2.json",
@@ -46,6 +47,7 @@
   },
   "schemas": {
     "runnerResponse": "contract/schemas/runner-response.v1.schema.json",
-    "qualityReceipt": "contract/schemas/quality-receipt.v1.schema.json"
+    "qualityReceipt": "contract/schemas/quality-receipt.v1.schema.json",
+    "qualityCapabilities": "contract/schemas/quality-capabilities.v1.schema.json"
   }
 }
