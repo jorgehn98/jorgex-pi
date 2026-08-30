@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "5b17eb0a6068e2651aa457c7745d1d0958286d18"
+    "commit": "ebc55667ba610925227fcb575ae1f84750a53510"
   },
   "agents": [
     {
