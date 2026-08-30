@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "20e62b2ea46d88c931f26561613ba7d7bc487719"
+    "commit": "5b17eb0a6068e2651aa457c7745d1d0958286d18"
   },
   "agents": [
     {
@@ -641,8 +641,8 @@
     "version": 1,
     "sourcePath": "stack/contracts/quality-capabilities.v1.schema.json",
     "targetPath": "contract/schemas/quality-capabilities.v1.schema.json",
-    "sourceSha256": "19611d5826c224290ddf47917a5dcadbebdc3b06c155e4ce085971ea403632b9",
-    "outputSha256": "19611d5826c224290ddf47917a5dcadbebdc3b06c155e4ce085971ea403632b9"
+    "sourceSha256": "bdcfb005fdbe8d0ca1961b1ee527a41141c4830656ee4047c9b24cd783db08d4",
+    "outputSha256": "bdcfb005fdbe8d0ca1961b1ee527a41141c4830656ee4047c9b24cd783db08d4"
   },
   "commands": [
     {
