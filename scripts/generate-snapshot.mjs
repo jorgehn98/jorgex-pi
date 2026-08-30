@@ -11,10 +11,12 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const DEFAULT_SOURCE_COMMIT = "e30f4af99bac7847a27fc6038e20dcb17fc58a13";
+const DEFAULT_SOURCE_COMMIT = "ebc55667ba610925227fcb575ae1f84750a53510";
 const SOURCE_COMMIT = process.env.JORGEX_STACK_COMMIT?.trim() || DEFAULT_SOURCE_COMMIT;
 const QUALITY_RECEIPT_SOURCE_PATH = "stack/contracts/quality-receipt.v1.schema.json";
 const QUALITY_RECEIPT_TARGET_PATH = "contract/schemas/quality-receipt.v1.schema.json";
+const QUALITY_CAPABILITIES_SOURCE_PATH = "stack/contracts/quality-capabilities.v1.schema.json";
+const QUALITY_CAPABILITIES_TARGET_PATH = "contract/schemas/quality-capabilities.v1.schema.json";
 const POLICY_SOURCE_PATH = "stack/system-prompt/AGENTS.md";
 const ENGRAM_PROTOCOL_SOURCE_PATH = "stack/system-prompt/engram-protocol.md";
 const COMMAND_SOURCES = [
@@ -68,6 +70,7 @@ try {
     policy: generateCopyProjection(POLICY_SOURCE_PATH, "assets/system-prompt/AGENTS.md"),
     engramProtocol: generateCopyProjection(ENGRAM_PROTOCOL_SOURCE_PATH, "assets/system-prompt/engram-protocol.md"),
     qualityReceipt: generateQualityReceiptProjection(),
+    qualityCapabilities: generateQualityCapabilitiesProjection(),
     commands: COMMAND_SOURCES.map(generateCommand),
     exclusions: EXCLUSIONS,
   };
@@ -144,6 +147,14 @@ function generateQualityReceiptProjection() {
     namespace: "jorgex.quality.receipt",
     version: 1,
     ...generateCopyProjection(QUALITY_RECEIPT_SOURCE_PATH, QUALITY_RECEIPT_TARGET_PATH),
+  };
+}
+
+function generateQualityCapabilitiesProjection() {
+  return {
+    namespace: "jorgex.quality.capabilities",
+    version: 1,
+    ...generateCopyProjection(QUALITY_CAPABILITIES_SOURCE_PATH, QUALITY_CAPABILITIES_TARGET_PATH),
   };
 }
 

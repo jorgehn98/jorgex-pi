@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { installMcpEngram } from "./mcp-engram.ts";
+import { PI_QUALITY_CAPABILITIES_EVENT, reportPiQualityCapabilities } from "./quality-capabilities.ts";
 
 const companionIds = ["permission", "ask", "subagents", "web", "goal"];
 const staticCompanionTools = ["ask_user_question", "subagent", "subagent_wait"];
@@ -9,6 +10,7 @@ const webWorkflows = new Set(["none", "summary-review", "auto-summary"]);
 const systemPromptMarker = "jorgex:system-prompt";
 const engramProtocolMarker = "jorgex:engram-protocol";
 const browserMarker = "jorgex:browser";
+const qualityCapabilitiesEvent = PI_QUALITY_CAPABILITIES_EVENT;
 const managedMarkerPattern = /<!--\s*(\/?jorgex:(?:system-prompt|engram-protocol|browser))\s*-->/g;
 const reservedManagedMarkerPattern = /<!--\s*\/?jorgex:(?:system-prompt|engram-protocol|browser)\s*-->/;
 const emergencySystemPolicy = [
@@ -134,6 +136,11 @@ export function createBootstrap({
           };
         }
       }
+      emitQualityCapabilities(pi, {
+        bootstrapReady: companionsHealthy && !bootstrapFailure && !webAccessConflict,
+        policyPresent: systemPromptAssets !== undefined && !systemPromptAssetsFailure,
+        permissionReady: false,
+      });
       if (bootstrapFailure && !failureNotified) {
         failureNotified = notifyError(ctx, formatFailure(bootstrapFailure));
       }
@@ -163,6 +170,11 @@ export function createBootstrap({
       if (!companionsHealthy || bootstrapFailure || webAccessConflict || !sessionId || !locateService?.(sessionId)) return;
 
       readySessions.add(sessionId);
+      emitQualityCapabilities(pi, {
+        bootstrapReady: true,
+        policyPresent: systemPromptAssets !== undefined && !systemPromptAssetsFailure,
+        permissionReady: true,
+      });
     });
 
     pi.on("session_shutdown", (_event, ctx) => {
@@ -173,6 +185,11 @@ export function createBootstrap({
         reconciledSessions.delete(sessionId);
         hiddenSelections.delete(sessionId);
       }
+      emitQualityCapabilities(pi, {
+        bootstrapReady: false,
+        policyPresent: false,
+        permissionReady: false,
+      });
       hideCompanionTools(pi, companionTools);
     });
 
@@ -254,6 +271,15 @@ export function createBootstrap({
             ),
       };
     });
+
+    function emitQualityCapabilities(piApi, flags) {
+      const report = reportPiQualityCapabilities(flags);
+      try {
+        piApi.events?.emit?.(qualityCapabilitiesEvent, report);
+      } catch {
+        // Diagnostics must not change the bootstrap safety boundary.
+      }
+    }
 
     function goalAvailability(ctx) {
       if (goalConflict) return "Direct duplicate @narumitw/pi-goal conflict; correct Pi settings and reload Pi.";

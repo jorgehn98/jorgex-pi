@@ -1,0 +1,20 @@
+{
+  "parityField": "qualityCapabilities",
+  "namespace": "jorgex.quality.capabilities",
+  "version": 1,
+  "sourcePath": "stack/contracts/quality-capabilities.v1.schema.json",
+  "targetPath": "contract/schemas/quality-capabilities.v1.schema.json",
+  "projectionKeys": [
+    "namespace",
+    "version",
+    "sourcePath",
+    "targetPath",
+    "sourceSha256",
+    "outputSha256"
+  ],
+  "runtimeValues": ["claude-code", "codex", "opencode", "pi", "unknown"],
+  "capabilityIds": ["policy-guidance", "tool-approval", "external-verification"],
+  "states": ["prompt-only", "manual", "unavailable", "enforced"],
+  "localStates": ["prompt-only", "manual", "unavailable"],
+  "strictProfiles": ["high", "release"]
+}

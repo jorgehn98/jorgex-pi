@@ -40,6 +40,7 @@ test("generated outputs match raw pinned objects with the documented byte policy
   assertCopyProjection(stackDir, modes, parity.policy, expected.policy, "system policy");
   assertCopyProjection(stackDir, modes, parity.engramProtocol, expected.engramProtocol, "Engram protocol");
   assertQualityReceiptProjection(stackDir, modes, parity.qualityReceipt, expected.qualityReceipt);
+  assertQualityCapabilitiesProjection(stackDir, modes, parity.qualityCapabilities, expected.qualityCapabilities);
   assert.deepEqual(parity.exclusions, expected.exclusions, "parity v2 must retain every deliberate exclusion");
   for (const exclusion of parity.exclusions.filter(({ kind }) => kind === "runtime-specific-overlay")) {
     assert.equal(modes.get(exclusion.sourcePath), "100644", `${exclusion.sourcePath} must remain an explicit regular-file exclusion`);
@@ -122,7 +123,7 @@ function createPackageCopy(target) {
 
 function runGenerator(packageRoot, stackDir) {
   execFileSync(process.execPath, [join(packageRoot, "scripts", "generate-snapshot.mjs")], {
-    env: { ...process.env, JORGEX_STACK_DIR: stackDir },
+    env: { ...process.env, JORGEX_STACK_DIR: stackDir, JORGEX_STACK_COMMIT: expected.sourceCommit },
     stdio: "pipe",
   });
 }
@@ -135,6 +136,7 @@ function generatedTree(packageRoot) {
     join(packageRoot, expected.engramProtocol.targetPath),
     ...expected.commands.map(({ targetPath }) => join(packageRoot, targetPath)),
     join(packageRoot, expected.qualityReceipt.targetPath),
+    join(packageRoot, expected.qualityCapabilities.targetPath),
     join(packageRoot, expected.parityPath),
   ];
   return Object.fromEntries(
@@ -182,6 +184,7 @@ function trackedSourcePaths(parity) {
     parity.policy.sourcePath,
     parity.engramProtocol.sourcePath,
     parity.qualityReceipt.sourcePath,
+    parity.qualityCapabilities.sourcePath,
     ...parity.commands.map(({ sourcePath }) => sourcePath),
     ...parity.exclusions.filter(({ kind }) => kind === "runtime-specific-overlay").map(({ sourcePath }) => sourcePath),
   ];
@@ -201,6 +204,22 @@ function assertQualityReceiptProjection(stackDir, modes, projection, projectionE
   assert.equal(projection.sourceSha256, sha256(source), `${projection.sourcePath} source hash must match the raw pinned object`);
   assert.equal(projection.outputSha256, sha256(source), `${projection.targetPath} output hash must describe byte-exact source`);
   assert.deepEqual(readFileSync(join(root, projection.targetPath)), source, "quality receipt schema must remain byte-exact");
+}
+
+function assertQualityCapabilitiesProjection(stackDir, modes, projection, projectionExpected) {
+  assert.deepEqual(
+    Object.keys(projection).sort(),
+    ["namespace", "version", "sourcePath", "targetPath", "sourceSha256", "outputSha256"].sort(),
+    "quality capabilities projection must record its versioned schema metadata",
+  );
+  assert.deepEqual(projection, projectionExpected, "quality capabilities projection must match the candidate fixture");
+  assert.equal(projection.namespace, "jorgex.quality.capabilities");
+  assert.equal(projection.version, 1);
+  const source = rawGitBlob(stackDir, projection.sourcePath);
+  assert.equal(modes.get(projection.sourcePath), "100644", projection.sourcePath + " must be a regular non-executable source file");
+  assert.equal(projection.sourceSha256, sha256(source), projection.sourcePath + " source hash must match the raw pinned object");
+  assert.equal(projection.outputSha256, sha256(source), projection.targetPath + " output hash must describe byte-exact source");
+  assert.deepEqual(readFileSync(join(root, projection.targetPath)), source, "quality capabilities schema must remain byte-exact");
 }
 
 function assertCopyProjection(stackDir, modes, projection, projectionExpected, label) {

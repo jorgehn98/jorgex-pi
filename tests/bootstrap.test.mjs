@@ -9,6 +9,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = JSON.parse(readFileSync(join(testDir, "fixtures", "bootstrap.expected.json"), "utf8"));
 const mcpExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "mcp-engram.expected.json"), "utf8"));
+const capabilitiesExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "quality-capabilities.expected.json"), "utf8"));
 const companionToolNames = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
 test("the root manifest activates the JorgeX extensions, portable prompt, opt-in theme, and reviewed skills", () => {
@@ -449,6 +450,146 @@ test("the active companions and their audited closure are exactly pinned and bun
   for (const dependency of expected.bundledClosure) assertLockIntegrity(lock, dependency);
 });
 
+test("healthy Pi bootstrap reports guidance and manual approval without external verification", async () => {
+  const { reportPiQualityCapabilities } = await import("../extensions/quality-capabilities.ts");
+  const report = reportPiQualityCapabilities({ bootstrapReady: true, policyPresent: true, permissionReady: true });
+
+  assert.deepEqual(Object.keys(report).sort(), ["capabilities", "namespace", "runtime", "version"]);
+  assert.equal(report.namespace, capabilitiesExpected.namespace);
+  assert.equal(report.version, capabilitiesExpected.version);
+  assert.equal(report.runtime, "pi");
+  assert.deepEqual(report.capabilities.map(({ id }) => id), capabilitiesExpected.capabilityIds);
+  assert.deepEqual(report.capabilities.map(({ state }) => state), ["prompt-only", "manual", "unavailable"]);
+  for (const capability of report.capabilities) {
+    assert.equal(typeof capability.reason, "string");
+    assert.ok(capability.reason.trim().length > 0);
+    if (capability.state !== "unavailable") {
+      assert.equal(typeof capability.evidence?.source, "string");
+      assert.ok(capability.evidence.source.trim().length > 0);
+      assert.equal(typeof capability.evidence?.version, "string");
+      assert.ok(capability.evidence.version.trim().length > 0);
+    }
+  }
+});
+
+test("failed Pi bootstrap keeps every local capability unavailable despite policy and permission flags", async () => {
+  const { reportPiQualityCapabilities } = await import("../extensions/quality-capabilities.ts");
+  const report = reportPiQualityCapabilities({ bootstrapReady: false, policyPresent: true, permissionReady: true });
+
+  assert.equal(report.namespace, capabilitiesExpected.namespace);
+  assert.equal(report.version, capabilitiesExpected.version);
+  assert.equal(report.runtime, "pi");
+  assert.deepEqual(report.capabilities.map(({ id }) => id), capabilitiesExpected.capabilityIds);
+  assert.deepEqual(
+    report.capabilities.map(({ state }) => state),
+    capabilitiesExpected.capabilityIds.map(() => "unavailable"),
+    "failed bootstrap must not advertise guidance, approval, or external verification",
+  );
+});
+
+test("bootstrap transports observed permission health as local capabilities through its event bus", async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const pi = createPiHarness();
+  const services = new Map();
+  const observedSessions = [];
+
+  await createBootstrap({
+    loadCompanion: async (id) => companionFactory(id),
+    getPermissionsService: (sessionId) => {
+      observedSessions.push(sessionId);
+      return services.get(sessionId);
+    },
+    detectWebAccessConflict: () => undefined,
+    detectGoalConflict: () => undefined,
+    detectMcpAdapterConflict: () => undefined,
+    readGoalConfig: () => ({ kind: "loaded" }),
+  })(pi.api);
+
+  const context = { hasUI: true, sessionId: "quality-session", ui: { notify() {} } };
+  await pi.emitLifecycle("session_start", {}, context);
+
+  let events = pi.emittedEvents();
+  assert.deepEqual(events.map(({ name }) => name), ["jorgex:quality-capabilities"]);
+  assert.deepEqual(
+    events[0].payload.capabilities.map(({ state }) => state),
+    ["prompt-only", "unavailable", "unavailable"],
+    "session start must publish guidance while permission health is still unknown",
+  );
+
+  services.set(context.sessionId, { ready: true });
+  await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
+
+  events = pi.emittedEvents();
+  assert.deepEqual(observedSessions, [context.sessionId], "the capability transport must observe the callback session's permission service");
+  assert.deepEqual(events.map(({ name }) => name), ["jorgex:quality-capabilities", "jorgex:quality-capabilities"]);
+  assert.deepEqual(
+    events[1].payload.capabilities.map(({ state }) => state),
+    ["prompt-only", "manual", "unavailable"],
+    "a healthy local bootstrap may expose guidance and manual approval, but never external verification",
+  );
+  assert.deepEqual(
+    events[1].payload.capabilities.filter(({ state }) => state === "manual").map(({ id }) => id),
+    ["tool-approval"],
+    "tool approval must be the only manual capability after permission health is observed",
+  );
+  assert.ok(
+    events.every(({ payload }) => payload.capabilities.every(({ state }) => state !== "enforced")),
+    "Pi capability events must never claim enforced authority",
+  );
+
+  await pi.emitLifecycle("session_shutdown", {}, context);
+  events = pi.emittedEvents();
+  assert.deepEqual(
+    events.map(({ name }) => name),
+    ["jorgex:quality-capabilities", "jorgex:quality-capabilities", "jorgex:quality-capabilities"],
+    "session shutdown must publish a final degraded capability report",
+  );
+  assert.deepEqual(
+    events[2].payload.capabilities.map(({ state }) => state),
+    capabilitiesExpected.capabilityIds.map(() => "unavailable"),
+    "session shutdown must invalidate every previously reported capability",
+  );
+});
+
+test("bootstrap capability transport degrades on failure and a throwing emitter never bypasses the safety guard", async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const emitted = [];
+  const pi = createPiHarness({
+    eventEmitter(name, payload) {
+      emitted.push({ name, payload });
+      throw new Error("injected capability emitter failure");
+    },
+  });
+  const injected = new Error("injected permission load failure");
+
+  await createBootstrap({
+    async loadCompanion(id) {
+      if (id === "permission") throw injected;
+      return companionFactory(id);
+    },
+    getPermissionsService: () => ({ ready: true }),
+    detectWebAccessConflict: () => undefined,
+    detectGoalConflict: () => undefined,
+    detectMcpAdapterConflict: () => undefined,
+    readGoalConfig: () => ({ kind: "loaded" }),
+  })(pi.api);
+
+  const context = { sessionId: "failed-quality", ui: { notify() {} } };
+  await pi.emitLifecycle("session_start", {}, context);
+
+  assert.equal(emitted.length, 1, "a failed bootstrap must still attempt one degraded capability event");
+  assert.equal(emitted[0].name, "jorgex:quality-capabilities");
+  assert.deepEqual(
+    emitted[0].payload.capabilities.map(({ state }) => state),
+    capabilitiesExpected.capabilityIds.map(() => "unavailable"),
+    "a failed bootstrap must publish every local capability as unavailable",
+  );
+  assert.deepEqual(pi.activeTools(), [], "a capability emitter failure must not restore partial companion tools");
+  assertEarlyGuard(
+    await pi.emitToolCall({ toolName: "bash", input: { command: "echo must-not-run" } }, context),
+  );
+});
+
 test("bootstrap keeps its guard alive and companion tools hidden after load or factory failure", async () => {
   const { createBootstrap } = await import("../extensions/bootstrap.ts");
   assert.equal(typeof createBootstrap, "function", "bootstrap must expose its deterministic loader seam");
@@ -784,15 +925,17 @@ function companionFactory(id, initOrder = []) {
   };
 }
 
-function createPiHarness() {
+function createPiHarness({ eventEmitter } = {}) {
   const eventHandlers = new Map();
   const lifecycleHandlers = new Map();
   const tools = new Map();
+  const emittedEvents = [];
+  const emit = eventEmitter ?? ((name, payload) => emittedEvents.push({ name, payload }));
   let active = [];
   const add = (map, name, handler) => map.set(name, [...(map.get(name) ?? []), handler]);
   return {
     api: {
-      events: { on: (name, handler) => add(eventHandlers, name, handler) },
+      events: { on: (name, handler) => add(eventHandlers, name, handler), emit },
       on: (name, handler) => add(lifecycleHandlers, name, handler),
       registerTool(tool) { tools.set(tool.name, tool); active = [...new Set([...active, tool.name])]; },
       getActiveTools: () => [...active],
@@ -800,6 +943,7 @@ function createPiHarness() {
     },
     toolNames: () => [...tools.keys()].sort(),
     activeTools: () => [...active].sort(),
+    emittedEvents: () => [...emittedEvents],
     async emitEvent(name, payload) { for (const handler of eventHandlers.get(name) ?? []) await handler(payload); },
     async emitLifecycle(name, event, ctx) {
       let result;

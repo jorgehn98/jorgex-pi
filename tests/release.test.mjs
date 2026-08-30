@@ -24,7 +24,7 @@ test("the public package metadata identifies the exact minor release candidate",
   const manifest = readJson(join(root, "package.json"));
   const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
 
-  assert.equal(releaseVersion, "0.5.0", "the quality receipt contract projection requires the planned minor release");
+  assert.equal(releaseVersion, "0.6.0", "the quality capabilities contract projection requires the planned minor release");
   assert.equal(manifest.version, releaseVersion);
   assert.equal(Object.hasOwn(manifest, "private"), false, "the public package must not retain the private flag");
   assert.deepEqual(manifest.repository, { type: "git", url: `${repositoryUrl}.git` });

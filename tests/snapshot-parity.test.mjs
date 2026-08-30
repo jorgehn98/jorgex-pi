@@ -9,6 +9,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "snapshot-parity.expected.json"), "snapshot parity fixture");
 const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
+const capabilitiesExpected = readJson(join(testDir, "fixtures", "quality-capabilities.expected.json"), "quality capabilities fixture");
 
 test("the Stack snapshot stays complete and deterministic after runtime activation", () => {
   const packageManifest = readJson(join(root, "package.json"), "package manifest");
@@ -23,7 +24,7 @@ test("the Stack snapshot stays complete and deterministic after runtime activati
   assert.deepEqual(parity.source, { repository: expected.sourceRepository, commit: expected.sourceCommit });
   assert.deepEqual(
     Object.keys(parity).sort(),
-    ["agents", "commands", "engramProtocol", "exclusions", "policy", "qualityReceipt", "schemaVersion", "skills", "source"],
+    ["agents", "commands", "engramProtocol", "exclusions", "policy", "qualityCapabilities", "qualityReceipt", "schemaVersion", "skills", "source"],
     "parity v2 must expose every canonical source type explicitly",
   );
   assertAgentParity(parity.agents);
@@ -80,6 +81,7 @@ function assertSharedProjectionParity(parity) {
   assertCopyProjection(parity.policy, expected.policy, "system policy");
   assertCopyProjection(parity.engramProtocol, expected.engramProtocol, "Engram protocol");
   assertQualityReceiptProjection(parity.qualityReceipt, expected.qualityReceipt);
+  assertQualityCapabilitiesProjection(parity[capabilitiesExpected.parityField], capabilitiesExpected);
 
   assert.ok(Array.isArray(parity.commands), "parity commands must be an array");
   assert.equal(parity.commands.length, expected.commands.length, "parity commands must be complete");
@@ -122,6 +124,68 @@ function assertQualityReceiptProjection(projection, projectionExpected) {
   assert.equal(projection.outputSha256, hashFile(join(root, projection.targetPath)), "quality receipt output hash must match the projected schema");
 }
 
+function assertQualityCapabilitiesProjection(projection, projectionExpected) {
+  assert.ok(projection && typeof projection === "object" && !Array.isArray(projection), "parity v2 must expose qualityCapabilities as an object");
+  assert.deepEqual(
+    Object.keys(projection).sort(),
+    [...projectionExpected.projectionKeys].sort(),
+    "quality capabilities projection must record only its versioned schema metadata",
+  );
+  assert.deepEqual(
+    {
+      namespace: projection.namespace,
+      version: projection.version,
+      sourcePath: projection.sourcePath,
+      targetPath: projection.targetPath,
+    },
+    {
+      namespace: projectionExpected.namespace,
+      version: projectionExpected.version,
+      sourcePath: projectionExpected.sourcePath,
+      targetPath: projectionExpected.targetPath,
+    },
+    "quality capabilities projection must match the approved canonical paths",
+  );
+  assert.match(projection.sourceSha256 ?? "", /^[a-f0-9]{64}$/, "quality capabilities source hash must be lowercase sha256");
+  assert.match(projection.outputSha256 ?? "", /^[a-f0-9]{64}$/, "quality capabilities output hash must be lowercase sha256");
+
+  const schema = readJson(join(root, projection.targetPath), "quality capabilities schema projection");
+  assert.equal(schema.type, "object", "quality capabilities schema must describe an object report");
+  assert.equal(schema.additionalProperties, false, "quality capabilities report must reject undeclared top-level fields");
+  assert.deepEqual(Object.keys(schema.properties ?? {}).sort(), ["capabilities", "namespace", "runtime", "version"]);
+  assert.equal(schema.properties?.namespace?.const, projectionExpected.namespace);
+  assert.equal(schema.properties?.version?.const, projectionExpected.version);
+  assert.deepEqual(schema.properties?.runtime?.enum, projectionExpected.runtimeValues);
+
+  const capabilityItem = schema.properties?.capabilities?.items;
+  assert.equal(capabilityItem?.type, "object", "capabilities.items must describe a capability object");
+  assert.equal(capabilityItem?.additionalProperties, false, "capability entries must reject undeclared fields");
+  assert.deepEqual(Object.keys(capabilityItem?.properties ?? {}).sort(), ["evidence", "id", "reason", "state"]);
+  assert.deepEqual([...(capabilityItem?.required ?? [])].sort(), ["id", "reason", "state"], "evidence must remain optional");
+  assert.deepEqual(capabilityItem?.properties?.id?.enum, projectionExpected.capabilityIds);
+  const stateDefinition = capabilityItem?.properties?.state;
+  const stateEnum = stateDefinition?.$ref === "#/$defs/localCapabilityState"
+    ? schema.$defs?.localCapabilityState?.enum
+    : stateDefinition?.enum;
+  assert.deepEqual(
+    [...(stateEnum ?? [])].sort(),
+    [...projectionExpected.localStates].sort(),
+    "local capability item.state must exclude enforced",
+  );
+  assert.deepEqual(
+    [...(schema.$defs?.capabilityState?.enum ?? [])].sort(),
+    [...projectionExpected.states].sort(),
+    "the separate common vocabulary must retain all four capability states",
+  );
+  assert.deepEqual(
+    [...(schema.$defs?.localCapabilityState?.enum ?? [])].sort(),
+    [...projectionExpected.localStates].sort(),
+  );
+  assert.deepEqual(schema.$defs?.strictProfile?.enum, projectionExpected.strictProfiles);
+  assert.ok(capabilityItem?.properties?.reason, "capability entries must expose a reason field");
+  assert.ok(capabilityItem?.properties?.evidence, "capability entries must expose an optional evidence field");
+  assert.equal(projection.outputSha256, hashFile(join(root, projection.targetPath)), "quality capabilities output hash must match the projected schema");
+}
 function assertCopyProjection(projection, projectionExpected, label) {
   assert.deepEqual(
     Object.keys(projection).sort(),

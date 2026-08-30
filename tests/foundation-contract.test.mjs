@@ -239,6 +239,7 @@ function assertPackedParityTargets(archive, entries, parity) {
   expectedTargets.set(`package/${parity.policy.targetPath}`, parity.policy.outputSha256);
   expectedTargets.set(`package/${parity.engramProtocol.targetPath}`, parity.engramProtocol.outputSha256);
   expectedTargets.set(`package/${parity.qualityReceipt.targetPath}`, parity.qualityReceipt.outputSha256);
+  expectedTargets.set(`package/${parity.qualityCapabilities.targetPath}`, parity.qualityCapabilities.outputSha256);
   for (const command of parity.commands) expectedTargets.set(`package/${command.targetPath}`, command.outputSha256);
   assert.equal(expectedTargets.size, expected.parityV2.ownedTargetCount, "the packed snapshot must contain every parity v2 target");
 
@@ -249,6 +250,7 @@ function assertPackedParityTargets(archive, entries, parity) {
       || path.startsWith("package/assets/system-prompt/")
       || path.startsWith("package/prompts/")
       || path === `package/${parity.qualityReceipt.targetPath}`
+      || path === `package/${parity.qualityCapabilities.targetPath}`
     ))
     .sort();
   assert.deepEqual(actualOwnedFiles, [...expectedTargets.keys()].sort(), "packed owned roots must contain every parity target and no untracked extras");
