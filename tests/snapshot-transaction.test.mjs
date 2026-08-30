@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 
-test("snapshot parity v1-to-v2 migration rolls back every owned root and retains v1 when prompt publication fails", async () => {
+test("snapshot parity v1-to-v2 migration rolls back every owned root and retains v1 when capability schema publication fails", async () => {
   const { commitSnapshot } = await import("../scripts/snapshot-transaction.mjs");
   assert.equal(typeof commitSnapshot, "function", "snapshot transaction seam must export commitSnapshot");
 
@@ -19,6 +19,7 @@ test("snapshot parity v1-to-v2 migration rolls back every owned root and retains
     "snapshot/agents/original.md": "original agent\n",
     "skills/original/SKILL.md": "original skill\n",
     "contract/parity.v1.json": "{\"schemaVersion\":1,\"generation\":\"original\"}\n",
+    "contract/schemas/quality-capabilities.v1.schema.json": "original quality capabilities schema\n",
   };
   const replacement = {
     "snapshot/agents/replacement.md": "replacement agent\n",
@@ -27,6 +28,7 @@ test("snapshot parity v1-to-v2 migration rolls back every owned root and retains
     "assets/system-prompt/engram-protocol.md": "replacement protocol\n",
     "prompts/lean-audit.md": "replacement prompt\n",
     "contract/parity.v2.json": "{\"schemaVersion\":2,\"generation\":\"replacement\"}\n",
+    "contract/schemas/quality-capabilities.v1.schema.json": "replacement quality capabilities schema\n",
   };
   writeTree(packageRoot, previous);
   writeTree(stage, replacement);
@@ -41,7 +43,7 @@ test("snapshot parity v1-to-v2 migration rolls back every owned root and retains
         root: packageRoot,
         stage,
         move(source, target) {
-          if (!failedOnce && target === join(packageRoot, "prompts")) {
+          if (!failedOnce && target === join(packageRoot, "contract", "schemas", "quality-capabilities.v1.schema.json")) {
             failedOnce = true;
             throw injected;
           }
@@ -52,10 +54,10 @@ test("snapshot parity v1-to-v2 migration rolls back every owned root and retains
       caught = error;
     }
 
-    assert.equal(failedOnce, true, "the test must reach a mid-v2-publication failure after the policy roots are published");
+    assert.equal(failedOnce, true, "the test must reach a mid-v2-publication failure while publishing the quality capabilities schema");
     assert.ok(caught, "the transaction must reject when publication fails");
     assert.ok(errorChain(caught).includes(injected), "the injected publication error must remain observable as the error or its cause");
-    assert.deepEqual(readTree(packageRoot), before, "a failed v1-to-v2 migration must restore every prior byte, including the legacy parity v1 contract");
+    assert.deepEqual(readTree(packageRoot), before, "a failed v1-to-v2 migration must restore every prior byte, including parity v1 and the prior quality capabilities schema");
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
   }
@@ -70,6 +72,7 @@ test("snapshot parity v1-to-v2 migration publishes every v2 root and removes the
     "snapshot/agents/original.md": "original agent\n",
     "skills/original/SKILL.md": "original skill\n",
     "contract/parity.v1.json": "{\"schemaVersion\":1,\"generation\":\"original\"}\n",
+    "contract/schemas/quality-capabilities.v1.schema.json": "original quality capabilities schema\n",
   };
   const replacement = {
     "snapshot/agents/replacement.md": "replacement agent\n",
@@ -78,6 +81,7 @@ test("snapshot parity v1-to-v2 migration publishes every v2 root and removes the
     "assets/system-prompt/engram-protocol.md": "replacement protocol\n",
     "prompts/lean-audit.md": "replacement prompt\n",
     "contract/parity.v2.json": "{\"schemaVersion\":2,\"generation\":\"replacement\"}\n",
+    "contract/schemas/quality-capabilities.v1.schema.json": "replacement quality capabilities schema\n",
   };
   writeTree(packageRoot, previous);
   writeTree(stage, replacement);
