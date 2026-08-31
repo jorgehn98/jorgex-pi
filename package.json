@@ -43,7 +43,8 @@
     "build": "pnpm test",
     "runtime-agents:generate": "node scripts/generate-runtime-agents.mjs",
     "snapshot:generate": "node scripts/generate-snapshot.mjs",
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:property": "node --test --test-concurrency=1 pilots/property/*.test.mjs"
   },
   "pi": {
     "extensions": [
@@ -90,7 +91,8 @@
   ],
   "packageManager": "pnpm@11.22.0",
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.2"
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "fast-check": "4.9.0"
   },
   "dependencies": {
     "@gotgenes/pi-permission-system": "27.0.0",
