@@ -1,6 +1,6 @@
 {
   "name": "jorgex-pi",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Pi-native runtime package for the JorgeX harness.",
   "license": "MIT",
   "repository": {
