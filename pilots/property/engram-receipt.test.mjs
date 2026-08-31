@@ -20,7 +20,7 @@ const sampleArbitrary = fc.record({
   homeSegments: fc.array(pathSegmentArbitrary, { minLength: 0, maxLength: 3 }),
   agentSegments: fc.array(pathSegmentArbitrary, { minLength: 0, maxLength: 2 }),
   pathVariant: fc.constantFrom(...pathVariants),
-  violation: fc.constantFrom("version", "source", "scope", "path", "binary"),
+  violation: fc.constantFrom("schemaVersion", "packageName", "version", "source", "scope", "path", "binary"),
 });
 
 const { resolveConfiguredEngramBinary } = await import("../../extensions/mcp-engram.ts");
@@ -49,12 +49,7 @@ test("the receipt resolver accepts exact generated receipts and rejects one expl
           writeExecutableFixture(pathBinary);
           if (sample.platform === "win32") writeFileSync(invalidBinary, "non-native fixture\n");
 
-          const validReceipt = createReceipt({
-            source: packageSource,
-            version: manifest.version,
-            codingAgentDir: agentDir,
-            binary,
-          });
+          const validReceipt = createReceipt({ codingAgentDir: agentDir, binary });
           writeReceipt(receiptPath, validReceipt, paths);
           const env = {
             HOME: home,
@@ -63,7 +58,6 @@ test("the receipt resolver accepts exact generated receipts and rejects one expl
             PI_CODING_AGENT_DIR: envAgentDir,
           };
 
-          assert.equal(env.ENGRAM_BIN, undefined, "the property must exercise receipt fallback rather than ENGRAM_BIN");
           assert.equal(
             resolveConfiguredEngramBinary({ env, platform: sample.platform }),
             binary,
@@ -100,12 +94,12 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-function createReceipt({ source, version, codingAgentDir, binary }) {
+function createReceipt({ codingAgentDir, binary }) {
   return {
     schemaVersion: 1,
     state: "installed",
     candidate: {
-      package: { name: manifest.name, source, version },
+      package: { name: manifest.name, source: packageSource, version: manifest.version },
       tarball: { bytes: 1, sha256: "a", sha512: "b" },
       provenance: { commit: "reviewed" },
     },
@@ -122,6 +116,12 @@ function violateReceipt(receipt, violation, values) {
     engram: { ...receipt.engram },
   };
   switch (violation) {
+    case "schemaVersion":
+      mutated.schemaVersion = 2;
+      break;
+    case "packageName":
+      mutated.candidate.package.name = `foreign-${manifest.name}`;
+      break;
     case "version":
       mutated.candidate.package.version = values.version;
       break;
