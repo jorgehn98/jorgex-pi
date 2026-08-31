@@ -137,6 +137,20 @@ pnpm pack
 
 Tests use isolated temporary homes and fake executable Engram paths. They verify discovery, argv, environment filtering, adapter metadata, direct-tool projection, lifecycle recovery, JSON protocol, and tarball bindings without starting a real Engram process or reading a real Engram database.
 
+### Optional property-testing pilot
+
+This repository contains an opt-in property-testing pilot for maintainers working from a checkout. It is not part of the installed package or the default CI path.
+
+Run it with:
+
+```bash
+pnpm test:property
+```
+
+The pilot lives under `pilots/property`, uses the development-only `fast-check@4.9.0` dependency, and runs Node's test runner serially: `node --test --test-concurrency=1 pilots/property/*.test.mjs`. `pnpm test` remains the default suite and does not include this pilot. The paired Stack pilot covers TOML upsert idempotence and preservation; this Pi pilot covers positive Engram receipt resolution and contractual invalidators.
+
+Runs use a reproducible budget of 100 cases with seed `20260831` and fast-check's default shrinking. To replay a failure, use the seed and path reported by `fc.assert` with a local temporary edit, then restore that edit; do not invent environment variables or CLI flags. The pilot documents reported and tested behavior only: it does not claim enforcement or operating-system security, and it defines no additional quality threshold.
+
 ### Refresh and verify the canonical snapshot
 
 Regenerate only from a local JorgeX Stack checkout containing the exact commit recorded in `contract/parity.v2.json` at `source.commit`. For coordinated changes, after Stack merges, regenerate and re-pin to the merged commit before publishing Pi:
