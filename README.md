@@ -151,6 +151,19 @@ The pilot lives under `pilots/property`, uses the development-only `fast-check@4
 
 Runs use a reproducible budget of 100 cases with seed `20260831` and fast-check's default shrinking. To replay a failure, use the seed and path reported by `fc.assert` with a local temporary edit, then restore that edit; do not invent environment variables or CLI flags. The pilot documents reported and tested behavior only: it does not claim enforcement or operating-system security, and it defines no additional quality threshold.
 
+### Optional native coverage pilot
+
+This repository also contains an opt-in native Node coverage pilot for maintainers working from a checkout. It is not part of the installed package or the default CI path. Prepare and run it with the package manager pinned by `package.json`:
+
+```bash
+corepack pnpm install --frozen-lockfile
+corepack pnpm test:coverage
+```
+
+`test:coverage` creates `coverage/` before invoking Node's built-in test runner serially with `--experimental-test-coverage` (experimental in Node 24). It runs `tests/bootstrap.test.mjs` and `tests/runner.test.mjs`, limits the coverage report to `bin/jorgex-pi.mjs`, `extensions/bootstrap.ts`, and `extensions/quality-capabilities.ts`, writes the `spec` report to stdout, and writes LCOV to `coverage/lcov.info`. The pilot was observed with Node `24.13.0`; it adds no production runtime or dependency. `coverage/lcov.info` is local-only: `/coverage/` is gitignored and `coverage` is excluded from the published package.
+
+Before using any percentage, verify that `coverage/lcov.info` is non-empty, contains the three expected source paths, and maps them correctly. A missing source is incomplete coverage even when the command exits `0`. The experiment observed attribution for the runner's `spawnSync` path in this seam; it does not claim automatic coverage of every child process, VM, or TypeScript execution. This is an exploratory report only: it has no threshold or CI gate, and it does not change the JSON runner contract.
+
 ### Refresh and verify the canonical snapshot
 
 Regenerate only from a local JorgeX Stack checkout containing the exact commit recorded in `contract/parity.v2.json` at `source.commit`. For coordinated changes, after Stack merges, regenerate and re-pin to the merged commit before publishing Pi:

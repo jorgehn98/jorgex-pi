@@ -44,6 +44,7 @@
     "runtime-agents:generate": "node scripts/generate-runtime-agents.mjs",
     "snapshot:generate": "node scripts/generate-snapshot.mjs",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:coverage": "node -e \"require('node:fs').mkdirSync('coverage',{recursive:true})\" && node --experimental-test-coverage --test --test-concurrency=1 --test-coverage-include=bin/jorgex-pi.mjs --test-coverage-include=extensions/bootstrap.ts --test-coverage-include=extensions/quality-capabilities.ts --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info tests/bootstrap.test.mjs tests/runner.test.mjs",
     "test:property": "node --test --test-concurrency=1 pilots/property/*.test.mjs"
   },
   "pi": {
