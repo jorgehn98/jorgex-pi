@@ -23,7 +23,7 @@ The active skill list contains 16 explicit package-local paths. `playwright-cli`
 There are two intentionally distinct channels:
 
 - **Direct package:** after the selected version in `package.json` is published, install it explicitly with `pi install npm:jorgex-pi@<published-version>`. The extension uses its bundled assets as marker-aware fallbacks: it appends each missing `<!-- jorgex:... -->` section without replacing user prompt content or duplicating a section already supplied by Stack.
-- **Future managed Stack adoption (PR02):** a later, separate Stack PR is expected to project the same policy, skills, prompt and capability-conditioned sections into Pi's user-level paths, then filter the packaged duplicates. That PR is not part of this package release and is not assumed to exist; until it is merged, managed installations keep their previously frozen Pi artifact.
+- **Managed Stack:** Stack installs the exact candidate recorded by its runtime registry, verifies the tarball integrity, then projects the shared policy, skills, prompt and conditional sections into Pi's user-level paths and filters the packaged duplicates. Publishing a Pi release does not update that candidate; adopting a new release is a separate sequential Stack change against the exact published artifact.
 
 The direct fallback is not a second managed installation mechanism. It is a safe package-local fallback for direct installs; Stack-owned markers remain authoritative whenever they are present.
 
@@ -175,15 +175,15 @@ Before merging anything that may publish, configure the npm trusted publisher in
 
 A push to `main` starts the release workflow. If the version declared in `package.json` is absent from npm, it is published unchanged; this preserves a manual minor or major decision. If it already exists and the push changes packaged runtime content, the workflow selects the next free patch, updates `package.json` and the root contract together, verifies the resulting commit, publishes its exact `pnpm pack` tarball with npm provenance through OIDC, and creates the immutable `v<version>` tag. Tests, work state, release scripts, workflow-only changes and operational `AGENTS.md` edits do not create another patch once the declared version is published. `workflow_dispatch` can recover an unpublished version or missing tag only from a verified SHA belonging to `main`.
 
-Publication does not update JorgeX Stack. The 24-hour npm maturity window applies only to real consumption by managed Stack installations: Pi development, sequential PRs, merges, publication, and validation of the future Stack adoption may proceed immediately after this package is published. A later Stack PR may adopt the exact artifact with its tarball URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate; an earlier managed consumption requires Jorge's explicit exception. Until that adoption PR is merged, managed installations continue using the previous frozen Pi version.
+Publication does not update JorgeX Stack automatically. Stack's managed installation consumes the exact candidate recorded in its runtime registry; adopting a new Pi release is a separate coordinated change that verifies the published artifact's URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate. The 24-hour npm maturity window applies only to real consumption by managed Stack installations; it does not block Pi development, sequential PRs, merges, publication or adoption validation. Direct installation uses a separate package-manager channel, but any consumption before the 24-hour maturity window expires requires Jorge's explicit exception; direct installation cannot bypass this policy, which Pi does not enforce automatically.
 
-### Recent Stack content adopted in 0.5.0
+### Stack content represented in this package
 
 - Stack PR #59 updated the shared `xreview` work-context policy and the affected canonical agents, including `orchestrator` and `xreview`.
 - Stack PR #62 hardened `lean-code`; this release regenerates that skill and bundles Stack's shared policy projection, including the canonical `/lean-audit` command.
 - Stack PR #66 introduced the versioned quality receipt schema projected at `contract/schemas/quality-receipt.v1.schema.json`; it remains package metadata and does not become Pi-managed user state.
 
-These changes are represented by parity v2 and its `source.commit`; they do not imply that the future managed Stack adoption PR has already been created or merged.
+These changes are represented by parity v2 and its `source.commit`; the managed Stack candidate remains an independent release concern and must be updated only through the exact-artifact adoption flow above.
 
 ## Paths, state, and ownership
 

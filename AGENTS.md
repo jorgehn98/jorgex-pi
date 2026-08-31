@@ -25,7 +25,7 @@ Mantener la proyección de `contract/schemas/quality-capabilities.v1.schema.json
 La instalación directa y la gestionada no son el mismo canal:
 
 - **Directa:** después de publicar la versión seleccionada en `package.json`, instalarla explícitamente con `pi install npm:jorgex-pi@<published-version>`. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
-- **Gestionada futura (PR02):** Stack deberá proyectar policy, skills, prompt y secciones condicionadas a las rutas de usuario de Pi, y filtrar los duplicados del paquete. Ese PR es posterior, separado y todavía no existe; no documentar su artefacto ni tratarlo como desplegado.
+- **Gestionada:** Stack instala el candidato exacto que registra en su runtime, verifica su integridad, proyecta los recursos compartidos y filtra del registro del paquete las skills/prompts ya proyectados. Publicar una versión Pi no actualiza automáticamente ese candidato: su adopción requiere un cambio separado y secuencial en Stack contra el artefacto publicado exacto.
 
 Publicar Pi no actualiza automáticamente JorgeX Stack. La adopción gestionada sigue este orden:
 
@@ -34,11 +34,11 @@ Publicar Pi no actualiza automáticamente JorgeX Stack. La adopción gestionada 
 3. Esperar las **24 horas en npm** solo antes del consumo real por instalaciones gestionadas, salvo excepción explícita de Jorge documentada en ese PR.
 4. Mantener el candidato anterior en Stack hasta que ese PR se fusione y verifique.
 
-La ventana de 24 horas no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa puede seleccionar una versión publicada explícita y queda fuera de esa ventana.
+La ventana de 24 horas no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir las 24 horas de madurez requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
 
 Nunca enlazar ambos repos mediante `latest`, un checkout vivo o descargas sin integridad.
 
-Los cambios compartidos recientes adoptados en esta línea son Stack PR #59 (contexto de trabajo de `xreview`, con regeneración de agentes afectados) y Stack PR #62 (hardening de `lean-code` y policy compartida). El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
+La procedencia de la snapshot se consulta en `contract/parity.v2.json`; no repetir aquí SHA ni el estado transitorio del candidato. El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
 
 El trabajo cross-repo no se cierra tras fusionar Pi: debe completar los PRs secuenciales requeridos en Stack y verificar el resultado final. De forma simétrica, un cambio de Stack tampoco se da por cerrado si deja pendiente la PR de Pi necesaria para publicar o adoptar su proyección.
 
