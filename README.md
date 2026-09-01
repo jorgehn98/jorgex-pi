@@ -25,7 +25,9 @@ There are two intentionally distinct channels:
 - **Direct package:** after the selected version in `package.json` is published, install it explicitly with `pi install npm:jorgex-pi@<published-version>`. The extension uses its bundled assets as marker-aware fallbacks: it appends each missing `<!-- jorgex:... -->` section without replacing user prompt content or duplicating a section already supplied by Stack.
 - **Managed Stack:** Stack installs the exact candidate recorded by its runtime registry, verifies the tarball integrity, then projects the shared policy, skills, prompt and conditional sections into Pi's user-level paths and filters the packaged duplicates. Publishing a Pi release does not update that candidate; adopting a new release is a separate sequential Stack change against the exact published artifact.
 
-For the `work-audit` rollout, Stack 1.9.0 is the canonical source and already projects the shared skill through the managed channel. Pi 0.8.0 updates the direct package snapshot and active allowlist. A later sequential Stack change pins the exact published Pi 0.8.0 tarball so both channels converge again.
+Historically, Stack 1.9.0 was the canonical source for the `work-audit` rollout and Pi 0.8.0 updated the direct package snapshot and active allowlist. Managed adoption is now complete: Stack 1.9.2 recognizes and pins the exact published `npm:jorgex-pi@0.8.0` tarball, so there is no active channel lag or second source of truth.
+
+Stack 1.9.2 was accepted by npm and its readback confirmed public registry metadata and tarball availability. Stack's local checks bind the downloaded bytes to the accepted candidate's pinned size, SHA-256 and SHA-512; these checks are local artifact verification, not independent trust roots. npm's external provenance/attestation remains outside Pi and Stack runtime verification, and `provenance.commit` is informative unless that attestation is independently verified.
 
 The direct fallback is not a second managed installation mechanism. It is a safe package-local fallback for direct installs; Stack-owned markers remain authoritative whenever they are present.
 
@@ -204,7 +206,19 @@ Before merging anything that may publish, configure the npm trusted publisher in
 
 A push to `main` starts the release workflow. If the version declared in `package.json` is absent from npm, it is published unchanged; this preserves a manual minor or major decision. If it already exists and the push changes packaged runtime content, the workflow selects the next free patch, updates `package.json` and the root contract together, verifies the resulting commit, publishes its exact `pnpm pack` tarball with npm provenance through OIDC, and creates the immutable `v<version>` tag. Tests, work state, release scripts, workflow-only changes and operational `AGENTS.md` edits do not create another patch once the declared version is published. `workflow_dispatch` can recover an unpublished version or missing tag only from a verified SHA belonging to `main`.
 
-Publication does not update JorgeX Stack automatically. Stack's managed installation consumes the exact candidate recorded in its runtime registry; adopting a new Pi release is a separate coordinated change that verifies the published artifact's URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate. The 24-hour npm maturity window applies only to real consumption by managed Stack installations; it does not block Pi development, sequential PRs, merges, publication or adoption validation. Direct installation uses a separate package-manager channel, but any consumption before the 24-hour maturity window expires requires Jorge's explicit exception; direct installation cannot bypass this policy, which Pi does not enforce automatically.
+Publication does not update JorgeX Stack automatically. Stack's managed installation consumes the exact candidate recorded in its runtime registry; adopting a future Pi release remains a separate coordinated change that verifies the published artifact's URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate. The 24-hour npm maturity window applies only to real consumption by managed Stack installations; it does not block Pi development, sequential PRs, merges, publication or adoption validation. Direct installation uses a separate package-manager channel, but any consumption before the 24-hour maturity window expires requires Jorge's explicit exception; direct installation cannot bypass this policy, which Pi does not enforce automatically.
+
+Stack 1.9.2 recognizes only the exact Pi receipt `npm:jorgex-pi@0.8.0`. For an existing receipt transition, use the Stack version that recognizes the receipt currently present; do not edit receipts, hashes or manual state:
+
+```bash
+# Pi receipt 0.7.0 → 0.8.0
+pnpm dlx jorgex-stack@1.9.0 uninstall --agents pi
+pnpm dlx jorgex-stack@1.9.2 install --agents pi
+
+# Roll back from Pi receipt 0.8.0 → 0.7.0
+pnpm dlx jorgex-stack@1.9.2 uninstall --agents pi
+pnpm dlx jorgex-stack@1.9.0 install --agents pi
+```
 
 ### Stack content represented in this package
 

@@ -27,18 +27,32 @@ La instalación directa y la gestionada no son el mismo canal:
 - **Directa:** después de publicar la versión seleccionada en `package.json`, instalarla explícitamente con `pi install npm:jorgex-pi@<published-version>`. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
 - **Gestionada:** Stack instala el candidato exacto que registra en su runtime, verifica su integridad, proyecta los recursos compartidos y filtra del registro del paquete las skills/prompts ya proyectados. Publicar una versión Pi no actualiza automáticamente ese candidato: su adopción requiere un cambio separado y secuencial en Stack contra el artefacto publicado exacto.
 
-Rollout de `work-audit`: Stack 1.9.0 es el canon y ya la proyecta en el canal gestionado; Pi 0.8.0 actualiza snapshot y allowlist del paquete directo; un PR posterior de Stack fijará el tarball Pi 0.8.0 exacto para realinear ambos canales. No reinterpretar ese desfase secuencial como una segunda fuente de verdad.
+El rollout histórico de `work-audit` comenzó con Stack 1.9.0 como canon y Pi 0.8.0 actualizando la snapshot y allowlist del paquete directo. La adopción gestionada ya está completada: Stack 1.9.2 reconoce y fija el tarball exacto `npm:jorgex-pi@0.8.0`; no hay un desfase activo ni una segunda fuente de verdad.
 
-Publicar Pi no actualiza automáticamente JorgeX Stack. La adopción gestionada sigue este orden:
+Publicar Pi no actualiza automáticamente JorgeX Stack. Para una futura adopción gestionada, el flujo sigue este orden:
 
 1. Fusionar, verificar y publicar la versión de `jorgex-pi`.
 2. Abrir el PR separado y secuencial de adopción en Stack contra el artefacto exacto publicado, verificando URL, tamaño, SHA-256 y SHA-512 del tarball, fixture, lifecycle y rollback.
 3. Esperar las **24 horas en npm** solo antes del consumo real por instalaciones gestionadas, salvo excepción explícita de Jorge documentada en ese PR.
 4. Mantener el candidato anterior en Stack hasta que ese PR se fusione y verifique.
 
-La ventana de 24 horas no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir las 24 horas de madurez requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
+Stack 1.9.2 fue aceptado por npm y el readback confirmó la metadata y el tarball públicos. La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real del nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
+
+La verificación local de Stack comprueba que los bytes descargados coinciden con el tamaño y los SHA-256/SHA-512 fijados para el candidato aceptado. Es una comprobación local del artefacto, no una raíz de confianza independiente: la attestation/provenance externa de npm queda fuera del runtime, y `provenance.commit` es informativo salvo verificación explícita de esa attestation.
 
 Nunca enlazar ambos repos mediante `latest`, un checkout vivo o descargas sin integridad.
+
+Stack 1.9.2 reconoce únicamente el receipt exacto `npm:jorgex-pi@0.8.0`. Para una transición entre receipts, usa la versión de Stack que reconoce el receipt presente y no edites receipts, hashes ni estado manualmente:
+
+```bash
+# Receipt Pi 0.7.0 → 0.8.0
+pnpm dlx jorgex-stack@1.9.0 uninstall --agents pi
+pnpm dlx jorgex-stack@1.9.2 install --agents pi
+
+# Rollback desde receipt Pi 0.8.0 → 0.7.0
+pnpm dlx jorgex-stack@1.9.2 uninstall --agents pi
+pnpm dlx jorgex-stack@1.9.0 install --agents pi
+```
 
 La procedencia de la snapshot se consulta en `contract/parity.v2.json`; no repetir aquí SHA ni el estado transitorio del candidato. El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
 
