@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "1327d8dbe68e4118272a74a06c44a731bb346efa"
+    "commit": "11e7666ea4e40bde1de8bc434610747eb797ab9c"
   },
   "agents": [
     {
@@ -233,7 +233,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "00d9cd00861419d26cb0d05783e3985d37cf3ef0cab8b9088f61e0791cad2702"
+          "sha256": "3387fec407da64d6bd0fc494d4d61cc70358e25ab3f7bbcfb1f97184a18041ef"
         }
       ]
     },
@@ -585,7 +585,18 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "ea15aa78562932b09efea5e6884ad2d943ec4e4508fc90dbed9412dc978df1bd"
+          "sha256": "10836fa65528a2b7d4ef02aecc6d0bd6ca917b61a4a449c5eb54dcc2b921fba8"
+        }
+      ]
+    },
+    {
+      "name": "work-audit",
+      "sourcePath": "stack/skills/work-audit",
+      "targetPath": "skills/work-audit",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "82d5ae41c13d1e457e03dee6deea45a1c954f5dd14e870adaf01900043c759c0"
         }
       ]
     },
@@ -596,11 +607,11 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "cc034935e0188f3d34d48f0d28761c21e46b16cbf227f4448ba9f486874fe5d1"
+          "sha256": "c63142dedc29377262f007454bb53faa13e108de7437ae9e8d57d251d589bfe8"
         },
         {
           "path": "references/plan-template.md",
-          "sha256": "7bdae7e439c831b59f63a4d7744ee4bb2744252efcebf97851fff5ed21745c13"
+          "sha256": "69b1cd519c45700d6e370d4e0a654afa70c82b90adef50d01815634082ced876"
         }
       ]
     },

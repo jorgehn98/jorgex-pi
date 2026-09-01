@@ -21,7 +21,7 @@ const dependency = {
 };
 const skills = [
   "agent-delegation", "deploy-to-vercel", "diagnose", "find-skills", "lean-code", "mcp-builder", "orchestrator", "react-doctor",
-  "skill-creator", "supabase", "supabase-postgres-best-practices", "tdd", "to-issues", "to-prd", "work-lifecycle", "xreview",
+  "skill-creator", "supabase", "supabase-postgres-best-practices", "tdd", "to-issues", "to-prd", "work-audit", "work-lifecycle", "xreview",
 ];
 const engramTools = [
   "mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor",

@@ -27,6 +27,8 @@ La instalación directa y la gestionada no son el mismo canal:
 - **Directa:** después de publicar la versión seleccionada en `package.json`, instalarla explícitamente con `pi install npm:jorgex-pi@<published-version>`. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
 - **Gestionada:** Stack instala el candidato exacto que registra en su runtime, verifica su integridad, proyecta los recursos compartidos y filtra del registro del paquete las skills/prompts ya proyectados. Publicar una versión Pi no actualiza automáticamente ese candidato: su adopción requiere un cambio separado y secuencial en Stack contra el artefacto publicado exacto.
 
+Rollout de `work-audit`: Stack 1.9.0 es el canon y ya la proyecta en el canal gestionado; Pi 0.8.0 actualiza snapshot y allowlist del paquete directo; un PR posterior de Stack fijará el tarball Pi 0.8.0 exacto para realinear ambos canales. No reinterpretar ese desfase secuencial como una segunda fuente de verdad.
+
 Publicar Pi no actualiza automáticamente JorgeX Stack. La adopción gestionada sigue este orden:
 
 1. Fusionar, verificar y publicar la versión de `jorgex-pi`.
