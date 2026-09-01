@@ -9,7 +9,7 @@
   "parityV2": {
     "path": "contract/parity.v2.json",
     "schemaVersion": 2,
-    "ownedTargetCount": 116,
+    "ownedTargetCount": 117,
     "policy": {
       "sourcePath": "stack/system-prompt/AGENTS.md",
       "targetPath": "assets/system-prompt/AGENTS.md"

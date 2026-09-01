@@ -122,9 +122,9 @@ test("the runtime contract translates one primary and fourteen canonical subagen
   assert.equal(contract.schemaVersion, expected.schemaVersion);
   assert.deepEqual(contract.dependency, expected.dependency);
   assert.deepEqual(contract.primary, expected.primary);
-  assert.deepEqual(contract.skills, expected.skills, "runtime skill allowlist must contain 16 explicit skills");
+  assert.deepEqual(contract.skills, expected.skills, "runtime skill allowlist must contain 17 explicit skills");
   assert.equal(contract.skills.includes("playwright-cli"), false, "Playwright remains a separate opt-in integration");
-  assert.equal(new Set(contract.skills).size, 16, "runtime skill names must be unique");
+  assert.equal(new Set(contract.skills).size, 17, "runtime skill names must be unique");
 
   assert.equal(contract.agents.length, 14);
   assert.deepEqual(contract.agents.map(({ name }) => name), expected.agents.map(({ name }) => name));
