@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "ebc55667ba610925227fcb575ae1f84750a53510"
+    "commit": "1327d8dbe68e4118272a74a06c44a731bb346efa"
   },
   "agents": [
     {
@@ -86,15 +86,15 @@
       "name": "test-analyzer",
       "sourcePath": "stack/agents/test-analyzer.md",
       "targetPath": "snapshot/agents/test-analyzer.md",
-      "sourceSha256": "a426f31eacaa4c1c63d7c2a3a50740b4474d6e3f589cf90dc8450ff0bb559bea",
-      "outputSha256": "a426f31eacaa4c1c63d7c2a3a50740b4474d6e3f589cf90dc8450ff0bb559bea"
+      "sourceSha256": "d73051d209e8f5cd26eb0f6dd6daea3480e5e62572b16078d71eeacad9c0cdae",
+      "outputSha256": "d73051d209e8f5cd26eb0f6dd6daea3480e5e62572b16078d71eeacad9c0cdae"
     },
     {
       "name": "tester",
       "sourcePath": "stack/agents/tester.md",
       "targetPath": "snapshot/agents/tester.md",
-      "sourceSha256": "abb59fcdfc9cd4cc61a15235ca3766719124b34ff76d22435f1eb4434f508863",
-      "outputSha256": "abb59fcdfc9cd4cc61a15235ca3766719124b34ff76d22435f1eb4434f508863"
+      "sourceSha256": "bb1d6e5919d2e9a00e24d5bb1032ef335e9782a06b6da0bc56f6dd6a9cd20689",
+      "outputSha256": "bb1d6e5919d2e9a00e24d5bb1032ef335e9782a06b6da0bc56f6dd6a9cd20689"
     },
     {
       "name": "translator",
@@ -233,7 +233,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "cd5984fd9e1a202dbaeecdecee8b6c1f9d85361405967173c8e42760d590f9b0"
+          "sha256": "00d9cd00861419d26cb0d05783e3985d37cf3ef0cab8b9088f61e0791cad2702"
         }
       ]
     },
@@ -543,7 +543,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "e74169237e1afb45061268465ecbf7981310a0ec73c43f74ba659c35bf5fd72c"
+          "sha256": "5d4f22f739f8d9dd3ccb0434aeede208e3b0b4bf6d04e1c1e523435dd28d2f9a"
         },
         {
           "path": "deep-modules.md",
@@ -555,7 +555,7 @@
         },
         {
           "path": "mocking.md",
-          "sha256": "a57872244893fc3fa696428cc40baace4ae89b6e55e231837ea3e11e15b11ca3"
+          "sha256": "4ad30bfb929177e1de699514f9df0528ab9107023d4a0499d0f87a3f32d037c4"
         },
         {
           "path": "refactoring.md",
@@ -563,7 +563,7 @@
         },
         {
           "path": "tests.md",
-          "sha256": "95d2ca239e2ffa2c0562984f31ded559fcaa77265043aaee8309b9d6b9051481"
+          "sha256": "2d21d38838acb807f051ed235d22cae7e43cf6d863855b88c97b995c94ad3135"
         }
       ]
     },
@@ -619,8 +619,8 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md",
-    "sourceSha256": "5d3cf012f77636e46448d0648bf18b0f8e7871c9043ebe6be75361296963bf35",
-    "outputSha256": "5d3cf012f77636e46448d0648bf18b0f8e7871c9043ebe6be75361296963bf35"
+    "sourceSha256": "a7f34534802e418c63d17834960aa9956f3dfd2bb8358a02118aa354c22a2a8a",
+    "outputSha256": "a7f34534802e418c63d17834960aa9956f3dfd2bb8358a02118aa354c22a2a8a"
   },
   "engramProtocol": {
     "sourcePath": "stack/system-prompt/engram-protocol.md",
