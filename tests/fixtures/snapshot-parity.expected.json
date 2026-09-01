@@ -2,7 +2,7 @@
   "parityPath": "contract/parity.v2.json",
   "schemaVersion": 2,
   "sourceRepository": "https://github.com/jorgehn98/jorgex-stack",
-  "sourceCommit": "1327d8dbe68e4118272a74a06c44a731bb346efa",
+  "sourceCommit": "11e7666ea4e40bde1de8bc434610747eb797ab9c",
   "agentCount": 15,
   "agentNames": [
     "backend-analyst",
@@ -21,8 +21,8 @@
     "translator",
     "type-design-analyzer"
   ],
-  "skillCount": 17,
-  "skillFileCount": 96,
+  "skillCount": 18,
+  "skillFileCount": 97,
   "skillNames": [
     "agent-delegation",
     "deploy-to-vercel",
@@ -39,6 +39,7 @@
     "tdd",
     "to-issues",
     "to-prd",
+    "work-audit",
     "work-lifecycle",
     "xreview"
   ],
