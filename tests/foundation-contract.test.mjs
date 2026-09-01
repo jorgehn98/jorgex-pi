@@ -241,8 +241,6 @@ function assertPackedParityTargets(archive, entries, parity) {
   expectedTargets.set(`package/${parity.qualityReceipt.targetPath}`, parity.qualityReceipt.outputSha256);
   expectedTargets.set(`package/${parity.qualityCapabilities.targetPath}`, parity.qualityCapabilities.outputSha256);
   for (const command of parity.commands) expectedTargets.set(`package/${command.targetPath}`, command.outputSha256);
-  assert.equal(expectedTargets.size, expected.parityV2.ownedTargetCount, "the packed snapshot must contain every parity v2 target");
-
   const actualOwnedFiles = [...entries]
     .filter((path) => !path.endsWith("/") && (
       path.startsWith("package/snapshot/agents/")

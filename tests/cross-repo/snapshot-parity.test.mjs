@@ -78,6 +78,20 @@ test("the real generator is deterministic in isolated package copies", () => {
   }
 });
 
+test("the committed default source pin generates the reviewed snapshot without an override", () => {
+  const stackDir = requireStackDir();
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-generator-default-pin-"));
+  try {
+    const packageRoot = createPackageCopy(join(sandbox, "package"));
+    runGenerator(packageRoot, stackDir, undefined);
+    const parity = JSON.parse(readFileSync(join(packageRoot, expected.parityPath), "utf8"));
+    assert.equal(parity.source.commit, expected.sourceCommit, "the generator default pin must match the reviewed fixture");
+    assert.deepEqual(generatedTree(packageRoot), generatedTree(root), "default-pin generation must equal the committed snapshot");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("replacement refs cannot redirect generation away from raw pinned objects", () => {
   const stackDir = requireStackDir();
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-replace-ref-"));
@@ -121,9 +135,12 @@ function createPackageCopy(target) {
   return target;
 }
 
-function runGenerator(packageRoot, stackDir) {
+function runGenerator(packageRoot, stackDir, sourceCommit = expected.sourceCommit) {
+  const env = { ...process.env, JORGEX_STACK_DIR: stackDir };
+  if (sourceCommit === undefined) delete env.JORGEX_STACK_COMMIT;
+  else env.JORGEX_STACK_COMMIT = sourceCommit;
   execFileSync(process.execPath, [join(packageRoot, "scripts", "generate-snapshot.mjs")], {
-    env: { ...process.env, JORGEX_STACK_DIR: stackDir, JORGEX_STACK_COMMIT: expected.sourceCommit },
+    env,
     stdio: "pipe",
   });
 }
