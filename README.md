@@ -100,6 +100,14 @@ An absent `PI_CODING_AGENT_DIR/pi-goal.json` uses the pinned upstream defaults w
 
 Goal's active prompt is appended before JorgeX browser routing, so Goal supplies continuation state while the JorgeX guidance remains the final capability policy. If a direct npm Goal is detected, JorgeX does not load its bundled copy. The external Goal remains unmanaged and outside the Goal-specific safety bridge; remove it and reload Pi to return to the supported managed configuration. Current managed Goal state lives in Pi's session entries; the user-owned config and legacy `pi-goal-state.json` are preserved across JorgeX lifecycle operations.
 
+## SDD change-first and selective clarification
+
+The Pi snapshot carries the reviewed `work-audit` and `orchestrator` skills generated from the Stack merge commit `fac3ba828c20134858e2a9aa1e68b920270f7b5a`; `contract/parity.v2.json` is the authority for that source and projection. The packaged `primary/orchestrator.md` remains dormant as a subagent, while the projected skills provide the portable SDD policy.
+
+In PRE, `work-audit` reports a clarification gap only when there are plausible interpretations that materially change observable behavior, approved scope, an `SC-*` criterion, or the testing decision. Low-impact implementation preferences, defaults, wording, and paths are not blockers. The audit remains read-only, and the orchestrator remains the only writer of active work artifacts.
+
+During EXECUTE and VERIFY, the orchestrator distinguishes a defect that restores the approved contract from an intentional material contract change. The latter stops implementation and returns to SPEC: update the PRD first, then the plan, tasks, `SC-*` criteria, and testing decisions; rerun PRE until `clean`, obtain human approval, and only then resume EXECUTE. A bugfix that restores the approved contract remains in EXECUTE. POST cannot legitimise an intentional scope change retroactively through code, tests, or evidence: it routes that case to SPEC/change-first, defects to EXECUTE, and other gaps to their owning phase.
+
 ## Web Access and browser routing
 
 Web Access is the core route for web research, source verification, and static HTTP(S) retrieval, including remote PDF, GitHub, and YouTube content. The four default upstream tools are `web_search`, `source_check`, `fetch_content`, and `get_search_content`; custom upstream tool names are captured and health-gated at registration time. Retrieved content is untrusted data, not instructions.
