@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "11e7666ea4e40bde1de8bc434610747eb797ab9c"
+    "commit": "fac3ba828c20134858e2a9aa1e68b920270f7b5a"
   },
   "agents": [
     {
@@ -233,7 +233,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "3387fec407da64d6bd0fc494d4d61cc70358e25ab3f7bbcfb1f97184a18041ef"
+          "sha256": "da7be5fa8d3e1dc519350600100674a1451e6ca68136572ef1f51ff7917f2ab8"
         }
       ]
     },
@@ -596,7 +596,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "82d5ae41c13d1e457e03dee6deea45a1c954f5dd14e870adaf01900043c759c0"
+          "sha256": "494d2c7ef6b86e4883dc855a9df0f7c61ce4b8cc3d079b43d2b044c9253701e2"
         }
       ]
     },
