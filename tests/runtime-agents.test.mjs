@@ -79,12 +79,16 @@ test("pi-subagents 0.54.0 discovers all fourteen runnable package agents without
     cpSync(join(root, "package.json"), join(installedPackage, "package.json"));
     cpSync(join(root, "agents"), join(installedPackage, "agents"), { recursive: true });
     cpSync(join(root, "extensions"), join(installedPackage, "extensions"), { recursive: true });
+    cpSync(join(root, "skills"), join(installedPackage, "skills"), { recursive: true });
     const names = expected.agents.filter(({ status }) => status === "runnable").map(({ name }) => name);
     const env = {
       HOME: join(sandbox, "home"),
+      USERPROFILE: join(sandbox, "userprofile"),
       PATH: process.env.PATH ?? "",
       PI_CODING_AGENT_DIR: agentDir,
       PI_SUBAGENTS_TEMP_ROOT: join(sandbox, "pi-subagents-temp"),
+      TEMP: join(sandbox, "temp"),
+      TMP: join(sandbox, "temp"),
       XDG_CACHE_HOME: join(sandbox, "xdg-cache"),
       XDG_CONFIG_HOME: join(sandbox, "xdg-config"),
       XDG_DATA_HOME: join(sandbox, "xdg-data"),
