@@ -120,7 +120,7 @@ test("pi-subagents 0.54.0 discovers all fourteen runnable package agents without
   }
 });
 
-test("pi-subagents preflight resolves each role's private default skills in direct and managed package profiles", () => {
+test("pi-subagents preflight resolves private defaults and a no-skills override in direct and managed package profiles", () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-agent-preflight-"));
   const names = expected.skillSelections.map(({ name }) => name);
   assert.deepEqual(names, expected.agents.map(({ name }) => name), "skill selections must cover the runnable agents in their reviewed order");
@@ -155,6 +155,28 @@ test("pi-subagents preflight resolves each role's private default skills in dire
           : [];
         assert.deepEqual(result.configuredExtensions, extensions, `${profile} ${selection.name} must preserve its child extension boundary`);
       }
+
+      const defaultImplementer = results.find(({ requestedName }) => requestedName === "implementer");
+      const [withoutSkills] = preflightRuntimeAgents(["implementer"], profileRoot, agentDir, { skill: false });
+      assert.ok(withoutSkills?.ok, `${profile} preflight must resolve implementer with skills disabled: ${withoutSkills?.message ?? "no result"}`);
+      assert.deepEqual(withoutSkills.skills, { requested: [], resolved: [], missing: [] }, `${profile} skill:false must suppress implementer's private defaults`);
+      assert.deepEqual(
+        {
+          model: withoutSkills.model,
+          modelCandidates: withoutSkills.modelCandidates,
+          inheritSkills: withoutSkills.inheritSkills,
+          effectiveAllowlist: withoutSkills.effectiveAllowlist,
+          configuredExtensions: withoutSkills.configuredExtensions,
+        },
+        {
+          model: defaultImplementer.model,
+          modelCandidates: defaultImplementer.modelCandidates,
+          inheritSkills: defaultImplementer.inheritSkills,
+          effectiveAllowlist: defaultImplementer.effectiveAllowlist,
+          configuredExtensions: defaultImplementer.configuredExtensions,
+        },
+        `${profile} skill:false must not change implementer's model, inheritance, or tool contract`,
+      );
     }
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
@@ -323,6 +345,11 @@ function assertTranslatedAgent(sourcePath, targetPath, expectedAgent) {
   assert.equal(target.frontmatter.systemPromptMode, "replace");
   assert.equal(target.frontmatter.inheritProjectContext, true);
   assert.equal(target.frontmatter.inheritSkills, false);
+  if (expectedAgent.status === "dormant" || expectedAgent.name === "engram") {
+    for (const field of ["skills", "skillPath"]) {
+      assert.equal(Object.hasOwn(target.frontmatter, field), false, `${targetPath} must not declare ${field}`);
+    }
+  }
   for (const forbidden of ["provider", "model", "fallbackModels", "thinking", "tier", "mode", "readonly", "bash", "spawn"]) {
     assert.equal(Object.hasOwn(target.frontmatter, forbidden), false, `${targetPath} must not hardcode ${forbidden}`);
   }
@@ -353,7 +380,7 @@ function runGenerator(packageRoot, externalRoot) {
   execFileSync(process.execPath, [join(packageRoot, expected.generatorPath)], { cwd: packageRoot, env, stdio: "pipe" });
 }
 
-function preflightRuntimeAgents(names, cwd, agentDir) {
+function preflightRuntimeAgents(names, cwd, agentDir, options) {
   const sandbox = dirname(cwd);
   const env = {
     HOME: join(sandbox, "home"),
@@ -367,7 +394,9 @@ function preflightRuntimeAgents(names, cwd, agentDir) {
     XDG_CONFIG_HOME: join(sandbox, "xdg-config"),
     XDG_DATA_HOME: join(sandbox, "xdg-data"),
   };
-  const output = execFileSync(process.execPath, [join(testDir, "fixtures", "discover-runtime-agents.mjs"), JSON.stringify(names)], {
+  const args = [join(testDir, "fixtures", "discover-runtime-agents.mjs"), JSON.stringify(names)];
+  if (options !== undefined) args.push(JSON.stringify(options));
+  const output = execFileSync(process.execPath, args, {
     cwd,
     env,
     encoding: "utf8",
