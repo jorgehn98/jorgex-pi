@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "package": {
     "name": "jorgex-pi",
-    "version": "0.8.4",
-    "source": "npm:jorgex-pi@0.8.4"
+    "version": "0.8.5",
+    "source": "npm:jorgex-pi@0.8.5"
   },
   "pi": {
     "minimumVersion": "0.84.2",
