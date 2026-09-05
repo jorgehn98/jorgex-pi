@@ -27,7 +27,7 @@ La instalación directa y la gestionada no son el mismo canal:
 - **Directa:** después de publicar la versión seleccionada en `package.json`, instalarla explícitamente con `pi install npm:jorgex-pi@<published-version>`. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
 - **Gestionada:** Stack instala el candidato exacto que registra en su runtime, verifica su integridad, proyecta los recursos compartidos y filtra del registro del paquete las skills/prompts ya proyectados. Publicar una versión Pi no actualiza automáticamente ese candidato: su adopción requiere un cambio separado y secuencial en Stack contra el artefacto publicado exacto.
 
-El rollout histórico de `work-audit` comenzó con Stack 1.9.0 como canon y Pi 0.8.0 actualizando la snapshot y allowlist del paquete directo. Stack 1.9.5 mantiene ahora el receipt gestionado exacto `npm:jorgex-pi@0.8.3`; este cambio prepara Pi 0.8.4, cuya publicación y adopción se verifican en checkpoints posteriores.
+El rollout histórico de `work-audit` comenzó con Stack 1.9.0 como canon y Pi 0.8.0 actualizando la snapshot y allowlist del paquete directo. Stack 1.9.7 ya está publicado y mantiene el receipt gestionado exacto `npm:jorgex-pi@0.8.4`; Pi 0.8.5 sigue siendo un candidato, cuya publicación y adopción se verifican en checkpoints posteriores.
 
 Publicar Pi no actualiza automáticamente JorgeX Stack. Para una futura adopción gestionada, el flujo sigue este orden:
 
@@ -36,7 +36,7 @@ Publicar Pi no actualiza automáticamente JorgeX Stack. Para una futura adopció
 3. Esperar las **24 horas en npm** solo antes del consumo real por instalaciones gestionadas, salvo excepción explícita de Jorge documentada en ese PR.
 4. Mantener el candidato anterior en Stack hasta que ese PR se fusione y verifique.
 
-La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real del nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La adopción de Pi 0.8.4 queda para un PR separado y secuencial de Stack, que deberá verificar el artefacto publicado exacto, su tamaño, SHA-256, SHA-512, lifecycle y rollback. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
+La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real del nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La adopción de Pi 0.8.5 queda para un PR separado y secuencial de Stack, que deberá verificar el artefacto publicado exacto, su tamaño, SHA-256, SHA-512, lifecycle y rollback. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
 
 La verificación local de Stack comprueba que los bytes descargados coinciden con el tamaño y los SHA-256/SHA-512 fijados para el candidato aceptado. Es una comprobación local del artefacto, no una raíz de confianza independiente: la attestation/provenance externa de npm queda fuera del runtime, y `provenance.commit` es informativo salvo verificación explícita de esa attestation.
 
@@ -57,9 +57,15 @@ pnpm dlx jorgex-stack@1.9.0 install --agents pi
 
 La procedencia de la snapshot se consulta en `contract/parity.v2.json`; no repetir aquí SHA. El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
 
+### F2-A Pi: rutas short y standard
+
+La proyección de Pi 0.8.5 incorpora el enrutado del orquestador a `short` o `standard` antes de iniciar el workflow. `short` exige objetivo claro, contrato afectado entendido, alcance acotado y verificación suficiente; `standard` se usa cuando el alcance, la incertidumbre, el riesgo o las necesidades de verificación requieren el workflow formal. Si una tarea short crece en cualquiera de esas dimensiones, se promueve a standard antes de continuar.
+
+La ruta short standalone conserva un responsable principal y no crea PRD, plan, Spec formal, PRE ni POST por ceremonia. Si ya existe un SDD formal, conserva su scope, Spec, fila de plan y lifecycle aunque un paso acotado use short. La ruta standard mantiene PRD, plan, PRE, POST, change-first y entrega. Al elegir `standard`, carga [`standard-workflow.md`](skills/orchestrator/references/standard-workflow.md) resolviéndolo relativo a la skill `orchestrator`; si falta o no puede leerse, bloquea la ruta en vez de degradarla a `short`. Es política condicional: no implica que todas las tareas Pi ejecuten el workflow standard.
+
 ### F1 Pi: acceso privado sin adopción implícita
 
-La proyección generada conserva `inheritSkills: false` para cada agente. El generador `scripts/generate-runtime-agents.mjs` selecciona metadata y rutas privadas por rol para los 13 workers no-Engram; `engram` queda read-only, sin selección de skills y con sólo sus herramientas de lectura de memoria. La ruta `../skills` permite resolver lo declarado sin activar las 18 skills globalmente.
+La proyección generada conserva `inheritSkills: false` para cada agente. El generador `scripts/generate-runtime-agents.mjs` selecciona metadata y rutas privadas por rol para los 13 workers no-Engram; `engram` queda read-only, sin selección de skills y con sólo sus herramientas de lectura de memoria. La ruta `../skills` permite resolver lo declarado sin activar las 18 skills globalmente. La snapshot coordinada contiene 18 árboles de skill y 98 archivos; la lista activa del paquete sigue siendo deliberadamente más estrecha.
 
 El seam verificable es el contrato público `resolveSubagentLaunchContract` de `pi-subagents@0.54.0`, usado por `tests/fixtures/discover-runtime-agents.mjs`: sirve para comprobar selección, rutas, metadata y allowlist efectiva. No debe interpretarse como prueba de ejecución de un modelo, lectura del cuerpo completo de una skill, ACL universal o compatibilidad de todos los runtimes. F1 tampoco cambia defaults de modelo, permisos, receipts, HOME o configuración del usuario.
 

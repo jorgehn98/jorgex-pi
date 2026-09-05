@@ -10,7 +10,7 @@ The version in `package.json` is the release authority. Minor and major remain m
 | --- | --- |
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
 | Pi resources | Bootstrap and TUI branding extensions, 17 reviewed JorgeX skills, the canonical policy/protocol fallbacks, and the `/lean-audit` prompt are active. The `JorgeX` theme is available but opt-in. |
-| Canonical snapshot | 15 agents and 18 complete skill trees (97 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
+| Canonical snapshot | 15 agents and 18 complete skill trees (98 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
 | Runtime agents | 14 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
 | Package assets | `contract/assets.v1.json` owns the packaged extensions, theme, runtime agents, snapshot, skills, and contracts; it declares the bounded Sol lifecycle writes and preserves fourteen companion-owned state paths. |
 | Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, `@narumitw/pi-goal@0.53.0`, and `pi-mcp-adapter@2.27.0`. |
@@ -25,9 +25,9 @@ There are two intentionally distinct channels:
 - **Direct package:** after the selected version in `package.json` is published, install it explicitly with `pi install npm:jorgex-pi@<published-version>`. The extension uses its bundled assets as marker-aware fallbacks: it appends each missing `<!-- jorgex:... -->` section without replacing user prompt content or duplicating a section already supplied by Stack.
 - **Managed Stack:** Stack installs the exact candidate recorded by its runtime registry, verifies the tarball integrity, then projects the shared policy, skills, prompt and conditional sections into Pi's user-level paths and filters the packaged duplicates. Publishing a Pi release does not update that candidate; adopting a new release is a separate sequential Stack change against the exact published artifact.
 
-Historically, Stack 1.9.0 was the canonical source for the `work-audit` rollout and Pi 0.8.0 updated the direct package snapshot and active allowlist. The current Stack release is 1.9.5 and its managed Pi candidate remains the exact `npm:jorgex-pi@0.8.3` receipt. This change prepares Pi 0.8.4; its publication and adoption are verified in their later checkpoints.
+Historically, Stack 1.9.0 was the canonical source for the `work-audit` rollout and Pi 0.8.0 updated the direct package snapshot and active allowlist. The published Stack release is 1.9.7 and its managed Pi candidate remains the exact `npm:jorgex-pi@0.8.4` receipt. This Pi 0.8.5 line is still a candidate; its publication and adoption are verified in later checkpoints.
 
-The next managed adoption is a separate, sequential Stack change after Pi 0.8.4 is published. It must pin the exact published artifact and verify its URL, size, SHA-256, SHA-512, lifecycle evidence and rollback candidate. The 24-hour npm maturity window applies only to real managed consumption; it does not block Pi development, validation, merge or publication. npm's external provenance/attestation remains outside Pi and Stack runtime verification, and `provenance.commit` is informative unless that attestation is independently verified.
+The next managed adoption is a separate, sequential Stack change after Pi 0.8.5 is published. It must pin the exact published artifact and verify its URL, size, SHA-256, SHA-512, lifecycle evidence and rollback candidate. The 24-hour npm maturity window applies only to real managed consumption; it does not block Pi development, validation, merge or publication. npm's external provenance/attestation remains outside Pi and Stack runtime verification, and `provenance.commit` is informative unless that attestation is independently verified.
 
 The direct fallback is not a second managed installation mechanism. It is a safe package-local fallback for direct installs; Stack-owned markers remain authoritative whenever they are present.
 
@@ -101,6 +101,12 @@ The managed bridge resolves Engram in a strict order: a validated absolute `ENGR
 When Engram state is `managed`, the main Pi session receives the 17 reviewed direct Engram tools. The `engram` subagent is deliberately narrower and read-only: it exposes only `mem_search`, `mem_context`, `mem_get_observation`, `mem_suggest_topic_key`, `mem_current_project`, and `mem_doctor`; its contract retains `requiredCapability: engram-runtime-tools-v1` so unavailable runtime state stays machine-readable. Save, update, session-write, review, pin, and unpin operations remain unavailable to that specialist.
 
 The packaged adapter closure includes the audited native keyring bindings for macOS arm64/x64; Linux armhf, arm64, riscv64, and x64 variants covered by the contract; and Windows arm64/ia32/x64. FreeBSD is intentionally outside the tested bundle. Runtime compatibility remains limited to Pi `0.84.2`; the bindings expand platform packaging, not the claimed Pi-version range.
+
+## F2-A: short and standard orchestration routes
+
+Pi 0.8.5 packages the F2-A projection from Stack. The orchestrator routes work to `short` or `standard` before starting a workflow; these are routes, not new human or programmatic modes, and the existing output contracts remain unchanged. The `short` route is valid only when the objective is clear, the affected contract is understood, the scope is bounded, and verification is sufficient. The `standard` route applies when scope, uncertainty, risk, or verification needs require the formal workflow. If a short task grows in any of those dimensions, it must be promoted to `standard` before continuing.
+
+A short standalone task has one primary responsible person and does not create PRD, plan, formal task spec, PRE, or POST artifacts merely for ceremony. A formal SDD keeps its approved scope, Spec, plan row, and lifecycle even when one bounded implementation step uses the short route. The standard route retains the formal PRD, plan, PRE, POST, change-first, and delivery workflow. When `standard` is selected, it loads [`standard-workflow.md`](skills/orchestrator/references/standard-workflow.md) relative to the `orchestrator` skill; if that reference is missing or unreadable, the route blocks instead of falling back to `short`. This projection is conditional policy: it does not mean that every Pi task runs the standard workflow.
 
 ## Goal continuation and orchestrator policy
 
@@ -194,7 +200,7 @@ Regenerate only from a local JorgeX Stack checkout containing the exact commit r
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" pnpm snapshot:generate
 ```
 
-The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, `contract/schemas/quality-capabilities.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 15 agents and all 97 files from the 18 approved skill trees.
+The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, `contract/schemas/quality-capabilities.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 15 agents and all 98 files from the 18 approved skill trees.
 
 Run the explicit cross-repository parity check against the same checkout:
 
