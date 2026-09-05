@@ -23,6 +23,21 @@ const skills = [
   "agent-delegation", "deploy-to-vercel", "diagnose", "find-skills", "lean-code", "mcp-builder", "orchestrator", "react-doctor",
   "skill-creator", "supabase", "supabase-postgres-best-practices", "tdd", "to-issues", "to-prd", "work-audit", "work-lifecycle", "xreview",
 ];
+const agentSkills = new Map([
+  ["backend-analyst", ["agent-delegation", "supabase", "supabase-postgres-best-practices"]],
+  ["code-reviewer", ["agent-delegation"]],
+  ["code-simplifier", ["agent-delegation", "lean-code"]],
+  ["comment-fixer", ["agent-delegation"]],
+  ["docs-maintainer", ["agent-delegation"]],
+  ["frontend-analyst", ["agent-delegation"]],
+  ["implementer", ["agent-delegation", "lean-code", "tdd"]],
+  ["security-auditor", ["agent-delegation"]],
+  ["silent-failure-hunter", ["agent-delegation"]],
+  ["test-analyzer", ["agent-delegation", "tdd"]],
+  ["tester", ["agent-delegation", "tdd"]],
+  ["translator", ["agent-delegation"]],
+  ["type-design-analyzer", ["agent-delegation"]],
+]);
 const engramTools = [
   "mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor",
 ];
@@ -44,6 +59,10 @@ try {
     dependency,
     primary: contractEntry(primary),
     agents: agents.map(contractEntry),
+    skillSelections: agents.map(({ source, selectedSkills }) => ({
+      name: source.name,
+      skills: selectedSkills,
+    })),
     skills,
   });
 
@@ -69,6 +88,8 @@ function translateAgent(name) {
   if (source.name !== name) throw new Error(`${sourcePath} name does not match its file name`);
   const status = source.mode === "primary" ? "dormant" : "runnable";
   const targetPath = source.mode === "primary" ? `primary/${name}.md` : `agents/${name}.md`;
+  const selectedSkills = source.mode === "subagent" && name !== "engram" ? agentSkills.get(name) : [];
+  if (!selectedSkills) throw new Error(`${sourcePath} has no private skill selection`);
   if (name === "engram") {
     const body = source.body
       .replace("use `mem_timeline` or `mem_get_observation` selectively", "use `mem_get_observation` selectively")
@@ -80,6 +101,7 @@ function translateAgent(name) {
       status,
       requiredCapability: "engram-runtime-tools-v1",
       tools: engramTools,
+      selectedSkills,
     };
   }
   const tools = ["read", "grep", "find", "ls"];
@@ -87,7 +109,7 @@ function translateAgent(name) {
   if (source.bash === "full") tools.push("bash");
   if (source.readonly === "false") tools.push("edit", "write");
   if (source.mode === "subagent" && name !== "engram") tools.push("contact_supervisor");
-  return { source, sourcePath, targetPath, status, tools };
+  return { source, sourcePath, targetPath, status, tools, selectedSkills };
 }
 
 function parseAgent(text, sourcePath) {
@@ -122,6 +144,9 @@ function writeRuntimeAgent(agent) {
     "inheritProjectContext: true",
     "inheritSkills: false",
   ];
+  if (agent.selectedSkills.length > 0) {
+    lines.push(`skills: ${agent.selectedSkills.join(", ")}`, "skillPath: ../skills");
+  }
   if (agent.source.bash === "git-read") lines.push("subagentOnlyExtensions: ../extensions/git-read.ts");
   if (agent.source.spawn === "false") lines.push("maxSubagentDepth: 0");
   lines.push("---", agent.source.body);

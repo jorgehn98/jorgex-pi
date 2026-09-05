@@ -5,6 +5,8 @@ tools: read, grep, find, ls, git_read, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
+skills: agent-delegation, tdd
+skillPath: ../skills
 subagentOnlyExtensions: ../extensions/git-read.ts
 ---
 

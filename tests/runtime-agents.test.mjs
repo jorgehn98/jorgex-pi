@@ -79,12 +79,16 @@ test("pi-subagents 0.54.0 discovers all fourteen runnable package agents without
     cpSync(join(root, "package.json"), join(installedPackage, "package.json"));
     cpSync(join(root, "agents"), join(installedPackage, "agents"), { recursive: true });
     cpSync(join(root, "extensions"), join(installedPackage, "extensions"), { recursive: true });
+    cpSync(join(root, "skills"), join(installedPackage, "skills"), { recursive: true });
     const names = expected.agents.filter(({ status }) => status === "runnable").map(({ name }) => name);
     const env = {
       HOME: join(sandbox, "home"),
+      USERPROFILE: join(sandbox, "userprofile"),
       PATH: process.env.PATH ?? "",
       PI_CODING_AGENT_DIR: agentDir,
       PI_SUBAGENTS_TEMP_ROOT: join(sandbox, "pi-subagents-temp"),
+      TEMP: join(sandbox, "temp"),
+      TMP: join(sandbox, "temp"),
       XDG_CACHE_HOME: join(sandbox, "xdg-cache"),
       XDG_CONFIG_HOME: join(sandbox, "xdg-config"),
       XDG_DATA_HOME: join(sandbox, "xdg-data"),
@@ -116,16 +120,80 @@ test("pi-subagents 0.54.0 discovers all fourteen runnable package agents without
   }
 });
 
+test("pi-subagents preflight resolves private defaults and a no-skills override in direct and managed package profiles", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-agent-preflight-"));
+  const names = expected.skillSelections.map(({ name }) => name);
+  assert.deepEqual(names, expected.agents.map(({ name }) => name), "skill selections must cover the runnable agents in their reviewed order");
+  try {
+    for (const profile of ["direct", "managed"]) {
+      const profileRoot = join(sandbox, profile);
+      const agentDir = join(profileRoot, "agent");
+      const installedPackage = join(agentDir, "npm", "node_modules", "jorgex-pi");
+      mkdirSync(installedPackage, { recursive: true });
+      for (const path of ["agents", "extensions", "skills"]) cpSync(join(root, path), join(installedPackage, path), { recursive: true });
+      const manifest = readJson(join(root, "package.json"), "package manifest");
+      if (profile === "managed") manifest.pi = { ...manifest.pi, skills: [], prompts: [] };
+      writeFileSync(join(installedPackage, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+
+      const results = preflightRuntimeAgents(names, profileRoot, agentDir);
+      assert.deepEqual(results.map(({ requestedName }) => requestedName), names);
+      for (const selection of expected.skillSelections) {
+        const result = results.find(({ requestedName }) => requestedName === selection.name);
+        const agent = expected.agents.find(({ name }) => name === selection.name);
+        assert.ok(result?.ok, `${profile} preflight must resolve ${selection.name}: ${result?.message ?? "no result"}`);
+        assert.equal(result.inheritSkills, false, `${profile} ${selection.name} must not inherit ambient skills`);
+        assert.equal(result.model, undefined, `${profile} ${selection.name} must not select a model without an explicit input`);
+        assert.deepEqual(result.modelCandidates, [], `${profile} ${selection.name} must not resolve model fallbacks without an explicit input`);
+        assert.deepEqual(result.skills, {
+          requested: selection.skills,
+          resolved: selection.skills.map((name) => ({ name, path: join(installedPackage, "skills", name, "SKILL.md"), source: "unknown" })),
+          missing: [],
+        }, `${profile} ${selection.name} must resolve only its private default skills`);
+        assert.deepEqual(result.effectiveAllowlist, agent.tools, `${profile} ${selection.name} must preserve its reviewed tool allowlist`);
+        const extensions = expectedBashPolicy(selection.name) === "git-read"
+          ? [join(installedPackage, "extensions", "git-read.ts")]
+          : [];
+        assert.deepEqual(result.configuredExtensions, extensions, `${profile} ${selection.name} must preserve its child extension boundary`);
+      }
+
+      const defaultImplementer = results.find(({ requestedName }) => requestedName === "implementer");
+      const [withoutSkills] = preflightRuntimeAgents(["implementer"], profileRoot, agentDir, { skill: false });
+      assert.ok(withoutSkills?.ok, `${profile} preflight must resolve implementer with skills disabled: ${withoutSkills?.message ?? "no result"}`);
+      assert.deepEqual(withoutSkills.skills, { requested: [], resolved: [], missing: [] }, `${profile} skill:false must suppress implementer's private defaults`);
+      assert.deepEqual(
+        {
+          model: withoutSkills.model,
+          modelCandidates: withoutSkills.modelCandidates,
+          inheritSkills: withoutSkills.inheritSkills,
+          effectiveAllowlist: withoutSkills.effectiveAllowlist,
+          configuredExtensions: withoutSkills.configuredExtensions,
+        },
+        {
+          model: defaultImplementer.model,
+          modelCandidates: defaultImplementer.modelCandidates,
+          inheritSkills: defaultImplementer.inheritSkills,
+          effectiveAllowlist: defaultImplementer.effectiveAllowlist,
+          configuredExtensions: defaultImplementer.configuredExtensions,
+        },
+        `${profile} skill:false must not change implementer's model, inheritance, or tool contract`,
+      );
+    }
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("the runtime contract translates one primary and fourteen canonical subagents without model policy", () => {
   const contract = readJson(join(root, expected.contractPath), "runtime agent contract");
   const manifest = readJson(join(root, "package.json"), "package manifest");
   const parity = readJson(join(root, "contract", "parity.v2.json"), "snapshot parity contract");
   const activeSnapshotSkills = parity.skills.map(({ name }) => name).filter((name) => name !== "playwright-cli");
   const packageSkills = manifest.pi.skills.map((path) => path.replace(/^\.\/skills\//, ""));
-  assert.deepEqual(Object.keys(contract).sort(), ["agents", "dependency", "primary", "schemaVersion", "skills"]);
+  assert.deepEqual(Object.keys(contract).sort(), ["agents", "dependency", "primary", "schemaVersion", "skillSelections", "skills"]);
   assert.equal(contract.schemaVersion, expected.schemaVersion);
   assert.deepEqual(contract.dependency, expected.dependency);
   assert.deepEqual(contract.primary, expected.primary);
+  assert.deepEqual(contract.skillSelections, expected.skillSelections, "runtime contract must retain the reviewed private skill selection by role");
   assert.deepEqual(contract.skills, expected.skills, "runtime skill allowlist must match its reviewed fixture");
   assert.deepEqual(contract.skills, activeSnapshotSkills, "runtime skills must equal the canonical snapshot minus opt-in Playwright");
   assert.deepEqual(packageSkills, activeSnapshotSkills, "package activation must match the runtime skill contract");
@@ -212,6 +280,9 @@ test("the real tarball contains the closed runtime assets and audited dependency
     ].sort();
     const packedRuntimeFiles = [...archive.keys()].filter((path) => /^package\/(?:agents|deferred\/agents|primary)\/.+\.md$/.test(path)).sort();
     assert.deepEqual(packedRuntimeFiles, expectedRuntimeFiles, "tarball must expose all 14 runnable agents and retain the primary separately");
+    for (const skill of new Set(expected.skillSelections.flatMap(({ skills }) => skills))) {
+      assert.ok(archive.has(`package/skills/${skill}/SKILL.md`), `tarball must retain the private skill entry selected by a runtime agent: ${skill}`);
+    }
     assert.ok(archive.has("package/extensions/git-read.ts"), "tarball must contain the child-only provider referenced by git-read agents");
     assertAllBashPolicies(new Map(packedRuntimeFiles.map((path) => {
       const name = path.slice(path.lastIndexOf("/") + 1, -".md".length);
@@ -274,6 +345,11 @@ function assertTranslatedAgent(sourcePath, targetPath, expectedAgent) {
   assert.equal(target.frontmatter.systemPromptMode, "replace");
   assert.equal(target.frontmatter.inheritProjectContext, true);
   assert.equal(target.frontmatter.inheritSkills, false);
+  if (expectedAgent.status === "dormant" || expectedAgent.name === "engram") {
+    for (const field of ["skills", "skillPath"]) {
+      assert.equal(Object.hasOwn(target.frontmatter, field), false, `${targetPath} must not declare ${field}`);
+    }
+  }
   for (const forbidden of ["provider", "model", "fallbackModels", "thinking", "tier", "mode", "readonly", "bash", "spawn"]) {
     assert.equal(Object.hasOwn(target.frontmatter, forbidden), false, `${targetPath} must not hardcode ${forbidden}`);
   }
@@ -302,6 +378,31 @@ function runGenerator(packageRoot, externalRoot) {
   };
   assert.equal(Object.hasOwn(env, "PI_PACKAGE_DIR"), false, "PI_PACKAGE_DIR is package resolution, not writable state isolation");
   execFileSync(process.execPath, [join(packageRoot, expected.generatorPath)], { cwd: packageRoot, env, stdio: "pipe" });
+}
+
+function preflightRuntimeAgents(names, cwd, agentDir, options) {
+  const sandbox = dirname(cwd);
+  const env = {
+    HOME: join(sandbox, "home"),
+    USERPROFILE: join(sandbox, "userprofile"),
+    PATH: process.env.PATH ?? "",
+    PI_CODING_AGENT_DIR: agentDir,
+    PI_SUBAGENTS_TEMP_ROOT: join(sandbox, "pi-subagents-temp"),
+    TEMP: join(sandbox, "temp"),
+    TMP: join(sandbox, "temp"),
+    XDG_CACHE_HOME: join(sandbox, "xdg-cache"),
+    XDG_CONFIG_HOME: join(sandbox, "xdg-config"),
+    XDG_DATA_HOME: join(sandbox, "xdg-data"),
+  };
+  const args = [join(testDir, "fixtures", "discover-runtime-agents.mjs"), JSON.stringify(names)];
+  if (options !== undefined) args.push(JSON.stringify(options));
+  const output = execFileSync(process.execPath, args, {
+    cwd,
+    env,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return JSON.parse(output);
 }
 
 function generatedTree(packageRoot) {

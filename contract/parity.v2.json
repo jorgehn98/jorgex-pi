@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "fac3ba828c20134858e2a9aa1e68b920270f7b5a"
+    "commit": "5e89b970e72cfac0003b11e054c861bed6d44884"
   },
   "agents": [
     {
@@ -233,7 +233,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "da7be5fa8d3e1dc519350600100674a1451e6ca68136572ef1f51ff7917f2ab8"
+          "sha256": "f2d00803433cfcb565e014acb4d63a944f176daf7378b4f7d86188cf8a287be6"
         }
       ]
     },
@@ -596,7 +596,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "494d2c7ef6b86e4883dc855a9df0f7c61ce4b8cc3d079b43d2b044c9253701e2"
+          "sha256": "f48c667be1d2a8a6557b086aca63d07b3dd82b7445d246f329e260c558bd6b62"
         }
       ]
     },
@@ -607,11 +607,11 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "c63142dedc29377262f007454bb53faa13e108de7437ae9e8d57d251d589bfe8"
+          "sha256": "20ad6e2136e36721252ac41bf6852b9f8b064d9ea4aba5cc7b242340ec929ffd"
         },
         {
           "path": "references/plan-template.md",
-          "sha256": "69b1cd519c45700d6e370d4e0a654afa70c82b90adef50d01815634082ced876"
+          "sha256": "3e7b24180b05d1822fd79931ddca36522a2ed2b4d9584c8d5cecfef1353d6dfa"
         }
       ]
     },
@@ -630,14 +630,14 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md",
-    "sourceSha256": "a7f34534802e418c63d17834960aa9956f3dfd2bb8358a02118aa354c22a2a8a",
-    "outputSha256": "a7f34534802e418c63d17834960aa9956f3dfd2bb8358a02118aa354c22a2a8a"
+    "sourceSha256": "631c2e44072f2888b75c747c3ecb18d5c7eedd82eee2049a0c50d6a724212d24",
+    "outputSha256": "631c2e44072f2888b75c747c3ecb18d5c7eedd82eee2049a0c50d6a724212d24"
   },
   "engramProtocol": {
     "sourcePath": "stack/system-prompt/engram-protocol.md",
     "targetPath": "assets/system-prompt/engram-protocol.md",
-    "sourceSha256": "d3902bd33617b7765f24e06356f2d45f66cad50dc7605abdc130ad674825d05f",
-    "outputSha256": "d3902bd33617b7765f24e06356f2d45f66cad50dc7605abdc130ad674825d05f"
+    "sourceSha256": "e23997eda1d8d43c587b5e864b280d4c77055dd30f558c9e9288264398929591",
+    "outputSha256": "e23997eda1d8d43c587b5e864b280d4c77055dd30f558c9e9288264398929591"
   },
   "qualityReceipt": {
     "namespace": "jorgex.quality.receipt",
