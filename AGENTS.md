@@ -27,7 +27,7 @@ La instalación directa y la gestionada no son el mismo canal:
 - **Directa:** después de publicar la versión seleccionada en `package.json`, instalarla explícitamente con `pi install npm:jorgex-pi@<published-version>`. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
 - **Gestionada:** Stack instala el candidato exacto que registra en su runtime, verifica su integridad, proyecta los recursos compartidos y filtra del registro del paquete las skills/prompts ya proyectados. Publicar una versión Pi no actualiza automáticamente ese candidato: su adopción requiere un cambio separado y secuencial en Stack contra el artefacto publicado exacto.
 
-El rollout histórico de `work-audit` comenzó con Stack 1.9.0 como canon y Pi 0.8.0 actualizando la snapshot y allowlist del paquete directo. La adopción gestionada ya está completada: Stack 1.9.2 reconoce y fija el tarball exacto `npm:jorgex-pi@0.8.0`; no hay un desfase activo ni una segunda fuente de verdad.
+El rollout histórico de `work-audit` comenzó con Stack 1.9.0 como canon y Pi 0.8.0 actualizando la snapshot y allowlist del paquete directo. Stack 1.9.5 mantiene ahora el receipt gestionado exacto `npm:jorgex-pi@0.8.3`; este cambio prepara Pi 0.8.4, cuya publicación y adopción se verifican en checkpoints posteriores.
 
 Publicar Pi no actualiza automáticamente JorgeX Stack. Para una futura adopción gestionada, el flujo sigue este orden:
 
@@ -36,15 +36,16 @@ Publicar Pi no actualiza automáticamente JorgeX Stack. Para una futura adopció
 3. Esperar las **24 horas en npm** solo antes del consumo real por instalaciones gestionadas, salvo excepción explícita de Jorge documentada en ese PR.
 4. Mantener el candidato anterior en Stack hasta que ese PR se fusione y verifique.
 
-Stack 1.9.2 fue aceptado por npm y el readback confirmó la metadata y el tarball públicos. La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real del nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
+La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real del nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La adopción de Pi 0.8.4 queda para un PR separado y secuencial de Stack, que deberá verificar el artefacto publicado exacto, su tamaño, SHA-256, SHA-512, lifecycle y rollback. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
 
 La verificación local de Stack comprueba que los bytes descargados coinciden con el tamaño y los SHA-256/SHA-512 fijados para el candidato aceptado. Es una comprobación local del artefacto, no una raíz de confianza independiente: la attestation/provenance externa de npm queda fuera del runtime, y `provenance.commit` es informativo salvo verificación explícita de esa attestation.
 
 Nunca enlazar ambos repos mediante `latest`, un checkout vivo o descargas sin integridad.
 
-Stack 1.9.2 reconoce únicamente el receipt exacto `npm:jorgex-pi@0.8.0`. Para una transición entre receipts, usa la versión de Stack que reconoce el receipt presente y no edites receipts, hashes ni estado manualmente:
+Para una transición entre receipts, usa la versión de Stack que reconoce el receipt presente y no edites receipts, hashes ni estado manualmente. El receipt vigente y el candidato futuro se documentan en el checkpoint de adopción de Stack, no se anticipan aquí con comandos inventados.
 
 ```bash
+# Ejemplo histórico de la transición 0.7.0 → 0.8.0; no describe el candidato F1 actual.
 # Receipt Pi 0.7.0 → 0.8.0
 pnpm dlx jorgex-stack@1.9.0 uninstall --agents pi
 pnpm dlx jorgex-stack@1.9.2 install --agents pi
@@ -54,7 +55,13 @@ pnpm dlx jorgex-stack@1.9.2 uninstall --agents pi
 pnpm dlx jorgex-stack@1.9.0 install --agents pi
 ```
 
-La procedencia de la snapshot se consulta en `contract/parity.v2.json`; no repetir aquí SHA ni el estado transitorio del candidato. El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
+La procedencia de la snapshot se consulta en `contract/parity.v2.json`; no repetir aquí SHA. El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
+
+### F1 Pi: acceso privado sin adopción implícita
+
+La proyección generada conserva `inheritSkills: false` para cada agente. El generador `scripts/generate-runtime-agents.mjs` selecciona metadata y rutas privadas por rol para los 13 workers no-Engram; `engram` queda read-only, sin selección de skills y con sólo sus herramientas de lectura de memoria. La ruta `../skills` permite resolver lo declarado sin activar las 18 skills globalmente.
+
+El seam verificable es el contrato público `resolveSubagentLaunchContract` de `pi-subagents@0.54.0`, usado por `tests/fixtures/discover-runtime-agents.mjs`: sirve para comprobar selección, rutas, metadata y allowlist efectiva. No debe interpretarse como prueba de ejecución de un modelo, lectura del cuerpo completo de una skill, ACL universal o compatibilidad de todos los runtimes. F1 tampoco cambia defaults de modelo, permisos, receipts, HOME o configuración del usuario.
 
 El trabajo cross-repo no se cierra tras fusionar Pi: debe completar los PRs secuenciales requeridos en Stack y verificar el resultado final. De forma simétrica, un cambio de Stack tampoco se da por cerrado si deja pendiente la PR de Pi necesaria para publicar o adoptar su proyección.
 

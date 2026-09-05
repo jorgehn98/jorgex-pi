@@ -25,9 +25,9 @@ There are two intentionally distinct channels:
 - **Direct package:** after the selected version in `package.json` is published, install it explicitly with `pi install npm:jorgex-pi@<published-version>`. The extension uses its bundled assets as marker-aware fallbacks: it appends each missing `<!-- jorgex:... -->` section without replacing user prompt content or duplicating a section already supplied by Stack.
 - **Managed Stack:** Stack installs the exact candidate recorded by its runtime registry, verifies the tarball integrity, then projects the shared policy, skills, prompt and conditional sections into Pi's user-level paths and filters the packaged duplicates. Publishing a Pi release does not update that candidate; adopting a new release is a separate sequential Stack change against the exact published artifact.
 
-Historically, Stack 1.9.0 was the canonical source for the `work-audit` rollout and Pi 0.8.0 updated the direct package snapshot and active allowlist. Managed adoption is now complete: Stack 1.9.2 recognizes and pins the exact published `npm:jorgex-pi@0.8.0` tarball, so there is no active channel lag or second source of truth.
+Historically, Stack 1.9.0 was the canonical source for the `work-audit` rollout and Pi 0.8.0 updated the direct package snapshot and active allowlist. The current Stack release is 1.9.5 and its managed Pi candidate remains the exact `npm:jorgex-pi@0.8.3` receipt. This change prepares Pi 0.8.4; its publication and adoption are verified in their later checkpoints.
 
-Stack 1.9.2 was accepted by npm and its readback confirmed public registry metadata and tarball availability. Stack's local checks bind the downloaded bytes to the accepted candidate's pinned size, SHA-256 and SHA-512; these checks are local artifact verification, not independent trust roots. npm's external provenance/attestation remains outside Pi and Stack runtime verification, and `provenance.commit` is informative unless that attestation is independently verified.
+The next managed adoption is a separate, sequential Stack change after Pi 0.8.4 is published. It must pin the exact published artifact and verify its URL, size, SHA-256, SHA-512, lifecycle evidence and rollback candidate. The 24-hour npm maturity window applies only to real managed consumption; it does not block Pi development, validation, merge or publication. npm's external provenance/attestation remains outside Pi and Stack runtime verification, and `provenance.commit` is informative unless that attestation is independently verified.
 
 The direct fallback is not a second managed installation mechanism. It is a safe package-local fallback for direct installs; Stack-owned markers remain authoritative whenever they are present.
 
@@ -45,6 +45,16 @@ Pi owns the lifecycle receipt at `PI_CODING_AGENT_DIR/jorgex-pi/sol-lifecycle.v1
 To override the primary, set the relevant values in Pi's `settings.json` or `models.json` before running `sync`, or edit a managed value afterwards. The lifecycle will preserve the existing or changed value and will not treat it as removable package state.
 
 `contract/jorgex-pi.v1.json` advertises the active versioned capabilities, including `mcp-adapter-v1`, `engram-runtime-tools-v1`, `runner-json-v1`, `tui-branding-v1`, and `managed-primary-model-v1`, and links the runtime-agent and runner contracts. The runtime contract records the translation from the 15 canonical agents. All 14 subagents live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent. The runtime-agent contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices on subagent routing; the managed primary is documented separately above.
+
+### F1 Pi: selección privada y límites de adopción
+
+La proyección Pi de F1 conserva los 15 agentes canónicos: 13 workers reciben sólo la selección privada de skills necesaria para su rol, mientras `engram` permanece read-only y sin skills seleccionadas. Cada agente generado fija `inheritSkills: false`; la ruta local `../skills` hace legible la selección declarada sin precargar el catálogo completo. El generador `scripts/generate-runtime-agents.mjs` es la autoridad de esta traducción y mantiene intactos los cuerpos canónicos, las herramientas, los tiers, la recursión y la extensión `git-read`.
+
+Cada tarea formal de F1 mantiene una única Spec recuperable: una observación Engram o un Markdown canónico. Un mensaje inline sólo es un encargo auxiliar de su tarea padre; el resultado se registra aparte del origen de la Spec.
+
+La comprobación usa el contrato público `resolveSubagentLaunchContract` de `pi-subagents@0.54.0` en `tests/fixtures/discover-runtime-agents.mjs`. Ese seam permite comprobar la metadata de selección, las rutas/skills resueltas y la allowlist efectiva; no demuestra que un modelo ejecute una skill, que lea el cuerpo completo, que exista una ACL universal ni que todos los runtimes compartan el mismo contrato. El agente `engram` sólo expone `mem_search`, `mem_context`, `mem_get_observation`, `mem_suggest_topic_key`, `mem_current_project` y `mem_doctor`; no recibe operaciones de escritura.
+
+F1 no cambia el modelo elegido ni promete aceptación del backend: `openai-codex/gpt-5.6-sol` y `contextWindow=872000` siguen siendo la política/metadata local descrita arriba. Tampoco activa globalmente las 18 skills, crea un nuevo resolver o altera permisos, receipts, HOME o configuración de usuario.
 
 ## TUI branding
 
@@ -216,7 +226,7 @@ A push to `main` starts the release workflow. If the version declared in `packag
 
 Publication does not update JorgeX Stack automatically. Stack's managed installation consumes the exact candidate recorded in its runtime registry; adopting a future Pi release remains a separate coordinated change that verifies the published artifact's URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate. The 24-hour npm maturity window applies only to real consumption by managed Stack installations; it does not block Pi development, sequential PRs, merges, publication or adoption validation. Direct installation uses a separate package-manager channel, but any consumption before the 24-hour maturity window expires requires Jorge's explicit exception; direct installation cannot bypass this policy, which Pi does not enforce automatically.
 
-Stack 1.9.2 recognizes only the exact Pi receipt `npm:jorgex-pi@0.8.0`. For an existing receipt transition, use the Stack version that recognizes the receipt currently present; do not edit receipts, hashes or manual state:
+The following receipt transition is historical (`Stack 1.9.2` / Pi `0.8.0`). For any current transition, use the Stack version that recognizes the receipt currently present; do not edit receipts, hashes or manual state:
 
 ```bash
 # Pi receipt 0.7.0 → 0.8.0
