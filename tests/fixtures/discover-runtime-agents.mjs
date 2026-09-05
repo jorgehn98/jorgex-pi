@@ -13,6 +13,11 @@ for (const name of names) {
     code: result.code,
     message: result.message,
     discoveredName: result.ok ? result.contract.agent.name : undefined,
+    model: result.ok ? result.contract.model : undefined,
+    modelCandidates: result.ok ? result.contract.modelCandidates : undefined,
+    inheritSkills: result.ok ? result.contract.inheritSkills : undefined,
+    skills: result.ok ? result.contract.skills : undefined,
+    effectiveAllowlist: result.ok ? result.contract.tools.effectiveAllowlist : undefined,
     configuredExtensions: result.ok ? result.contract.tools.configuredExtensions : undefined,
   });
 }

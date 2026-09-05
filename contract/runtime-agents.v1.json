@@ -303,6 +303,97 @@
       ]
     }
   ],
+  "skillSelections": [
+    {
+      "name": "backend-analyst",
+      "skills": [
+        "agent-delegation",
+        "supabase",
+        "supabase-postgres-best-practices"
+      ]
+    },
+    {
+      "name": "code-reviewer",
+      "skills": [
+        "agent-delegation"
+      ]
+    },
+    {
+      "name": "code-simplifier",
+      "skills": [
+        "agent-delegation",
+        "lean-code"
+      ]
+    },
+    {
+      "name": "comment-fixer",
+      "skills": [
+        "agent-delegation"
+      ]
+    },
+    {
+      "name": "docs-maintainer",
+      "skills": [
+        "agent-delegation"
+      ]
+    },
+    {
+      "name": "engram",
+      "skills": []
+    },
+    {
+      "name": "frontend-analyst",
+      "skills": [
+        "agent-delegation"
+      ]
+    },
+    {
+      "name": "implementer",
+      "skills": [
+        "agent-delegation",
+        "lean-code",
+        "tdd"
+      ]
+    },
+    {
+      "name": "security-auditor",
+      "skills": [
+        "agent-delegation"
+      ]
+    },
+    {
+      "name": "silent-failure-hunter",
+      "skills": [
+        "agent-delegation"
+      ]
+    },
+    {
+      "name": "test-analyzer",
+      "skills": [
+        "agent-delegation",
+        "tdd"
+      ]
+    },
+    {
+      "name": "tester",
+      "skills": [
+        "agent-delegation",
+        "tdd"
+      ]
+    },
+    {
+      "name": "translator",
+      "skills": [
+        "agent-delegation"
+      ]
+    },
+    {
+      "name": "type-design-analyzer",
+      "skills": [
+        "agent-delegation"
+      ]
+    }
+  ],
   "skills": [
     "agent-delegation",
     "deploy-to-vercel",
