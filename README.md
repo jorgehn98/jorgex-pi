@@ -239,6 +239,16 @@ pnpm dlx jorgex-stack@1.9.2 uninstall --agents pi
 pnpm dlx jorgex-stack@1.9.0 install --agents pi
 ```
 
+### Mantenimiento: preparar la snapshot desde Stack
+
+El helper [`scripts/prepare-stack-snapshot.mjs`](./scripts/prepare-stack-snapshot.mjs) usa una SHA completa, fusionada y que no sea un downgrade respecto de la snapshot actual, y prepara la proyección en un staging temporal propio. Requiere un checkout Pi limpio de trabajo (no `main`/`master`), también en **dry-run**, que es el modo por defecto: no modifica archivos tracked y sólo informa las rutas candidatas. Sustituye las dos cadenas del ejemplo por la ruta absoluta y la SHA verificadas:
+
+```bash
+node scripts/prepare-stack-snapshot.mjs --stack-dir "/ruta/absoluta/stack" --commit "SHA_COMPLETA_EN_MINUSCULAS"
+```
+
+Añade `--apply` sólo desde una rama o checkout de trabajo que no sea `main`/`master` y esté completamente limpio; el helper también rechaza `assume-unchanged` y `skip-worktree`, porque pueden ocultar ediciones locales. No modifica esos flags: usa un checkout de trabajo sin ellos. El helper no acepta cambios dirty ni crea commits, PRs, red ni automatizaciones. Tras aplicar y revisar la candidata, haz el commit antes de repetir la preparación. Un no-op de metadata no cambia la provenance. Si la generación o los fixtures son incompatibles, se detiene para revisión humana y deja la raíz intacta. Si falla el rollback transaccional, conserva el staging/backup de recuperación y no lo borra.
+
 ### Stack content represented in this package
 
 - Stack PR #59 updated the shared `xreview` work-context policy and the affected canonical agents, including `orchestrator` and `xreview`.
