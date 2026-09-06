@@ -20,10 +20,12 @@ const readJson = (root, name) => JSON.parse(readFileSync(join(root, name), "utf8
 const owned = (name, destination) => name === destination || name.startsWith(`${destination}/`);
 
 function gitEnvironment() {
-  const env = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };
+  const env = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (/^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG.*|REPLACE_REF_BASE)$/.test(key)) delete env[key];
+    if (key.toUpperCase().startsWith("GIT_")) delete env[key];
   }
+  env.GIT_OPTIONAL_LOCKS = "0";
+  env.GIT_TERMINAL_PROMPT = "0";
   return env;
 }
 

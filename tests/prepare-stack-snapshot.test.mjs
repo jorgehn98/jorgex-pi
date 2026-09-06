@@ -51,6 +51,38 @@ test("prepareStackSnapshot leaves provenance unchanged when a descendant Stack c
   }
 });
 
+test("prepareStackSnapshot ignores inherited GIT_COMMON_DIR when preparing a metadata no-op", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-prepare-git-common-dir-"));
+  try {
+    const { stackDir, root } = arrangeFixture(sandbox);
+    const sourceCommit = commitStackMetadataChange(stackDir);
+    const before = readTree(root);
+    const headBefore = git(root, ["rev-parse", "HEAD"]);
+    const previousCommonDir = process.env.GIT_COMMON_DIR;
+    let result;
+    let failure;
+    try {
+      process.env.GIT_COMMON_DIR = join(stackDir, ".git");
+      result = prepareStackSnapshot({ root, stackDir, sourceCommit, apply: true });
+    } catch (error) {
+      failure = error;
+    } finally {
+      if (previousCommonDir === undefined) delete process.env.GIT_COMMON_DIR;
+      else process.env.GIT_COMMON_DIR = previousCommonDir;
+    }
+
+    assert.deepEqual(readTree(root), before, "inherited Git state must not alter Pi bytes or provenance");
+    assert.equal(git(root, ["rev-parse", "HEAD"]), headBefore);
+    assert.equal(git(root, ["status", "--porcelain"]), "");
+    assert.ifError(failure);
+    assert.equal(result.status, "unchanged");
+    assert.equal(result.sourceCommit, sourceCommit);
+    assert.deepEqual(result.changedPaths, []);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("prepareStackSnapshot applies a content change once and is a clean no-op after that candidate is committed", () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-prepare-stack-snapshot-apply-"));
   try {
