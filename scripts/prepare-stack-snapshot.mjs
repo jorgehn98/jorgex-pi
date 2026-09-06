@@ -62,10 +62,10 @@ function assertClean(root, stage) {
 
 function assertExportableTree(root, commit, paths = []) {
   const names = new Set();
-  for (const entry of git(root, ["ls-tree", "-r", "-z", commit, ...paths]).split("\0").filter(Boolean)) {
-    const match = /^(100644|100755) blob [0-9a-f]{40}\t(.+)$/.exec(entry);
+  for (const entry of git(root, ["ls-tree", "-r", "-t", "-z", commit, ...paths]).split("\0").filter(Boolean)) {
+    const match = /^(?:(?:100644|100755) blob|040000 tree) [0-9a-f]{40}\t(.+)$/.exec(entry);
     if (!match) throw new Error("Unsupported Git tree entry (symlink or submodule)");
-    const name = match[2];
+    const name = match[1];
     if (/[\x00-\x1f\\:<>"|?*]/.test(name) || name.startsWith("/") || name.split("/").some((part) => !part || part === "." || part === ".." || part.toLowerCase() === ".git" || /[. ]$/.test(part))) {
       throw new Error("Git tree contains a non-portable export path");
     }

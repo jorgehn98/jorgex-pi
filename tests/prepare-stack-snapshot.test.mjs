@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
@@ -112,6 +112,50 @@ test("prepareStackSnapshot rejects an incompatible generated schema without touc
       /incompat|schema|contract/i,
     );
     assert.deepEqual(readTree(root), before, "incompatible contract output must remain staged only");
+    assert.equal(git(root, ["status", "--porcelain"]), "");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("prepareStackSnapshot rejects an ignored extra inside a generated destination without removing it", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-prepare-stack-snapshot-ignored-extra-"));
+  try {
+    const { stackDir, root } = arrangeFixture(sandbox);
+    const sourceCommit = commitStackContentChange(stackDir);
+    const extra = join(root, "prompts", "ignored-extra.md");
+    writeFileSync(join(root, ".git", "info", "exclude"), "prompts/ignored-extra.md\n", { flag: "a" });
+    writeFileSync(extra, "ignored fixture extra\n");
+    const before = readTree(root);
+
+    assert.throws(
+      () => prepareStackSnapshot({ root, stackDir, sourceCommit, apply: true }),
+      /Generated destinations contain modified or extra ignored files/,
+    );
+    assert.deepEqual(readTree(root), before, "rejection must not remove ignored generated extras");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("prepareStackSnapshot rejects a symlinked generated destination without replacing it", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-prepare-stack-snapshot-symlink-"));
+  try {
+    const { stackDir, root } = arrangeFixture(sandbox);
+    const sourceCommit = commitStackContentChange(stackDir);
+    const prompts = join(root, "prompts");
+    const target = join(root, "fixture-prompts-target");
+    renameSync(prompts, target);
+    symlinkSync(target, prompts, "junction");
+    commitAll(root, "fixture generated destination junction");
+    assert.equal(git(root, ["status", "--porcelain"]), "", "fixture symlink must be committed so the production symlink guard is reached");
+    assert.equal(lstatSync(prompts).isSymbolicLink(), true);
+
+    assert.throws(
+      () => prepareStackSnapshot({ root, stackDir, sourceCommit, apply: true }),
+      /Unsafe generated destination/,
+    );
+    assert.equal(lstatSync(prompts).isSymbolicLink(), true, "rejection must preserve the generated destination symlink");
     assert.equal(git(root, ["status", "--porcelain"]), "");
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
