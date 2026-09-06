@@ -29,6 +29,8 @@ La versión declarada en `package.json` y la snapshot de Stack identificada por 
 
 La adopción gestionada de cualquier nueva versión debe fijar el artefacto exacto y verificar URL, tamaño, SHA-256, SHA-512, lifecycle y rollback. La ventana de 24 horas de npm aplica sólo al consumo gestionado real; no bloquea desarrollo, validación, merges ni publicación. La provenance/attestation externa de npm queda fuera de la verificación del runtime.
 
+La coordinación downstream con Stack está desactivada salvo que `JORGEX_AUTOMATION_ENABLED` sea exactamente `true`; el job notificador sólo continúa tras verificar la publicación y emite `version`, `producer_sha` y `run_id` para un único `repository_dispatch`. El flujo y su recuperación manual están documentados en el [runbook de automatización Stack ↔ Pi](https://github.com/jorgehn98/jorgex-stack/blob/main/docs/references/stack-pi-automation.md); no se republica para recuperar una notificación.
+
 The direct fallback is not a second managed installation mechanism. It is a safe package-local fallback for direct installs; Stack-owned markers remain authoritative whenever they are present.
 
 ### Managed Sol model lifecycle

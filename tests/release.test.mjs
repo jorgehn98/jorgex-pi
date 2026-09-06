@@ -191,7 +191,13 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   const actionUses = [...workflow.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
   assert.ok(actionUses.length >= 3, "the release pipeline must contain its reviewed setup actions");
   for (const action of actionUses) assert.match(action, /@[a-f0-9]{40}$/, `release action must not use a mutable tag: ${action}`);
-  for (const action of actionUses) assert.equal(reviewedActions.has(action), true, "release action is not in the reviewed allowlist: " + action);
+  const notificationJob = workflowJobBlock(workflow, "notify-stack");
+  const withoutNotification = workflow.replace(notificationJob, "");
+  const releaseActions = [...withoutNotification.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
+  for (const action of releaseActions) assert.equal(reviewedActions.has(action), true, "release action is not in the reviewed allowlist: " + action);
+  assert.deepEqual([...notificationJob.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)\s*$/gm)].map(match => match[1]), [
+    "actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+  ], "only the isolated notification job may use the exact dedicated App action");
   const runners = [...workflow.matchAll(/^\s*runs-on:\s*([^\s#]+)\s*$/gm)].map((match) => match[1]);
   assert.ok(runners.length >= 3, "validation, planning, publishing and tagging must be isolated jobs");
   assert.ok(runners.every((runner) => runner === "ubuntu-latest"), "publishing must use only GitHub-hosted runners");
@@ -215,7 +221,23 @@ test("the publish workflow is main-gated, recoverable, OIDC-only, and release-co
   assert.equal(npmCommands.length, 1, "publish is the only direct npm command allowed");
   assert.match(npmCommands[0] ?? "", /^npm publish\b/, "the only direct npm command must publish");
   assert.doesNotMatch(workflow, /(?:^|[\s;&|])npm\s+(?:version|pack|install)\b/im, "standalone npm may only publish");
-  assert.doesNotMatch(workflow, /NPM_TOKEN|secrets\.|^\s*(?:token|github-token):|pnpm\s+version|gh\s+release|changeset/i);
+  assert.doesNotMatch(workflow, /NPM_TOKEN|^\s*(?:token|github-token):|pnpm\s+version|gh\s+release|changeset/im);
+  assert.doesNotMatch(withoutNotification, /secrets\b|create-github-app-token/i,
+    "original release jobs, verification and workflow scope must remain free of secrets and App credentials");
+  assert.deepEqual([...notificationJob.matchAll(/\$\{\{\s*((?:vars|secrets)\b[\s\S]*?)\s*\}\}/g)].map(match => match[1]), [
+    "vars.JORGEX_AUTOMATION_APP_CLIENT_ID", "secrets.JORGEX_AUTOMATION_APP_PRIVATE_KEY",
+  ], "notification may reference only the dedicated App configuration");
+  assert.doesNotMatch(notificationJob
+    .replace("${{ vars.JORGEX_AUTOMATION_APP_CLIENT_ID }}", "")
+    .replace("${{ secrets.JORGEX_AUTOMATION_APP_PRIVATE_KEY }}", ""), /\b(?:secrets|vars)\b/i,
+  "the App exception must not allow additional, bracketed or nested secret/config references");
+  assert.match(notificationJob, /^          client-id: \$\{\{ vars\.JORGEX_AUTOMATION_APP_CLIENT_ID \}\}$/m);
+  assert.match(notificationJob, /^          private-key: \$\{\{ secrets\.JORGEX_AUTOMATION_APP_PRIVATE_KEY \}\}$/m);
+  assert.match(notificationJob, /^          owner: jorgehn98$/m);
+  assert.match(notificationJob, /^          repositories: jorgex-stack$/m);
+  assert.deepEqual([...notificationJob.matchAll(/^          (permission-[\w-]+): (.+)$/gm)].map(match => [match[1], match[2]]), [
+    ["permission-contents", "write"],
+  ]);
   assert.match(workflow, /id-token:\s*write/, "only the publish job must receive OIDC authority");
   assert.match(workflow, /contents:\s*write/, "version and tag jobs require narrowly scoped repository writes");
   const planJob = workflow.split("\n  plan:\n")[1]?.split("\n  publish:\n")[0] ?? "";
