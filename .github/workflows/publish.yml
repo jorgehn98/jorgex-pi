@@ -192,3 +192,63 @@ jobs:
           fi
           git tag "$tag" "$SHA"
           git push origin "$tag"
+
+  verify-notification:
+    needs: [plan, publish, tag-release]
+    if: always() && !cancelled() && vars.JORGEX_AUTOMATION_ENABLED == 'true' && needs.plan.result == 'success' && needs.tag-release.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.verify.outputs.version }}
+      producer_sha: ${{ steps.verify.outputs.producer_sha }}
+      run_id: ${{ steps.verify.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+      - name: Verify published producer without App credentials
+        id: verify
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          PRODUCER_SHA: ${{ needs.plan.outputs.publish_sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          node ./scripts/notify-stack.mjs
+
+  notify-stack:
+    needs: verify-notification
+    if: always() && !cancelled() && needs.verify-notification.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Create dedicated Stack dispatch token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.JORGEX_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.JORGEX_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: jorgehn98
+          repositories: jorgex-stack
+          permission-contents: write
+      - name: Notify Stack once (recover with coordinator workflow_dispatch, not republish)
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.verify-notification.outputs.version }}
+          PRODUCER_SHA: ${{ needs.verify-notification.outputs.producer_sha }}
+          RUN_ID: ${{ needs.verify-notification.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | gh api --method POST /repos/jorgehn98/jorgex-stack/dispatches --input -
+          const { VERSION: version, PRODUCER_SHA: producer_sha, RUN_ID: run_id } = process.env;
+          console.log(JSON.stringify({ event_type: "pi-published-v1", client_payload: { version, producer_sha, run_id } }));
+          NODE
