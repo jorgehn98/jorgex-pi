@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "1510655a280a45af5c14f32cb87ce126dbee8edd"
+    "commit": "7d1e4cada3a096bf1ba81d004934e682714df46a"
   },
   "agents": [
     {
@@ -233,7 +233,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "c5fcade6c06c9b6ebffd7a89aec9f41b87cb6ed6b4a0d3d4f619da9db859f323"
+          "sha256": "2c34430012b0c13cede953db50fefed73df6187488c33ceaeffc35a488e0b79e"
         },
         {
           "path": "references/standard-workflow.md",
