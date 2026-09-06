@@ -21,6 +21,7 @@ export const PUBLICABLE_PREFIXES = [
   "contract/",
   "extensions/",
   "primary/",
+  "prompts/",
   "skills/",
   "snapshot/agents/",
   "themes/",

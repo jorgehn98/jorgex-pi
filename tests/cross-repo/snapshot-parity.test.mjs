@@ -68,8 +68,8 @@ test("the real generator is deterministic in isolated package copies", () => {
   try {
     const first = createPackageCopy(join(sandbox, "first"));
     const second = createPackageCopy(join(sandbox, "second"));
-    runGenerator(first, stackDir);
-    runGenerator(second, stackDir);
+    runGenerator(first, stackDir, expected.sourceCommit);
+    runGenerator(second, stackDir, expected.sourceCommit);
     const expectedTree = generatedTree(root);
     assert.deepEqual(generatedTree(first), expectedTree, "executed generator output must equal the committed package snapshot");
     assert.deepEqual(generatedTree(second), expectedTree, "a second isolated execution must produce identical bytes");
@@ -113,7 +113,7 @@ test("replacement refs cannot redirect generation away from raw pinned objects",
       "ordinary Git object access must follow the adversarial replacement ref",
     );
 
-    runGenerator(packageRoot, replacementStack);
+    runGenerator(packageRoot, replacementStack, expected.sourceCommit);
     assert.deepEqual(generatedTree(packageRoot), generatedTree(root), "generation must read the pinned commit's raw objects, ignoring replacement refs");
   } finally {
     assert.equal(replaceRefs(stackDir), realReplaceRefsBefore, "the regression test must never modify replacement refs in the real Stack checkout");
@@ -135,7 +135,7 @@ function createPackageCopy(target) {
   return target;
 }
 
-function runGenerator(packageRoot, stackDir, sourceCommit = expected.sourceCommit) {
+function runGenerator(packageRoot, stackDir, sourceCommit) {
   const env = { ...process.env, JORGEX_STACK_DIR: stackDir };
   if (sourceCommit === undefined) delete env.JORGEX_STACK_COMMIT;
   else env.JORGEX_STACK_COMMIT = sourceCommit;
