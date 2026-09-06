@@ -10,7 +10,7 @@ INIT → EXPLORE → SPEC → PLAN → EXECUTE → VERIFY → SHIP → CLOSE
 
 ### Autonomy
 
-The human drives the flow UP TO the plan: the idea, the PRD review and the plan review are interactive. Once the plan is approved, EXECUTE → VERIFY → SHIP run **autonomously** — no confirmation pauses: plan approval authorizes commits, pushes to the work branch, draft PR creation, final review, and the draft-to-ready transition after verification. Task-critical uncertainty from a subagent is an operational blocker, not a pause in autonomy: answer from existing context first; only if the decision genuinely cannot be made from available context may you ask the user, then relaunch with explicit guidance. Control returns to the user at CLOSE. Merging the PR is NEVER yours: it always requires an explicit user order. For multi-PR work, each merge is a checkpoint; keep `work/{name}/PRD.md` and `plan.md` alive until the roadmap is finished. Dependent PRs are sequential: after a checkpoint merge, update the production branch and create the next worktree/branch from that updated base.
+The human drives the flow UP TO the plan: the idea, PRD and plan review are interactive. Once approved, EXECUTE → VERIFY → SHIP run **autonomously** within that scope: commits, work-branch pushes, draft PR creation, review and ready transitions are authorized, not merges. Resolve task-critical uncertainty from available context first; ask the user only for a genuinely unresolved material decision. CLOSE finishes the current checkpoint and follows [Continue after a ready checkpoint](../SKILL.md#continue-after-a-ready-checkpoint), not a mandatory pause while safe approved work remains. Every merge still requires an explicit user order. Keep `work/{name}/PRD.md` and `plan.md` until the roadmap is finished; choose production or a permitted parent base through the common continuation rule, never through an assumed need to wait for every merge.
 
 ## 1. INIT
 
@@ -20,7 +20,7 @@ The human drives the flow UP TO the plan: the idea, the PRD review and the plan 
 
 ## 2. EXPLORE
 
-Launch analysts according to scope:
+Follow [Decision before delegation](../SKILL.md#decision-before-delegation): reuse verified context and involve an analyst only where material uncertainty needs new evidence. Choose the specialist for that question, rather than launching one merely because an area is touched:
 
 - `backend-analyst` if it affects backend, DB, APIs or server functions
 - `frontend-analyst` if it affects UI, hooks, state or rendering
@@ -79,11 +79,11 @@ Commit after each task or bounded group of tasks, with a message that reflects t
 
 - After the first coherent commit, push the branch and create the PR against its real base with `gh pr create --draft`. Do not wait until SHIP to open it.
 - Keep every code change, commit and push inside the draft phase. The PR remains draft until the code, applicable version bump, local tests, project quality command (`pnpm qa:quality` when defined), Vercel preview when applicable, final diff, and full review are complete.
-- Never push to a ready PR. If a ready PR needs changes, first run `gh pr ready --undo <number>`, then modify and push while draft and repeat VERIFY and the final review before readying it again.
+- Never push to a ready PR. If a ready PR needs changes, first run `gh pr ready --undo <number>`, then modify and push while draft and repeat VERIFY and the applicable review revalidation from the common coverage rule before readying it again.
 
 ### Handoff rule
 
-The analyst's **Recommendation** is the implementer's input. Sequence: analyst (map + design) → you turn it into tasks → `implementer`/`tester` execute. Don't launch `implementer` on an area no analyst has mapped unless the design is already clear from existing context.
+Follow the common [Decision before delegation](../SKILL.md#decision-before-delegation) rule: analysis where needed → coordinator closes the material decisions → one Spec → execution by the appropriate owner. A recommendation does not bypass the coordinator's decision, and an already-understood area does not require another analyst pass.
 
 ### Testing decision
 
@@ -116,7 +116,7 @@ implementer (direct change)
 ### Special delegations
 
 - `translator` for translations or multilingual visible text
-- `docs-maintainer` for documentation
+- `docs-maintainer` for the affected documentation under [Documentation when needed](../SKILL.md#documentation-when-needed); consolidate the pass with stable implementation, not one dispatch per edit or a new review-panel member
 - `security-auditor` for sensitive review
 
 ### Verification cadence
@@ -155,22 +155,22 @@ An early review during EXECUTE is an **exception**, not a default phase. Use it 
 
 ## 7. SHIP (automatic)
 
-When the plan is fully applied and VERIFY passes:
+When the current checkpoint's planned work is applied and VERIFY passes:
 
-1. Confirm the draft PR exists, the worktree is clean, and the draft head matches the local HEAD. Inspect the final diff against the PR's real base.
+1. Confirm the draft PR exists, the worktree is clean, and the draft head matches the local HEAD. Complete any necessary documentation under the common rule and inspect the consolidated final diff against the PR's real base; do not publish intermediate behavior with required documentation missing.
 2. Apply **Final review and PR lifecycle** in the entry [SKILL.md](../SKILL.md) and the project's review requirements. Reuse valid prior review evidence; choosing standard does not require another panel. Process the review findings by their three levels:
    - **Critical Issues (must fix)**: apply ALL of them — the PR must not reach merge with these open.
    - **Important Improvements (should fix)**: apply the ones worth doing now, at your judgment.
    - **Suggestions (nice to have)**: apply only if trivial and safe.
-3. Every finding you decide NOT to apply now goes to the project's `work/backlog` single topic_key — one line each: what + why deferred. Apply the safe serialized backlog protocol above; subagents only return candidate lines.
-4. For what you DO apply: add the new tasks to plan.md and persist one declared recoverable spec source per formal task, execute them as in EXECUTE, re-verify, and push the fixes while the PR remains draft. Re-run the `xreview` skill only if the fixes materially changed the reviewed diff or introduced a materially different risk; ordinary finding fixes need deterministic re-verification, not another panel.
+3. Reconcile duplicates, false positives and disputed premises before creating work. Only valid work deliberately deferred goes to the project's `work/backlog` single topic_key — what + why deferred. Use the safe serialized protocol; subagents only return candidate lines. Do not backlog rejected findings or discard valid findings merely because they are new.
+4. For accepted fixes, reuse the bounded owning task where appropriate; formalize genuinely new independent work through the existing lifecycle. Execute and verify while draft. Apply the common coverage revalidation rule: fix-check, delta-review or full review according to affected contracts and evidence, not another full panel by default. Preserve justified clean coverage and reopen it when dependencies or assumptions change.
 5. Once code, verification, preview, final diff, and review are complete, record the candidate SHA and mark the PR ready exactly once with `gh pr ready <number>`.
 6. Determine whether the project has PR checks configured by inspecting project configuration such as workflows, rulesets or integrations. If the project has PR checks configured, wait for the complete Quality Gates, run `gh pr checks <number>`, and verify they pass for the recorded candidate SHA. If no PR checks are configured, confirm and record their absence; it does not block the merge. An empty `gh pr checks` result immediately after ready is not evidence that no checks are configured. In either case, do not push while the PR is ready. Immediately before reporting or merging, compare `gh pr view --json headRefOid` with the recorded candidate SHA.
-7. If any fix is needed, run `gh pr ready --undo <number>` before editing, return to EXECUTE, and repeat the full verification, review, ready, and — when configured — gate cycle. Never treat checks from an older SHA as merge evidence.
+7. If any fix is needed, run `gh pr ready --undo <number>` before editing, return to EXECUTE, and repeat the full verification, review revalidation, ready and configured gate cycle. Review revalidation follows the common coverage rule, not an automatic panel. Never treat checks from an older SHA as merge evidence; recheck the effective base and integration context as well.
 
 ## 8. CLOSE
 
-- STOP here and hand control back to the user only after configured Quality Gates pass for the latest commit, or after confirming that the project has no PR checks configured: report the candidate SHA, check result or confirmed absence, review findings applied vs deferred to `work/backlog`, and whether manual testing is advisable (recommend it for big or user-facing changes; small well-tested changes may not need it).
+- After configured Quality Gates pass for the current candidate, or after confirming that none are configured, close this checkpoint with the common [Ready handoff](../SKILL.md#ready-handoff). Preserve metadata, summarize changes and observed feedback, and report valid findings applied vs deferred and whether manual testing is advisable. Then follow [Continue after a ready checkpoint](../SKILL.md#continue-after-a-ready-checkpoint): continue approved safe work, or explain the real blocker/end of scope. Do not claim merge, deployment or overall roadmap completion from ready.
 - NEVER merge the PR yourself — merge only on an explicit user order. After each intermediate merge: persist the checkpoint to `work/{name}/pr/{NN}`, update `plan.md`, and keep `work/{name}/` alive. After the final merge: persist the final outcome to memory, clean up `work/{name}/` and remove the worktree (see Work state).
 - If the repo has its own skill for the closing steps (release, deploy, git, cleanup), that skill takes precedence over the default behavior.
 

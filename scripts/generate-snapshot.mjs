@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const DEFAULT_SOURCE_COMMIT = "c63c2965b4d883aa10971020b53fd44f72472b6b";
+const DEFAULT_SOURCE_COMMIT = "1510655a280a45af5c14f32cb87ce126dbee8edd";
 const SOURCE_COMMIT = process.env.JORGEX_STACK_COMMIT?.trim() || DEFAULT_SOURCE_COMMIT;
 const QUALITY_RECEIPT_SOURCE_PATH = "stack/contracts/quality-receipt.v1.schema.json";
 const QUALITY_RECEIPT_TARGET_PATH = "contract/schemas/quality-receipt.v1.schema.json";
@@ -32,7 +32,6 @@ const EXCLUSIONS = [
   { kind: "capability-integration", id: "post-pr-shell-hook-translation" },
   { kind: "capability-integration", id: "programmatic-mode-negotiation" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/commands/claude-code/xreview.md" },
-  { kind: "runtime-specific-overlay", sourcePath: "stack/commands/opencode/goal.md" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/commands/opencode/xreview.md" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/system-prompt/browser-chrome-devtools.md" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/system-prompt/browser-playwright.md" },

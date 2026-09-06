@@ -2,29 +2,29 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "c63c2965b4d883aa10971020b53fd44f72472b6b"
+    "commit": "1510655a280a45af5c14f32cb87ce126dbee8edd"
   },
   "agents": [
     {
       "name": "backend-analyst",
       "sourcePath": "stack/agents/backend-analyst.md",
       "targetPath": "snapshot/agents/backend-analyst.md",
-      "sourceSha256": "2a31f8ce438c1e9e06df122b23a5319bede15e2cb97bcf6f64d53136f6d37419",
-      "outputSha256": "2a31f8ce438c1e9e06df122b23a5319bede15e2cb97bcf6f64d53136f6d37419"
+      "sourceSha256": "47443cc2cb449e04ddd60b230c4b9ee585099a4deb5c58aa41111d16df562a7e",
+      "outputSha256": "47443cc2cb449e04ddd60b230c4b9ee585099a4deb5c58aa41111d16df562a7e"
     },
     {
       "name": "code-reviewer",
       "sourcePath": "stack/agents/code-reviewer.md",
       "targetPath": "snapshot/agents/code-reviewer.md",
-      "sourceSha256": "750f73645357b2bc36ec906b6b7d94781baaf8748cc6911edc1b23829ead90dc",
-      "outputSha256": "750f73645357b2bc36ec906b6b7d94781baaf8748cc6911edc1b23829ead90dc"
+      "sourceSha256": "5e141bee80c52d6563e363d0d92f65215c3b23826025088bad4def36226a659a",
+      "outputSha256": "5e141bee80c52d6563e363d0d92f65215c3b23826025088bad4def36226a659a"
     },
     {
       "name": "code-simplifier",
       "sourcePath": "stack/agents/code-simplifier.md",
       "targetPath": "snapshot/agents/code-simplifier.md",
-      "sourceSha256": "c74db5358fec3321e91a299012f48295de4f72dd86e48cf2ed50315b2384a5d8",
-      "outputSha256": "c74db5358fec3321e91a299012f48295de4f72dd86e48cf2ed50315b2384a5d8"
+      "sourceSha256": "da5cc914d1cfee54c9dafea4e62f80503ec90fca6cb112c44eb20e4cfb4630f9",
+      "outputSha256": "da5cc914d1cfee54c9dafea4e62f80503ec90fca6cb112c44eb20e4cfb4630f9"
     },
     {
       "name": "comment-fixer",
@@ -37,8 +37,8 @@
       "name": "docs-maintainer",
       "sourcePath": "stack/agents/docs-maintainer.md",
       "targetPath": "snapshot/agents/docs-maintainer.md",
-      "sourceSha256": "7565af7338f6fe57b566c9f91ffc88a374f66284f56757b319bcc580c924a94e",
-      "outputSha256": "7565af7338f6fe57b566c9f91ffc88a374f66284f56757b319bcc580c924a94e"
+      "sourceSha256": "bc9f806be98cfb0b4668e52fedd5be6c0b1258fdb3a5c48e74be21856f4a3729",
+      "outputSha256": "bc9f806be98cfb0b4668e52fedd5be6c0b1258fdb3a5c48e74be21856f4a3729"
     },
     {
       "name": "engram",
@@ -51,8 +51,8 @@
       "name": "frontend-analyst",
       "sourcePath": "stack/agents/frontend-analyst.md",
       "targetPath": "snapshot/agents/frontend-analyst.md",
-      "sourceSha256": "03cbb4bed5c158b9e13828f19d859a71af2f24218f8ac856e73888af0073a421",
-      "outputSha256": "03cbb4bed5c158b9e13828f19d859a71af2f24218f8ac856e73888af0073a421"
+      "sourceSha256": "01bb237c429ad1a59790c6ce60c6c9f455b448c5823f9e52eeb84c7263b856df",
+      "outputSha256": "01bb237c429ad1a59790c6ce60c6c9f455b448c5823f9e52eeb84c7263b856df"
     },
     {
       "name": "implementer",
@@ -72,22 +72,22 @@
       "name": "security-auditor",
       "sourcePath": "stack/agents/security-auditor.md",
       "targetPath": "snapshot/agents/security-auditor.md",
-      "sourceSha256": "9b88b7117acf20c0ffec630048cc5da2efe2cb84eb2d0f8cb746e153907ec374",
-      "outputSha256": "9b88b7117acf20c0ffec630048cc5da2efe2cb84eb2d0f8cb746e153907ec374"
+      "sourceSha256": "47cde83bf8c0802201a734f1a91206918fbcf4850ad07a6dfe2d3623f4aa1f69",
+      "outputSha256": "47cde83bf8c0802201a734f1a91206918fbcf4850ad07a6dfe2d3623f4aa1f69"
     },
     {
       "name": "silent-failure-hunter",
       "sourcePath": "stack/agents/silent-failure-hunter.md",
       "targetPath": "snapshot/agents/silent-failure-hunter.md",
-      "sourceSha256": "25050097c6ca225c1e36ed0a761927b8ec2af22371730c98d1682a87737cdb87",
-      "outputSha256": "25050097c6ca225c1e36ed0a761927b8ec2af22371730c98d1682a87737cdb87"
+      "sourceSha256": "c40734990542990159bd299c72b8e2d343a0972135d07ee219bd91a64fc1adf8",
+      "outputSha256": "c40734990542990159bd299c72b8e2d343a0972135d07ee219bd91a64fc1adf8"
     },
     {
       "name": "test-analyzer",
       "sourcePath": "stack/agents/test-analyzer.md",
       "targetPath": "snapshot/agents/test-analyzer.md",
-      "sourceSha256": "d73051d209e8f5cd26eb0f6dd6daea3480e5e62572b16078d71eeacad9c0cdae",
-      "outputSha256": "d73051d209e8f5cd26eb0f6dd6daea3480e5e62572b16078d71eeacad9c0cdae"
+      "sourceSha256": "3245c7f0e85a6c0d393cd7a03db1ee0009a3117e07849907c5f07e88ee76e80b",
+      "outputSha256": "3245c7f0e85a6c0d393cd7a03db1ee0009a3117e07849907c5f07e88ee76e80b"
     },
     {
       "name": "tester",
@@ -107,8 +107,8 @@
       "name": "type-design-analyzer",
       "sourcePath": "stack/agents/type-design-analyzer.md",
       "targetPath": "snapshot/agents/type-design-analyzer.md",
-      "sourceSha256": "1f69ba19459d0850b486908653aa10e42f51b32d233aa507a6be472f9ec3a381",
-      "outputSha256": "1f69ba19459d0850b486908653aa10e42f51b32d233aa507a6be472f9ec3a381"
+      "sourceSha256": "380c980f85a437d37ed63026d4505f8b84c04a8aa1679fb2b6be98122b19a774",
+      "outputSha256": "380c980f85a437d37ed63026d4505f8b84c04a8aa1679fb2b6be98122b19a774"
     }
   ],
   "skills": [
@@ -233,11 +233,11 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "a93145d1afd72e1c38d5d1b893ef643652acc021f6a9baaeed3abaa2dea3df38"
+          "sha256": "c5fcade6c06c9b6ebffd7a89aec9f41b87cb6ed6b4a0d3d4f619da9db859f323"
         },
         {
           "path": "references/standard-workflow.md",
-          "sha256": "64d3900f051f6a2e6c7986ec3e351bf1a3040b7e5908b044873d183929775e49"
+          "sha256": "e6e7dc6ce5a24376fd65c582b7fc15b1513b5b4d2018fa5ed585c05b5712dc99"
         }
       ]
     },
@@ -611,11 +611,15 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "50e85f885473464395099d3e688f44915a552a0098e61edbd0acd320c45e3e06"
+          "sha256": "01941e4a4500b3e8913f9c5d619e688ff64494a4ea7cfc0559591a9b0a807481"
         },
         {
           "path": "references/plan-template.md",
-          "sha256": "3e7b24180b05d1822fd79931ddca36522a2ed2b4d9584c8d5cecfef1353d6dfa"
+          "sha256": "cead3cb2e065649e5bb0ff00b764194979e553d5ae048de850bf899763cf6e09"
+        },
+        {
+          "path": "references/pr-continuation.md",
+          "sha256": "b445a67442b2a9de2b97aaafcdbe6c2d2f778fb87a206b12fde31c85ef2b78a6"
         }
       ]
     },
@@ -626,7 +630,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "f9461ab87631aaa1eb0b1b4fc1fcd5f4eff493ec377f3dff925e321f3903b634"
+          "sha256": "c3a10efdced76c6bf2df69f38d8e3ad07467da5272122ba6cb766f0de74c500d"
         }
       ]
     }
@@ -634,8 +638,8 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md",
-    "sourceSha256": "54f2be21cf6cea90d6dd634762d73441a21fd1b654498d18e7f9d25d3988c38e",
-    "outputSha256": "54f2be21cf6cea90d6dd634762d73441a21fd1b654498d18e7f9d25d3988c38e"
+    "sourceSha256": "bb5c6cbc6a859e1e0018d220f1a6f64e04d250b77d58f965d051bb48982ed82a",
+    "outputSha256": "bb5c6cbc6a859e1e0018d220f1a6f64e04d250b77d58f965d051bb48982ed82a"
   },
   "engramProtocol": {
     "sourcePath": "stack/system-prompt/engram-protocol.md",
@@ -688,10 +692,6 @@
     {
       "kind": "runtime-specific-overlay",
       "sourcePath": "stack/commands/claude-code/xreview.md"
-    },
-    {
-      "kind": "runtime-specific-overlay",
-      "sourcePath": "stack/commands/opencode/goal.md"
     },
     {
       "kind": "runtime-specific-overlay",
