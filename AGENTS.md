@@ -27,7 +27,7 @@ La instalación directa y la gestionada no son el mismo canal:
 - **Directa:** después de publicar la versión seleccionada en `package.json`, instalarla explícitamente con `pi install npm:jorgex-pi@<published-version>`. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
 - **Gestionada:** Stack instala el candidato exacto que registra en su runtime, verifica su integridad, proyecta los recursos compartidos y filtra del registro del paquete las skills/prompts ya proyectados. Publicar una versión Pi no actualiza automáticamente ese candidato: su adopción requiere un cambio separado y secuencial en Stack contra el artefacto publicado exacto.
 
-Pi 0.8.6 consolida la snapshot del commit de Stack registrado en `contract/parity.v2.json`. La publicación de Pi y su adopción por Stack son pasos separados: comprueba la disponibilidad de la versión en npm y el pin de `src/lib/pi-runtime.ts` en Stack antes de instalar; no deduzcas un nuevo par publicado de esta documentación.
+La versión declarada en `package.json` y la snapshot de Stack identificada por `contract/parity.v2.json` son autoridades independientes. La publicación de Pi y su adopción por Stack son pasos separados: comprueba la disponibilidad de la versión en npm y el pin de `src/lib/pi-runtime.ts` en Stack antes de instalar; no deduzcas un nuevo par publicado de esta documentación.
 
 Publicar Pi no actualiza automáticamente JorgeX Stack. Para la adopción gestionada posterior, el flujo sigue este orden:
 
@@ -36,7 +36,7 @@ Publicar Pi no actualiza automáticamente JorgeX Stack. Para la adopción gestio
 3. Esperar las **24 horas en npm** solo antes del consumo real por instalaciones gestionadas, salvo excepción explícita de Jorge documentada en ese PR.
 4. Mantener el candidato anterior en Stack hasta que ese PR se fusione y verifique.
 
-La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real del nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La adopción de Pi 0.8.6 queda para un PR separado y secuencial de Stack, que deberá verificar el artefacto publicado exacto, su tamaño, SHA-256, SHA-512, lifecycle y rollback. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
+La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real de un nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
 
 La verificación local de Stack comprueba que los bytes descargados coinciden con el tamaño y los SHA-256/SHA-512 fijados para el candidato aceptado. Es una comprobación local del artefacto, no una raíz de confianza independiente: la attestation/provenance externa de npm queda fuera del runtime, y `provenance.commit` es informativo salvo verificación explícita de esa attestation.
 
@@ -65,7 +65,7 @@ El seam verificable es el contrato público `resolveSubagentLaunchContract` de `
 
 El trabajo cross-repo no se cierra tras fusionar Pi: debe completar los PRs secuenciales requeridos en Stack y verificar el resultado final. De forma simétrica, un cambio de Stack tampoco se da por cerrado si deja pendiente la PR de Pi necesaria para publicar o adoptar su proyección.
 
-Esta consolidación convierte el análisis en una decisión explícita antes de delegar, aplica review selectiva sólo cuando el riesgo no queda cubierto por verificaciones deterministas, documenta únicamente las necesidades concretas, resume cada checkpoint ready con cambios y evidencia, continúa después de ready sólo de forma segura y aprobada, y mantiene los prompts como política sin crear modos nuevos. Consulta la [skill canónica `orchestrator`](skills/orchestrator/SKILL.md).
+Esta consolidación convierte el análisis en una decisión explícita antes de delegar, documenta únicamente las necesidades concretas, hace observable el progreso mediante resultados verificables y check-ins acotados, exige preflight antes de efectos externos costosos, reutiliza la verificación cuando siguen coincidiendo comando, configuración, entorno, entradas y contratos, limita los reintentos y reevalúa causa, alcance, ownership y seam antes de una segunda reparación si persisten bloqueantes o regresiones; los cambios materiales requieren aprobación antes de continuar. Aplica review selectiva sólo cuando el riesgo no queda cubierto por verificaciones deterministas, resume cada checkpoint ready con cambios y evidencia, continúa después de ready sólo de forma segura y aprobada, y mantiene los prompts como política sin crear modos nuevos. Consulta la [skill canónica `orchestrator`](skills/orchestrator/SKILL.md).
 
 ## Desarrollo y verificación
 
