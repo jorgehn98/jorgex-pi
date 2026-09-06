@@ -42,6 +42,10 @@ function checkoutRoot(input) {
 }
 
 function assertClean(root, stage) {
+  const indexEntries = git(root, ["ls-files", "-v", "-z"]).split("\0").filter(Boolean);
+  if (indexEntries.some((entry) => /^[a-zS] /.test(entry))) {
+    throw new Error("Pi index contains assume-unchanged or skip-worktree entries; use an unmasked work checkout");
+  }
   const paths = stage ? ["--", ".", `:(exclude,top,literal)${basename(stage)}`] : [];
   if (git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all", ...paths])) {
     throw new Error("Pi checkout must be clean and exclusively owned");

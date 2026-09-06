@@ -162,6 +162,40 @@ test("prepareStackSnapshot rejects a symlinked generated destination without rep
   }
 });
 
+test("prepareStackSnapshot rejects hidden index flags without losing local edits", async (t) => {
+  for (const [flag, marker] of [["--assume-unchanged", "h"], ["--skip-worktree", "S"]]) {
+    await t.test(flag, () => {
+      const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-prepare-hidden-index-"));
+      try {
+        const { stackDir, root } = arrangeFixture(sandbox);
+        const sourceCommit = commitStackContentChange(stackDir);
+        const path = "agents/translator.md";
+        const localFile = join(root, path);
+        git(root, ["update-index", flag, "--", path]);
+        writeFileSync(localFile, `${readFileSync(localFile, "utf8")}local translator edit hidden by ${flag}\n`);
+        const beforeBytes = readFileSync(localFile);
+        const beforeFlags = git(root, ["ls-files", "-v", "-z"]);
+        assert.ok(beforeFlags.split("\0").includes(`${marker} ${path}`), "fixture must set the requested index flag");
+        assert.equal(git(root, ["status", "--porcelain=v1", "--untracked-files=all"]), "", "the index flag must hide the local edit from git status");
+
+        let rejection;
+        try {
+          prepareStackSnapshot({ root, stackDir, sourceCommit, apply: true });
+        } catch (error) {
+          rejection = error;
+        }
+
+        assert.equal(git(root, ["ls-files", "-v", "-z"]), beforeFlags, "preparation must preserve every index flag");
+        assert.ok(readFileSync(localFile).equals(beforeBytes), "preparation must preserve the hidden local translator edit");
+        assert.ok(rejection, "preparation must reject hidden index flags even when git status is clean");
+        assert.match(errorText(rejection), /assume-unchanged|skip-worktree|index flag/i);
+      } finally {
+        rmSync(sandbox, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
 test("prepareStackSnapshot rejects a source downgrade, main, and a dirty worktree before changing files", () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-prepare-stack-snapshot-preconditions-"));
   try {
