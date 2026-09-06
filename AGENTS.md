@@ -27,14 +27,16 @@ La instalación directa y la gestionada no son el mismo canal:
 - **Directa:** después de publicar la versión seleccionada en `package.json`, instalarla explícitamente con `pi install npm:jorgex-pi@<published-version>`. La extensión aplica fallbacks marker-aware: añade solo las secciones ausentes, conserva el prompt del usuario y no duplica marcadores ya proyectados por Stack.
 - **Gestionada:** Stack instala el candidato exacto que registra en su runtime, verifica su integridad, proyecta los recursos compartidos y filtra del registro del paquete las skills/prompts ya proyectados. Publicar una versión Pi no actualiza automáticamente ese candidato: su adopción requiere un cambio separado y secuencial en Stack contra el artefacto publicado exacto.
 
-La versión declarada en `package.json` y la snapshot de Stack identificada por `contract/parity.v2.json` son autoridades independientes. La publicación de Pi y su adopción por Stack son pasos separados: comprueba la disponibilidad de la versión en npm y el pin de `src/lib/pi-runtime.ts` en Stack antes de instalar; no deduzcas un nuevo par publicado de esta documentación.
+La versión declarada en `package.json` y la snapshot de Stack identificada por `contract/parity.v2.json` son autoridades independientes. La publicación de Pi y su adopción por Stack son pasos separados: comprueba la disponibilidad de la versión en npm y el pin de `src/lib/pi-runtime-pin.json` en Stack antes de instalar; `src/lib/pi-runtime.ts` conserva el lifecycle y los contratos. No deduzcas un nuevo par publicado de esta documentación.
 
 Publicar Pi no actualiza automáticamente JorgeX Stack. Para la adopción gestionada posterior, el flujo sigue este orden:
 
 1. Fusionar, verificar y publicar la versión de `jorgex-pi`.
-2. Abrir el PR separado y secuencial de adopción en Stack contra el artefacto exacto publicado, verificando URL, tamaño, SHA-256 y SHA-512 del tarball, fixture, lifecycle y rollback.
+2. Comprobar runs y PRs del coordinador antes de preparar manualmente el PR separado de adopción en Stack contra el artefacto exacto publicado, verificando URL, tamaño, SHA-256 y SHA-512 del tarball, `tests/fixtures/pi-runtime-artifacts.json`, lifecycle y rollback.
 3. Esperar las **24 horas en npm** solo antes del consumo real por instalaciones gestionadas, salvo excepción explícita de Jorge documentada en ese PR.
 4. Mantener el candidato anterior en Stack hasta que ese PR se fusione y verifique.
+
+Con la App configurada y `JORGEX_AUTOMATION_ENABLED=true`, el coordinador de Stack reconcilia en `main` o dispatch la snapshot Pi del canon y la adopción en Stack, con no-op si no hay cambios; el notificador Pi lo despierta tras verificar la publicación. Consultar el [runbook Stack ↔ Pi](https://github.com/jorgehn98/jorgex-stack/blob/main/docs/references/stack-pi-automation.md) y evitar duplicar propuestas existentes. Sin opt-in, ante incompatibilidad o fallo explícito, recurrir al preparador local y una PR manual con review y gates; si falta el artefacto, persiste la dependencia externa. No editar pines ni hashes por rutina ni forzar fixtures: los cambios semánticos requieren revisión. El merge siempre exige orden de Jorge; la automatización no hace auto-merge ni instalaciones personales.
 
 La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real de un nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
 
