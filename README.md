@@ -9,14 +9,14 @@ The version in `package.json` is the release authority. Minor and major remain m
 | Area | Current state |
 | --- | --- |
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
-| Pi resources | Bootstrap and TUI branding extensions, 18 reviewed JorgeX skills, the canonical policy/protocol fallbacks, and the `/lean-audit` prompt are active. The `JorgeX` theme is available but opt-in. |
+| Pi resources | Bootstrap and TUI branding extensions, 17 reviewed JorgeX skills, the canonical policy/protocol fallbacks, and the `/lean-audit` prompt are active. The `JorgeX` theme is available but opt-in. |
 | Canonical snapshot | 15 agents and 18 complete skill trees (99 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
 | Runtime agents | 14 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
 | Package assets | `contract/assets.v1.json` owns the packaged extensions, theme, runtime agents, snapshot, skills, and contracts; it declares the bounded Sol lifecycle writes and preserves fourteen companion-owned state paths. |
 | Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, `@narumitw/pi-goal@0.53.0`, and `pi-mcp-adapter@2.27.0`. |
 | Model policy | The managed primary is `openai-codex/gpt-5.6-sol`; Pi session thinking remains user/session policy. The local `contextWindow` request is `872000`. |
 
-The active skill list contains 18 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive. The parity v2 contract records agents, skills, the shared policy, the Engram protocol, the portable command projection, the quality-capabilities projection, and deliberate exclusions in `contract/parity.v2.json`.
+The active skill list contains 17 explicit package-local paths. `playwright-cli` remains in the canonical snapshot but is not activated because browser automation is a separate opt-in integration. Upstream companion skills and prompts are also left inactive. The parity v2 contract records agents, skills, the shared policy, the Engram protocol, the portable command projection, the quality-capabilities projection, and deliberate exclusions in `contract/parity.v2.json`.
 
 ### Direct package versus managed Stack
 
