@@ -61,7 +61,7 @@ La procedencia de la snapshot se consulta en `contract/parity.v2.json`; no repet
 
 ### F1 Pi: acceso privado sin adopción implícita
 
-La proyección generada conserva `inheritSkills: false` para cada agente. El generador `scripts/generate-runtime-agents.mjs` selecciona metadata y rutas privadas por rol para los 13 workers no-Engram; `engram` queda read-only, sin selección de skills y con sólo sus herramientas de lectura de memoria. La ruta `../skills` permite resolver lo declarado sin activar las 18 skills globalmente. La snapshot coordinada contiene 18 árboles de skill y 99 archivos; la lista activa del paquete sigue siendo deliberadamente más estrecha.
+La proyección generada conserva `inheritSkills: false` para cada agente. El generador `scripts/generate-runtime-agents.mjs` selecciona metadata y rutas privadas por rol para los 12 workers no-Engram; `engram` queda read-only, sin selección de skills y con sólo sus herramientas de lectura de memoria. La ruta `../skills` permite resolver lo declarado sin activar las 18 skills globalmente; `codebase-analyst` conserva las skills backend `supabase` y `supabase-postgres-best-practices`. La snapshot coordinada contiene 18 árboles de skill y 99 archivos; la lista activa del paquete sigue siendo deliberadamente más estrecha.
 
 El seam verificable es el contrato público `resolveSubagentLaunchContract` de `pi-subagents@0.54.0`, usado por `tests/fixtures/discover-runtime-agents.mjs`: sirve para comprobar selección, rutas, metadata y allowlist efectiva. No debe interpretarse como prueba de ejecución de un modelo, lectura del cuerpo completo de una skill, ACL universal o compatibilidad de todos los runtimes. F1 tampoco cambia defaults de modelo, permisos, receipts, HOME o configuración del usuario.
 
