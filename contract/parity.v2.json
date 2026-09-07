@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "61b5910de8317d1773a360a740c4b5a714e192aa"
+    "commit": "8e21244ec9c19875c77db70567e9ed27cfbfc94f"
   },
   "agents": [
     {
@@ -16,8 +16,8 @@
       "name": "code-simplifier",
       "sourcePath": "stack/agents/code-simplifier.md",
       "targetPath": "snapshot/agents/code-simplifier.md",
-      "sourceSha256": "da5cc914d1cfee54c9dafea4e62f80503ec90fca6cb112c44eb20e4cfb4630f9",
-      "outputSha256": "da5cc914d1cfee54c9dafea4e62f80503ec90fca6cb112c44eb20e4cfb4630f9"
+      "sourceSha256": "f26126040d06d6da698b9e37c6d986801287dcb845232425f85334288c4749a4",
+      "outputSha256": "f26126040d06d6da698b9e37c6d986801287dcb845232425f85334288c4749a4"
     },
     {
       "name": "codebase-analyst",
@@ -226,11 +226,11 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "2c34430012b0c13cede953db50fefed73df6187488c33ceaeffc35a488e0b79e"
+          "sha256": "78b2cd82a79d8a9e698caf02d4bb2eced01b53250b3d42c4b0d780d166bb9882"
         },
         {
           "path": "references/standard-workflow.md",
-          "sha256": "dcf1c329586990fc46284c61c416a9ee9006a47a2570d5c1364750d15f9444fb"
+          "sha256": "9fa367660d4eefcb0039e78538808244e87e88ef748a2770b9e38cf8e71829ba"
         }
       ]
     },
@@ -623,7 +623,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "17b3c75b54d6383406279f508082e2bcd830991740866d81c4e6f245af4b6d73"
+          "sha256": "32b77296eef3064e7b090384076f28c2ab1aa3afea4faa3a262f5df4e4e6d5ea"
         }
       ]
     }
