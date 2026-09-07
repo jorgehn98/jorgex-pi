@@ -25,7 +25,7 @@ test("pi-subagents is pinned with its audited bundled closure", () => {
     Object.fromEntries(expectedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right))),
   );
   assert.deepEqual([...manifest.bundledDependencies].sort(), expectedDependencies.map(({ name }) => name).sort());
-  assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 14 runnable package agents may be discoverable by pi-subagents");
+  assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 13 runnable package agents may be discoverable by pi-subagents");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   for (const dependency of expected.dependency.bundledClosure) assertLockIntegrity(lock, dependency);
 });
@@ -70,7 +70,7 @@ test("Engram agent instructions mention only tools present in its active profile
   }
 });
 
-test("pi-subagents 0.54.0 discovers all fourteen runnable package agents without diagnostics", () => {
+test("pi-subagents 0.54.0 discovers all thirteen runnable package agents without diagnostics", () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-agent-discovery-"));
   try {
     const agentDir = join(sandbox, "agent");
@@ -100,7 +100,7 @@ test("pi-subagents 0.54.0 discovers all fourteen runnable package agents without
       stdio: ["ignore", "pipe", "pipe"],
     });
     const results = JSON.parse(output);
-    assert.equal(results.length, 14);
+    assert.equal(results.length, 13);
     assert.deepEqual(results.map(({ requestedName }) => requestedName), names);
     assert.deepEqual(
       results.filter(({ ok, discoveredName, requestedName }) => !ok || discoveredName !== requestedName),
@@ -183,7 +183,7 @@ test("pi-subagents preflight resolves private defaults and a no-skills override 
   }
 });
 
-test("the runtime contract translates one primary and fourteen canonical subagents without model policy", () => {
+test("the runtime contract translates one primary and thirteen canonical subagents without model policy", () => {
   const contract = readJson(join(root, expected.contractPath), "runtime agent contract");
   const manifest = readJson(join(root, "package.json"), "package manifest");
   const parity = readJson(join(root, "contract", "parity.v2.json"), "snapshot parity contract");
@@ -200,7 +200,7 @@ test("the runtime contract translates one primary and fourteen canonical subagen
   assert.equal(contract.skills.includes("playwright-cli"), false, "Playwright remains a separate opt-in integration");
   assert.equal(new Set(contract.skills).size, expected.skills.length, "runtime skill names must be unique");
 
-  assert.equal(contract.agents.length, 14);
+  assert.equal(contract.agents.length, 13);
   assert.deepEqual(contract.agents.map(({ name }) => name), expected.agents.map(({ name }) => name));
   const expectedAgents = [...expected.agents, expected.primary];
   for (const agent of expectedAgents) {
@@ -219,7 +219,7 @@ test("the runtime contract translates one primary and fourteen canonical subagen
     assert.deepEqual(contract.agents.find(({ name }) => name === expectedAgent.name), expectedEntry);
     assertTranslatedAgent(sourcePath, targetPath, expectedAgent);
   }
-  assert.equal(contract.agents.filter(({ status }) => status === "runnable").length, 14);
+  assert.equal(contract.agents.filter(({ status }) => status === "runnable").length, 13);
   assert.deepEqual(contract.agents.filter(({ status }) => status === "deferred"), []);
   assertTranslatedAgent(expected.primary.sourcePath, expected.primary.targetPath, expected.primary);
 
@@ -279,7 +279,7 @@ test("the real tarball contains the closed runtime assets and audited dependency
       "package/primary/orchestrator.md",
     ].sort();
     const packedRuntimeFiles = [...archive.keys()].filter((path) => /^package\/(?:agents|deferred\/agents|primary)\/.+\.md$/.test(path)).sort();
-    assert.deepEqual(packedRuntimeFiles, expectedRuntimeFiles, "tarball must expose all 14 runnable agents and retain the primary separately");
+    assert.deepEqual(packedRuntimeFiles, expectedRuntimeFiles, "tarball must expose all 13 runnable agents and retain the primary separately");
     for (const skill of new Set(expected.skillSelections.flatMap(({ skills }) => skills))) {
       assert.ok(archive.has(`package/skills/${skill}/SKILL.md`), `tarball must retain the private skill entry selected by a runtime agent: ${skill}`);
     }

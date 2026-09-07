@@ -10,8 +10,8 @@ The version in `package.json` is the release authority. Minor and major remain m
 | --- | --- |
 | Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
 | Pi resources | Bootstrap and TUI branding extensions, 17 reviewed JorgeX skills, the canonical policy/protocol fallbacks, and the `/lean-audit` prompt are active. The `JorgeX` theme is available but opt-in. |
-| Canonical snapshot | 15 agents and 18 complete skill trees (99 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
-| Runtime agents | 14 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
+| Canonical snapshot | 14 agents (one dormant primary and 13 subagents) and 18 complete skill trees (99 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
+| Runtime agents | 13 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
 | Package assets | `contract/assets.v1.json` owns the packaged extensions, theme, runtime agents, snapshot, skills, and contracts; it declares the bounded Sol lifecycle writes and preserves fourteen companion-owned state paths. |
 | Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, `@narumitw/pi-goal@0.53.0`, and `pi-mcp-adapter@2.27.0`. |
 | Model policy | The managed primary is `openai-codex/gpt-5.6-sol`; Pi session thinking remains user/session policy. The local `contextWindow` request is `872000`. |
@@ -46,11 +46,11 @@ Pi owns the lifecycle receipt at `PI_CODING_AGENT_DIR/jorgex-pi/sol-lifecycle.v1
 
 To override the primary, set the relevant values in Pi's `settings.json` or `models.json` before running `sync`, or edit a managed value afterwards. The lifecycle will preserve the existing or changed value and will not treat it as removable package state.
 
-`contract/jorgex-pi.v1.json` advertises the active versioned capabilities, including `mcp-adapter-v1`, `engram-runtime-tools-v1`, `runner-json-v1`, `tui-branding-v1`, and `managed-primary-model-v1`, and links the runtime-agent and runner contracts. The runtime contract records the translation from the 15 canonical agents. All 14 subagents live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent. The runtime-agent contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices on subagent routing; the managed primary is documented separately above.
+`contract/jorgex-pi.v1.json` advertises the active versioned capabilities, including `mcp-adapter-v1`, `engram-runtime-tools-v1`, `runner-json-v1`, `tui-branding-v1`, and `managed-primary-model-v1`, and links the runtime-agent and runner contracts. The runtime contract records the translation from the 14 canonical agents. All 13 subagents live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent. The runtime-agent contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices on subagent routing; the managed primary is documented separately above.
 
 ### F1 Pi: selección privada y límites de adopción
 
-La proyección Pi de F1 conserva los 15 agentes canónicos: 13 workers reciben sólo la selección privada de skills necesaria para su rol, mientras `engram` permanece read-only y sin skills seleccionadas. Cada agente generado fija `inheritSkills: false`; la ruta local `../skills` hace legible la selección declarada sin precargar el catálogo completo. El generador `scripts/generate-runtime-agents.mjs` es la autoridad de esta traducción y mantiene intactos los cuerpos canónicos, las herramientas, los tiers, la recursión y la extensión `git-read`.
+La proyección Pi de F1 conserva los 14 agentes canónicos: 12 workers reciben sólo la selección privada de skills necesaria para su rol, mientras `engram` permanece read-only y sin skills seleccionadas. Cada agente generado fija `inheritSkills: false`; la ruta local `../skills` hace legible la selección declarada sin precargar el catálogo completo. El generador `scripts/generate-runtime-agents.mjs` es la autoridad de esta traducción y mantiene intactos los cuerpos canónicos, las herramientas, los tiers, la recursión y la extensión `git-read`; `codebase-analyst` conserva las skills backend `supabase` y `supabase-postgres-best-practices`.
 
 Cada tarea formal de F1 mantiene una única Spec recuperable: una observación Engram o un Markdown canónico. Un mensaje inline sólo es un encargo auxiliar de su tarea padre; el resultado se registra aparte del origen de la Spec.
 
@@ -197,7 +197,7 @@ Regenerate only from a local JorgeX Stack checkout containing the exact commit r
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" pnpm snapshot:generate
 ```
 
-The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, `contract/schemas/quality-capabilities.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 15 agents and all 99 files from the 18 approved skill trees.
+The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, `contract/schemas/quality-capabilities.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 14 agents and all 99 files from the 18 approved skill trees.
 
 Run the explicit cross-repository parity check against the same checkout:
 
