@@ -50,24 +50,6 @@
   },
   "agents": [
     {
-      "name": "backend-analyst",
-      "sourcePath": "snapshot/agents/backend-analyst.md",
-      "targetPath": "agents/backend-analyst.md",
-      "tier": "standard",
-      "status": "runnable",
-      "subagentOnlyExtensions": [
-        "../extensions/git-read.ts"
-      ],
-      "tools": [
-        "read",
-        "grep",
-        "find",
-        "ls",
-        "git_read",
-        "contact_supervisor"
-      ]
-    },
-    {
       "name": "code-reviewer",
       "sourcePath": "snapshot/agents/code-reviewer.md",
       "targetPath": "agents/code-reviewer.md",
@@ -89,6 +71,24 @@
       "name": "code-simplifier",
       "sourcePath": "snapshot/agents/code-simplifier.md",
       "targetPath": "agents/code-simplifier.md",
+      "tier": "standard",
+      "status": "runnable",
+      "subagentOnlyExtensions": [
+        "../extensions/git-read.ts"
+      ],
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "git_read",
+        "contact_supervisor"
+      ]
+    },
+    {
+      "name": "codebase-analyst",
+      "sourcePath": "snapshot/agents/codebase-analyst.md",
+      "targetPath": "agents/codebase-analyst.md",
       "tier": "standard",
       "status": "runnable",
       "subagentOnlyExtensions": [
@@ -159,24 +159,6 @@
         "mem_suggest_topic_key",
         "mem_current_project",
         "mem_doctor"
-      ]
-    },
-    {
-      "name": "frontend-analyst",
-      "sourcePath": "snapshot/agents/frontend-analyst.md",
-      "targetPath": "agents/frontend-analyst.md",
-      "tier": "standard",
-      "status": "runnable",
-      "subagentOnlyExtensions": [
-        "../extensions/git-read.ts"
-      ],
-      "tools": [
-        "read",
-        "grep",
-        "find",
-        "ls",
-        "git_read",
-        "contact_supervisor"
       ]
     },
     {
@@ -305,14 +287,6 @@
   ],
   "skillSelections": [
     {
-      "name": "backend-analyst",
-      "skills": [
-        "agent-delegation",
-        "supabase",
-        "supabase-postgres-best-practices"
-      ]
-    },
-    {
       "name": "code-reviewer",
       "skills": [
         "agent-delegation"
@@ -323,6 +297,14 @@
       "skills": [
         "agent-delegation",
         "lean-code"
+      ]
+    },
+    {
+      "name": "codebase-analyst",
+      "skills": [
+        "agent-delegation",
+        "supabase",
+        "supabase-postgres-best-practices"
       ]
     },
     {
@@ -340,12 +322,6 @@
     {
       "name": "engram",
       "skills": []
-    },
-    {
-      "name": "frontend-analyst",
-      "skills": [
-        "agent-delegation"
-      ]
     },
     {
       "name": "implementer",

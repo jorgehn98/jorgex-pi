@@ -2,16 +2,9 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "7d1e4cada3a096bf1ba81d004934e682714df46a"
+    "commit": "61b5910de8317d1773a360a740c4b5a714e192aa"
   },
   "agents": [
-    {
-      "name": "backend-analyst",
-      "sourcePath": "stack/agents/backend-analyst.md",
-      "targetPath": "snapshot/agents/backend-analyst.md",
-      "sourceSha256": "47443cc2cb449e04ddd60b230c4b9ee585099a4deb5c58aa41111d16df562a7e",
-      "outputSha256": "47443cc2cb449e04ddd60b230c4b9ee585099a4deb5c58aa41111d16df562a7e"
-    },
     {
       "name": "code-reviewer",
       "sourcePath": "stack/agents/code-reviewer.md",
@@ -25,6 +18,13 @@
       "targetPath": "snapshot/agents/code-simplifier.md",
       "sourceSha256": "da5cc914d1cfee54c9dafea4e62f80503ec90fca6cb112c44eb20e4cfb4630f9",
       "outputSha256": "da5cc914d1cfee54c9dafea4e62f80503ec90fca6cb112c44eb20e4cfb4630f9"
+    },
+    {
+      "name": "codebase-analyst",
+      "sourcePath": "stack/agents/codebase-analyst.md",
+      "targetPath": "snapshot/agents/codebase-analyst.md",
+      "sourceSha256": "8614e33e31726dccc4d7542bb2833db322c771c6179d90e34631d6c0ca0f6263",
+      "outputSha256": "8614e33e31726dccc4d7542bb2833db322c771c6179d90e34631d6c0ca0f6263"
     },
     {
       "name": "comment-fixer",
@@ -46,13 +46,6 @@
       "targetPath": "snapshot/agents/engram.md",
       "sourceSha256": "6bcf225b75c5c80c0af9e8537c605968c2ba780f36693b5f4d43578cfae51959",
       "outputSha256": "6bcf225b75c5c80c0af9e8537c605968c2ba780f36693b5f4d43578cfae51959"
-    },
-    {
-      "name": "frontend-analyst",
-      "sourcePath": "stack/agents/frontend-analyst.md",
-      "targetPath": "snapshot/agents/frontend-analyst.md",
-      "sourceSha256": "01bb237c429ad1a59790c6ce60c6c9f455b448c5823f9e52eeb84c7263b856df",
-      "outputSha256": "01bb237c429ad1a59790c6ce60c6c9f455b448c5823f9e52eeb84c7263b856df"
     },
     {
       "name": "implementer",
@@ -107,8 +100,8 @@
       "name": "type-design-analyzer",
       "sourcePath": "stack/agents/type-design-analyzer.md",
       "targetPath": "snapshot/agents/type-design-analyzer.md",
-      "sourceSha256": "380c980f85a437d37ed63026d4505f8b84c04a8aa1679fb2b6be98122b19a774",
-      "outputSha256": "380c980f85a437d37ed63026d4505f8b84c04a8aa1679fb2b6be98122b19a774"
+      "sourceSha256": "ef3dbf27f98df47d7fb6b2547d0a016219ca8b7273216cf0c6873f382e119602",
+      "outputSha256": "ef3dbf27f98df47d7fb6b2547d0a016219ca8b7273216cf0c6873f382e119602"
     }
   ],
   "skills": [
@@ -119,7 +112,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "b8c560dbf53b90e70aa7a1ded188ec127566190f35af9e4342d6e97c290f0be4"
+          "sha256": "259e0a3adc2c64101b8877b96df554ef5081daec2377a9366318f0c0ccc03bb1"
         }
       ]
     },
@@ -237,7 +230,7 @@
         },
         {
           "path": "references/standard-workflow.md",
-          "sha256": "e6e7dc6ce5a24376fd65c582b7fc15b1513b5b4d2018fa5ed585c05b5712dc99"
+          "sha256": "dcf1c329586990fc46284c61c416a9ee9006a47a2570d5c1364750d15f9444fb"
         }
       ]
     },
@@ -630,7 +623,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "c3a10efdced76c6bf2df69f38d8e3ad07467da5272122ba6cb766f0de74c500d"
+          "sha256": "17b3c75b54d6383406279f508082e2bcd830991740866d81c4e6f245af4b6d73"
         }
       ]
     }
@@ -668,8 +661,8 @@
       "name": "lean-audit",
       "sourcePath": "stack/commands/lean-audit.md",
       "targetPath": "prompts/lean-audit.md",
-      "sourceSha256": "6070870fd5683a65e03509fc7c7b67f825bc444c29879d61aae62a86055b9e30",
-      "outputSha256": "cf3ad768f887b8f11f7ffa076b31d43ec2b22c0fbe0116214b35b39ef2552245"
+      "sourceSha256": "ff35e34ff26f801f142f40b7444d032b9d6066ab8d9c418a52ef5b7e965fa19b",
+      "outputSha256": "5ee442f1f34305137e4d60dadd1b1a719b298f95c0dbadeae35608a4f5e2579a"
     }
   ],
   "exclusions": [

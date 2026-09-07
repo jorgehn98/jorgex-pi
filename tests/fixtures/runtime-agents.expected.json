@@ -6,12 +6,11 @@
     "agents": {
       "none": ["engram"],
       "git-read": [
-        "backend-analyst",
         "code-reviewer",
         "code-simplifier",
+        "codebase-analyst",
         "comment-fixer",
         "docs-maintainer",
-        "frontend-analyst",
         "security-auditor",
         "silent-failure-hunter",
         "test-analyzer",
@@ -62,13 +61,12 @@
     "tools": ["read", "grep", "find", "ls", "bash", "edit", "write"]
   },
   "agents": [
-    { "name": "backend-analyst", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "code-reviewer", "tier": "strong", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "code-simplifier", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
+    { "name": "codebase-analyst", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "comment-fixer", "tier": "cheap", "status": "runnable", "maxSubagentDepth": 0, "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "edit", "write", "contact_supervisor"] },
     { "name": "docs-maintainer", "tier": "cheap", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "edit", "write", "contact_supervisor"] },
     { "name": "engram", "tier": "cheap", "status": "runnable", "requiredCapability": "engram-runtime-tools-v1", "maxSubagentDepth": 0, "tools": ["mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor"] },
-    { "name": "frontend-analyst", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "implementer", "tier": "standard", "status": "runnable", "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"] },
     { "name": "security-auditor", "tier": "strong", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
     { "name": "silent-failure-hunter", "tier": "strong", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] },
@@ -78,13 +76,12 @@
     { "name": "type-design-analyzer", "tier": "standard", "status": "runnable", "subagentOnlyExtensions": ["../extensions/git-read.ts"], "tools": ["read", "grep", "find", "ls", "git_read", "contact_supervisor"] }
   ],
   "skillSelections": [
-    { "name": "backend-analyst", "skills": ["agent-delegation", "supabase", "supabase-postgres-best-practices"] },
     { "name": "code-reviewer", "skills": ["agent-delegation"] },
     { "name": "code-simplifier", "skills": ["agent-delegation", "lean-code"] },
+    { "name": "codebase-analyst", "skills": ["agent-delegation", "supabase", "supabase-postgres-best-practices"] },
     { "name": "comment-fixer", "skills": ["agent-delegation"] },
     { "name": "docs-maintainer", "skills": ["agent-delegation"] },
     { "name": "engram", "skills": [] },
-    { "name": "frontend-analyst", "skills": ["agent-delegation"] },
     { "name": "implementer", "skills": ["agent-delegation", "lean-code", "tdd"] },
     { "name": "security-auditor", "skills": ["agent-delegation"] },
     { "name": "silent-failure-hunter", "skills": ["agent-delegation"] },

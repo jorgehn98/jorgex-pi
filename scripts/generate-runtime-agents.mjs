@@ -24,12 +24,11 @@ const skills = [
   "skill-creator", "supabase", "supabase-postgres-best-practices", "tdd", "to-issues", "to-prd", "work-audit", "work-lifecycle", "xreview",
 ];
 const agentSkills = new Map([
-  ["backend-analyst", ["agent-delegation", "supabase", "supabase-postgres-best-practices"]],
   ["code-reviewer", ["agent-delegation"]],
   ["code-simplifier", ["agent-delegation", "lean-code"]],
+  ["codebase-analyst", ["agent-delegation", "supabase", "supabase-postgres-best-practices"]],
   ["comment-fixer", ["agent-delegation"]],
   ["docs-maintainer", ["agent-delegation"]],
-  ["frontend-analyst", ["agent-delegation"]],
   ["implementer", ["agent-delegation", "lean-code", "tdd"]],
   ["security-auditor", ["agent-delegation"]],
   ["silent-failure-hunter", ["agent-delegation"]],
@@ -50,7 +49,7 @@ try {
   const translated = names.map(translateAgent);
   const primary = translated.find(({ source }) => source.mode === "primary");
   const agents = translated.filter(({ source }) => source.mode === "subagent");
-  if (!primary || primary.source.name !== "orchestrator" || agents.length !== 14) throw new Error("runtime translation requires one orchestrator primary and fourteen subagents");
+  if (!primary || primary.source.name !== "orchestrator" || agents.length !== 13) throw new Error("runtime translation requires one orchestrator primary and thirteen subagents");
 
   for (const agent of translated) writeRuntimeAgent(agent);
   mkdirSync(join(stage, "deferred", "agents"), { recursive: true });
