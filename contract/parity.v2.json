@@ -2,15 +2,15 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "82805725353bdd50dfdfbbc0b82e6f48a8824cb2"
+    "commit": "bd06c4f771e1ff0b080f45c552cba470c66b8ba4"
   },
   "agents": [
     {
       "name": "code-reviewer",
       "sourcePath": "stack/agents/code-reviewer.md",
       "targetPath": "snapshot/agents/code-reviewer.md",
-      "sourceSha256": "5e141bee80c52d6563e363d0d92f65215c3b23826025088bad4def36226a659a",
-      "outputSha256": "5e141bee80c52d6563e363d0d92f65215c3b23826025088bad4def36226a659a"
+      "sourceSha256": "b8c77d7ca6207fad079568087a90f13507829936bfa3a1bbed5efbe7eb1f2cd6",
+      "outputSha256": "b8c77d7ca6207fad079568087a90f13507829936bfa3a1bbed5efbe7eb1f2cd6"
     },
     {
       "name": "code-simplifier",

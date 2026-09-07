@@ -53,7 +53,7 @@
       "name": "code-reviewer",
       "sourcePath": "snapshot/agents/code-reviewer.md",
       "targetPath": "agents/code-reviewer.md",
-      "tier": "strong",
+      "tier": "standard",
       "status": "runnable",
       "subagentOnlyExtensions": [
         "../extensions/git-read.ts"
