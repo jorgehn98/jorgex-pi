@@ -1,9 +1,19 @@
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { isAbsolute, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEngramChildSpec } from "./engram-mcp-wrapper.mjs";
 
 const wrapperPath = fileURLToPath(new URL("./engram-mcp-wrapper.mjs", import.meta.url));
+const DEVTOOLS_HANDOFF_RELATIVE_PATH = ["jorgex-pi", "devtools.v1.json"];
+const DEVTOOLS_HANDOFF_ARGS = [
+  "dlx",
+  "chrome-devtools-mcp@1.6.0",
+  "--isolated",
+  "--redact-network-headers",
+  "--no-performance-crux",
+  "--no-usage-statistics",
+];
 const recoveryInstruction = [
   "FIRST ACTION REQUIRED after compaction: call mem_session_summary with the compacted session outcome.",
   "Then call mem_context for the active project before continuing work.",
@@ -12,13 +22,15 @@ const recoveryInstruction = [
 export { buildEngramChildSpec };
 
 export async function resolveMcpEngramConfig({
-  resolveEngramBinary = () => resolveConfiguredEngramBinary(),
+  resolveEngramBinary,
   nodePath = process.execPath,
   wrapperPath: managedWrapperPath = wrapperPath,
+  env = process.env,
+  platform = process.platform,
 } = {}) {
   const config = { mcpServers: {} };
   try {
-    const binary = await resolveEngramBinary();
+    const binary = await (resolveEngramBinary ?? (() => resolveConfiguredEngramBinary({ env, platform })))();
     if (!binary) return { state: "missing", config };
     if (!isAbsolute(nodePath) || !isAbsolute(managedWrapperPath) || !isAbsolute(binary)) {
       throw new Error("Managed Engram command paths must be absolute");
@@ -31,6 +43,15 @@ export async function resolveMcpEngramConfig({
       toolPrefix: "none",
       excludeTools: ["mem_capture_passive"],
     };
+    const devtools = readChromeDevToolsHandoff({ env, platform });
+    if (devtools) {
+      config.mcpServers["chrome-devtools"] = {
+        command: devtools.command,
+        args: [...devtools.args],
+        lifecycle: "lazy",
+        directTools: false,
+      };
+    }
     return { state: "managed", config, binary };
   } catch (error) {
     return {
@@ -43,9 +64,13 @@ export async function resolveMcpEngramConfig({
 
 export async function installMcpEngram(pi, {
   resolveEngramBinary,
+  env = process.env,
+  platform = process.platform,
 } = {}) {
   const resolution = await resolveMcpEngramConfig({
     resolveEngramBinary,
+    env,
+    platform,
   });
   if (resolution.state !== "managed") return resolution;
   const adapterEntry = import.meta.resolve("pi-mcp-adapter");
@@ -53,6 +78,66 @@ export async function installMcpEngram(pi, {
   createMcpAdapter({ config: resolution.config })(pi);
   registerEngramCompactionRecovery(pi, { isAvailable: () => resolution.state === "managed" });
   return resolution;
+}
+
+function readChromeDevToolsHandoff({ env, platform }) {
+  const paths = platformPaths(platform);
+  const agentDir = resolvePiAgentDir({ env, platform, paths });
+  const handoffPath = paths.join(agentDir, ...DEVTOOLS_HANDOFF_RELATIVE_PATH);
+  let raw;
+  try {
+    raw = readFileSync(handoffPath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw new Error(`Chrome DevTools handoff is unreadable at ${handoffPath}`);
+  }
+
+  let handoff;
+  try {
+    handoff = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Chrome DevTools handoff contains invalid JSON at ${handoffPath}`);
+  }
+
+  if (!isRecord(handoff)) throw new Error(`Chrome DevTools handoff must be an object at ${handoffPath}`);
+  const keys = Object.keys(handoff).sort();
+  if (keys.join("\0") !== ["args", "command", "enabled", "schemaVersion"].join("\0")) {
+    throw new Error(`Chrome DevTools handoff has an invalid schema at ${handoffPath}`);
+  }
+  if (handoff.schemaVersion !== 1 || handoff.enabled !== true) {
+    throw new Error(`Chrome DevTools handoff has an unsupported schema at ${handoffPath}`);
+  }
+  if (typeof handoff.command !== "string" || !paths.isAbsolute(handoff.command)) {
+    throw new Error(`Chrome DevTools handoff command must be an absolute path at ${handoffPath}`);
+  }
+  if (!isExecutable(handoff.command, platform)) {
+    throw new Error(`Chrome DevTools handoff command is not executable at ${handoffPath}`);
+  }
+  if (!Array.isArray(handoff.args)
+    || handoff.args.length !== DEVTOOLS_HANDOFF_ARGS.length
+    || handoff.args.some((arg, index) => arg !== DEVTOOLS_HANDOFF_ARGS[index])) {
+    throw new Error(`Chrome DevTools handoff has invalid arguments at ${handoffPath}`);
+  }
+  return { command: handoff.command, args: handoff.args };
+}
+
+function resolvePiAgentDir({ env, platform, paths }) {
+  const configured = env?.PI_CODING_AGENT_DIR;
+  if (configured !== undefined) {
+    if (typeof configured !== "string" || !configured || !paths.isAbsolute(configured)) {
+      throw new Error("PI_CODING_AGENT_DIR must be an absolute path");
+    }
+    return paths.resolve(configured);
+  }
+
+  const configuredHome = platform === "win32"
+    ? env?.USERPROFILE ?? env?.HOME
+    : env?.HOME ?? env?.USERPROFILE;
+  const home = typeof configuredHome === "string" && paths.isAbsolute(configuredHome)
+    ? configuredHome
+    : homedir();
+  if (!paths.isAbsolute(home)) throw new Error("The default Pi home directory must be absolute");
+  return paths.join(paths.resolve(home), ".pi", "agent");
 }
 
 export function registerEngramCompactionRecovery(pi, { isAvailable }) {
