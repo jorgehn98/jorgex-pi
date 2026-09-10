@@ -321,7 +321,6 @@ test("the release guide explains automatic publishing and coordinated Stack adop
   assert.match(readme, /push[^.\n]*main/i, "README must identify main pushes as the automatic release trigger");
   assert.match(readme, /patch[^.\n]*(?:automatic|automático|increment)/i, "README must explain automatic patch bumps");
   assert.match(readme, /minor[^.\n]*major[^.\n]*(?:manual|human)/i, "README must keep minor and major version decisions manual");
-  assert.match(readme, /(?:24[- ]hour|24 horas)[^.\n]*Stack/i, "README must retain the managed Stack maturity window");
 });
 
 function topLevelBlock(yaml, key) {

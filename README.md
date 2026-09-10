@@ -27,7 +27,9 @@ There are two intentionally distinct channels:
 
 La versión declarada en `package.json` y la snapshot de Stack identificada por `contract/parity.v2.json` son autoridades independientes. La publicación de Pi y su adopción por Stack son pasos separados: comprueba la disponibilidad de la versión en npm y el pin de `src/lib/pi-runtime.ts` en Stack antes de instalar; no deduzcas un nuevo par publicado de esta documentación.
 
-La adopción gestionada de cualquier nueva versión debe fijar el artefacto exacto y verificar URL, tamaño, SHA-256, SHA-512, lifecycle y rollback. La ventana de 24 horas de npm aplica sólo al consumo gestionado real; no bloquea desarrollo, validación, merges ni publicación. La provenance/attestation externa de npm queda fuera de la verificación del runtime.
+La adopción gestionada de cualquier nueva versión debe fijar el artefacto exacto y verificar URL, tamaño, SHA-256, SHA-512, lifecycle y rollback. El consumo gestionado queda disponible después de publicar y verificar el artefacto exacto. La provenance/attestation externa de npm queda fuera de la verificación del runtime.
+
+Para Stack, consulta siempre el paquete publicado actual sin reutilizar la caché de `dlx`: `pnpm --config.dlx-cache-max-age=0 dlx jorgex-stack@latest install --engram`. Esta caché es independiente de `minimumReleaseAge`; una versión explícita de Stack como `@1.9.30` no reutiliza la entrada de otra versión. Para Pi no uses `@latest`: consume únicamente el pin exacto validado.
 
 La coordinación downstream con Stack está desactivada salvo que `JORGEX_AUTOMATION_ENABLED` sea exactamente `true`; el job notificador sólo continúa tras verificar la publicación y emite `version`, `producer_sha` y `run_id` para un único `repository_dispatch`. El flujo y su recuperación manual están documentados en el [runbook de automatización Stack ↔ Pi](https://github.com/jorgehn98/jorgex-stack/blob/main/docs/references/stack-pi-automation.md); no se republica para recuperar una notificación.
 
@@ -167,6 +169,8 @@ node ./bin/jorgex-pi.mjs cleanup --json
 
 ## Development
 
+pnpm 11 dependency resolution uses `minimumReleaseAge=1440` by default; the workspace config excludes only `jorgex-stack` and `jorgex-pi` through `minimumReleaseAgeExclude`, so their coordinated release consumption is immediate after verification. Keep the same package exclusions in the user-level config used by `pnpm dlx` from HOME and preserve unrelated settings; this does not configure other users.
+
 Use pnpm for repository work:
 
 ```bash
@@ -244,7 +248,7 @@ Before merging anything that may publish, configure the npm trusted publisher in
 
 A push to `main` starts the release workflow. If the version declared in `package.json` is absent from npm, it is published unchanged; this preserves a manual minor or major decision. If it already exists and the push changes packaged runtime content, the workflow selects the next free patch, updates `package.json` and the root contract together, verifies the resulting commit, publishes its exact `pnpm pack` tarball with npm provenance through OIDC, and creates the immutable `v<version>` tag. Tests, work state, release scripts, workflow-only changes and operational `AGENTS.md` edits do not create another patch once the declared version is published. `workflow_dispatch` can recover an unpublished version or missing tag only from a verified SHA belonging to `main`.
 
-Publication does not update JorgeX Stack automatically. Stack's managed installation consumes the exact candidate recorded in its runtime registry; adopting a future Pi release remains a separate coordinated change that verifies the published artifact's URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate. The 24-hour npm maturity window applies only to real consumption by managed Stack installations; it does not block Pi development, sequential PRs, merges, publication or adoption validation. Direct installation uses a separate package-manager channel, but any consumption before the 24-hour maturity window expires requires Jorge's explicit exception; direct installation cannot bypass this policy, which Pi does not enforce automatically.
+Publication does not update JorgeX Stack automatically. Stack's managed installation consumes the exact candidate recorded in its runtime registry; adopting a future Pi release remains a separate coordinated change that verifies the published artifact's URL, byte length, SHA-256, SHA-512, lifecycle evidence and rollback candidate. Managed Stack installations may consume the package immediately after publication and verified adoption. Direct installation uses a separate package-manager channel; both channels still require the exact published artifact and verified integrity.
 
 The following receipt transition is historical (`Stack 1.9.2` / Pi `0.8.0`). For any current transition, use the Stack version that recognizes the receipt currently present; do not edit receipts, hashes or manual state:
 

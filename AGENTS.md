@@ -33,12 +33,12 @@ Publicar Pi no actualiza automáticamente JorgeX Stack. Para la adopción gestio
 
 1. Fusionar, verificar y publicar la versión de `jorgex-pi`.
 2. Comprobar runs y PRs del coordinador antes de preparar manualmente el PR separado de adopción en Stack contra el artefacto exacto publicado, verificando URL, tamaño, SHA-256 y SHA-512 del tarball, `tests/fixtures/pi-runtime-artifacts.json`, lifecycle y rollback.
-3. Esperar las **24 horas en npm** solo antes del consumo real por instalaciones gestionadas, salvo excepción explícita de Jorge documentada en ese PR.
+3. Consumir una versión solo después de publicar y verificar el artefacto exacto, su integridad, compatibilidad y procedencia.
 4. Mantener el candidato anterior en Stack hasta que ese PR se fusione y verifique.
 
 Con la App configurada y `JORGEX_AUTOMATION_ENABLED=true`, el coordinador de Stack reconcilia en `main` o dispatch la snapshot Pi del canon y la adopción en Stack, con no-op si no hay cambios; el notificador Pi lo despierta tras verificar la publicación. Consultar el [runbook Stack ↔ Pi](https://github.com/jorgehn98/jorgex-stack/blob/main/docs/references/stack-pi-automation.md) y evitar duplicar propuestas existentes. Sin opt-in, ante incompatibilidad o fallo explícito, recurrir al preparador local y una PR manual con review y gates; si falta el artefacto, persiste la dependencia externa. No editar pines ni hashes por rutina ni forzar fixtures: los cambios semánticos requieren revisión. El merge siempre exige orden de Jorge; la automatización no hace auto-merge ni instalaciones personales.
 
-La ventana de madurez gestionada de **24 horas en npm** afecta únicamente a la instalación o consumo real de un nuevo paquete Pi; no bloquea desarrollo, PRs, merges, publicación ni validación de la adopción. La instalación directa usa un canal separado, pero cualquier consumo antes de cumplir la ventana requiere una excepción explícita de Jorge; el canal directo no permite eludir esta política, que Pi no impone automáticamente.
+La instalación o consumo queda disponible tras la publicación y adopción verificadas. La instalación directa usa un canal separado, pero ambos canales deben conservar el pin exacto, la integridad y la compatibilidad.
 
 La verificación local de Stack comprueba que los bytes descargados coinciden con el tamaño y los SHA-256/SHA-512 fijados para el candidato aceptado. Es una comprobación local del artefacto, no una raíz de confianza independiente: la attestation/provenance externa de npm queda fuera del runtime, y `provenance.commit` es informativo salvo verificación explícita de esa attestation.
 
