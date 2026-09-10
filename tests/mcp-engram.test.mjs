@@ -66,6 +66,116 @@ test("managed Engram gives the adapter an isolated programmatic config containin
   }
 });
 
+test("managed Engram leaves the optional Pi Chrome DevTools server absent without a handoff", async () => {
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-devtools-absent-"));
+  const agentDir = join(sandbox, "agent");
+  const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
+  const nodePath = resolve(process.execPath);
+  const wrapperPath = join(root, "extensions", "engram-mcp-wrapper.mjs");
+  writeFileSync(fakeBin, "fake binary; never execute\n");
+  chmodSync(fakeBin, 0o755);
+  try {
+    const result = await resolveMcpEngramConfig({
+      resolveEngramBinary: () => fakeBin,
+      nodePath,
+      wrapperPath,
+      env: { PI_CODING_AGENT_DIR: agentDir },
+    });
+    assert.equal(result.state, "managed");
+    assert.equal(result.config.mcpServers["chrome-devtools"], undefined);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("managed Engram adds the exact optional Pi Chrome DevTools handoff", async () => {
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-devtools-valid-"));
+  const agentDir = join(sandbox, "agent");
+  const handoffPath = join(agentDir, "jorgex-pi", "devtools.v1.json");
+  const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
+  const pnpmPath = join(sandbox, process.platform === "win32" ? "pnpm.cmd" : "pnpm");
+  const nodePath = resolve(process.execPath);
+  const wrapperPath = join(root, "extensions", "engram-mcp-wrapper.mjs");
+  const args = [
+    "dlx",
+    "chrome-devtools-mcp@1.6.0",
+    "--isolated",
+    "--redact-network-headers",
+    "--no-performance-crux",
+    "--no-usage-statistics",
+  ];
+  writeFileSync(fakeBin, "fake binary; never execute\n");
+  writeFileSync(pnpmPath, "fake pnpm; never execute\n");
+  chmodSync(fakeBin, 0o755);
+  chmodSync(pnpmPath, 0o755);
+  mkdirSync(dirname(handoffPath), { recursive: true });
+  writeFileSync(handoffPath, `${JSON.stringify({ schemaVersion: 1, enabled: true, command: pnpmPath, args })}\n`);
+  try {
+    const result = await resolveMcpEngramConfig({
+      resolveEngramBinary: () => fakeBin,
+      nodePath,
+      wrapperPath,
+      env: { PI_CODING_AGENT_DIR: agentDir },
+    });
+    assert.equal(result.state, "managed");
+    assert.deepEqual(result.config.mcpServers["chrome-devtools"], {
+      command: pnpmPath,
+      args,
+      lifecycle: "lazy",
+      directTools: false,
+    });
+    assert.deepEqual(Object.keys(result.config.mcpServers), ["engram", "chrome-devtools"]);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("an invalid Pi Chrome DevTools handoff fails closed with a diagnostic", async () => {
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-devtools-invalid-"));
+  const agentDir = join(sandbox, "agent");
+  const handoffPath = join(agentDir, "jorgex-pi", "devtools.v1.json");
+  const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
+  const pnpmPath = join(sandbox, process.platform === "win32" ? "pnpm.cmd" : "pnpm");
+  const nodePath = resolve(process.execPath);
+  const wrapperPath = join(root, "extensions", "engram-mcp-wrapper.mjs");
+  const args = [
+    "dlx",
+    "chrome-devtools-mcp@1.6.0",
+    "--isolated",
+    "--redact-network-headers",
+    "--no-performance-crux",
+    "--no-usage-statistics",
+  ];
+  writeFileSync(fakeBin, "fake binary; never execute\n");
+  writeFileSync(pnpmPath, "fake pnpm; never execute\n");
+  chmodSync(fakeBin, 0o755);
+  chmodSync(pnpmPath, 0o755);
+  mkdirSync(dirname(handoffPath), { recursive: true });
+  try {
+    for (const [label, contents] of [
+      ["unreadable JSON", "{not-json\n"],
+      ["different flags", JSON.stringify({ schemaVersion: 1, enabled: true, command: pnpmPath, args: [...args, "--unexpected"] })],
+      ["relative command", JSON.stringify({ schemaVersion: 1, enabled: true, command: "pnpm", args })],
+    ]) {
+      writeFileSync(handoffPath, contents);
+      const result = await resolveMcpEngramConfig({
+        resolveEngramBinary: () => fakeBin,
+        nodePath,
+        wrapperPath,
+        env: { PI_CODING_AGENT_DIR: agentDir },
+      });
+      assert.equal(result.state, "failed", `${label} must fail closed`);
+      assert.equal(result.config.mcpServers["chrome-devtools"], undefined);
+      assert.match(result.reason ?? "", /devtools|handoff|chrome|invalid|absolute|JSON/i, `${label} needs a diagnostic`);
+    }
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("missing or failed Engram resolution leaves an empty isolated adapter config", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const missing = await resolveMcpEngramConfig({ resolveEngramBinary: () => undefined });

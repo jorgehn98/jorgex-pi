@@ -76,10 +76,6 @@
   "exclusions": [
     {
       "kind": "capability-integration",
-      "id": "chrome-devtools-capability-handoff"
-    },
-    {
-      "kind": "capability-integration",
       "id": "context7-mcp"
     },
     {

@@ -27,7 +27,6 @@ const COMMAND_SOURCES = [
   },
 ];
 const EXCLUSIONS = [
-  { kind: "capability-integration", id: "chrome-devtools-capability-handoff" },
   { kind: "capability-integration", id: "context7-mcp" },
   { kind: "capability-integration", id: "post-pr-shell-hook-translation" },
   { kind: "capability-integration", id: "programmatic-mode-negotiation" },
