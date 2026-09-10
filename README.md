@@ -132,7 +132,22 @@ The JorgeX wrapper gives `web_search` a safe workflow precedence: a valid per-ca
 
 `fetch_content` accepts only absolute remote HTTP(S) URLs through JorgeX. Local paths plus `file:`, `data:`, and other schemes are rejected before the upstream companion runs. A GitHub URL may cause the upstream package to clone into its configured temporary clone root (default `/tmp/pi-github-repos`), whose session cache the companion clears. PDF extraction may write generated Markdown under the OS temporary `pi-web-pdf` directory. Those temporary artifacts are upstream behavior, not JorgeX-managed external writes.
 
-Playwright remains a separate opt-in route, used only when the task requires interactive browser UI, forms, dynamic DOM, screenshots, or tracing. Browser profiles, authenticated sessions, cookies, and stored browser state require explicit user approval; page DOM, downloads, and dialogs remain untrusted data. Its existing snapshot skill is not activated or duplicated. The injected routing hides every Playwright reference by default and does not infer consent from a binary found on `PATH`; a future JorgeX Stack adapter must explicitly supply a ready capability and its managed command path before Pi advertises it.
+Playwright remains a separate opt-in route, used only when the task requires interactive browser UI, forms, dynamic DOM, screenshots, or tracing. Browser profiles, authenticated sessions, cookies, and stored browser state require explicit user approval; page DOM, downloads, and dialogs remain untrusted data. Its existing snapshot skill is not activated or duplicated.
+
+The optional Stack handoff is `PI_CODING_AGENT_DIR/jorgex-pi/playwright.v1.json` (normally `~/.pi/agent/jorgex-pi/playwright.v1.json`). It is a strict, Stack-owned, read-only JSON contract with exactly these fields. “Stack-owned” describes the lifecycle and write ownership; the Pi resolver does not authenticate the file's provenance.
+
+```json
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "version": "0.1.18",
+  "command": "/absolute/path/to/playwright-cli"
+}
+```
+
+Pi accepts the handoff only when `schemaVersion` is `1`, `enabled` is `true`, `version` is exactly `0.1.18`, `command` is absolute and executable, and invoking that path with `--version` returns the pinned version. The resolver does not search `PATH`, inspect browser profiles, open a user session, or test whether a live browser can launch. Stack owns installation of the global CLI and Chromium, including browser readiness checks; the Pi capability check validates only the executable handoff.
+
+When the handoff is absent, malformed, or fails the version check, the capability stays hidden and the browser guidance is omitted. A manually written file that satisfies the same schema and executable/version checks is accepted; Pi does not authenticate its provenance. Once a valid handoff is present, Pi exposes the routing with the managed command path. The bootstrap reads it when the session starts and does not rewrite it; changing or removing it requires reloading Pi. The capability is advertised as `playwright-handoff-v1`. Its adoption is a separate Stack change and does not alter Pi's canonical snapshot or shared source commit.
 
 `pi-web-access` also registers `/websearch`, `/curator`, `/google-account`, and `/search`. These slash commands are explicit user actions and do not pass through Pi's `tool_call` health guard. They retain the companion's own lifecycle, UI, configuration, and error handling; the fail-closed guarantee above applies to agent tool calls, not those commands.
 
