@@ -175,8 +175,8 @@ test("Windows .cmd handoff uses an explicit quoted ComSpec invocation", { skip: 
       agentDir: fixture.agentDir,
       platform: "win32",
       env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
-      execFileSync(command, args) {
-        invocations.push({ command, args });
+      execFileSync(command, args, options) {
+        invocations.push({ command, args, windowsVerbatimArguments: options.windowsVerbatimArguments });
         return "playwright-cli 0.1.18\n";
       },
     });
@@ -185,7 +185,8 @@ test("Windows .cmd handoff uses an explicit quoted ComSpec invocation", { skip: 
     assert.equal(capability.commandPath, fixture.command);
     assert.deepEqual(invocations, [{
       command: "C:\\Windows\\System32\\cmd.exe",
-      args: ["/d", "/s", "/c", '"C:\\Program Files\\Playwright\\playwright-cli.cmd" --version'],
+      windowsVerbatimArguments: true,
+      args: ["/d", "/s", "/c", '""C:\\Program Files\\Playwright\\playwright-cli.cmd" --version"'],
     }]);
   } finally {
     process.chdir(previousCwd);

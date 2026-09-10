@@ -1,7 +1,7 @@
 import { execFileSync as nodeExecFileSync } from "node:child_process";
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute as isPosixAbsolute, join as posixJoin, resolve as posixResolve, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 
 const HANDOFF_RELATIVE_PATH = ["jorgex-pi", "playwright.v1.json"];
 const PLAYWRIGHT_VERSION = "0.1.18";
@@ -32,6 +32,7 @@ export function resolvePlaywrightCapability({
       timeout: VERSION_TIMEOUT_MS,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
+      ...(invocation.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
       env: { ...env, NO_UPDATE_NOTIFIER: "1" },
     });
     if (!isExpectedVersion(output)) return hiddenCapability();
@@ -91,7 +92,8 @@ function planExecutable(command, platform, env) {
   const quote = (part) => part === "" || /\s/.test(part) ? `"${part}"` : part;
   return {
     command: env?.ComSpec ?? env?.COMSPEC ?? "cmd.exe",
-    args: ["/d", "/s", "/c", [quote(command), "--version"].join(" ")],
+    args: ["/d", "/s", "/c", `"${[quote(command), "--version"].join(" ")}"`],
+    windowsVerbatimArguments: true,
   };
 }
 
@@ -111,12 +113,7 @@ function isExecutable(path, platform) {
 }
 
 function platformPaths(platform) {
-  if (platform === "win32") return win32;
-  return {
-    isAbsolute: isPosixAbsolute,
-    join: posixJoin,
-    resolve: posixResolve,
-  };
+  return platform === "win32" ? win32 : posix;
 }
 
 function isRecord(value) {
