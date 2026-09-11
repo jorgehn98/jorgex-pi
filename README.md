@@ -179,7 +179,7 @@ pnpm test
 pnpm pack
 ```
 
-`pnpm test` is the build alias; execute it once rather than running `pnpm build` separately. `pnpm install --frozen-lockfile` provisions `@earendil-works/pi-coding-agent@0.84.2` as the exact development dependency. Compatibility with Pi `0.85.1` is covered by the real smoke when `JORGEX_PI_BIN` and `JORGEX_PI_PACKAGE_DIR` point to that installation; the smoke uses isolated home, cache, workspace, and `PI_CODING_AGENT_DIR` paths and does not use real models, auth, network or HOME state. Pi itself is not bundled in the tarball and is not a runtime dependency of `jorgex-pi`.
+`pnpm test` is the build alias; execute it once rather than running `pnpm build` separately. `pnpm install --frozen-lockfile` provisions `@earendil-works/pi-coding-agent@0.84.2` as the exact development dependency. Compatibility with Pi `0.85.1` is covered by the real smoke when `JORGEX_PI_BIN` points to the Pi `0.85.1` SDK executable and `JORGEX_PI_PACKAGE_DIR` points to the `jorgex-pi` package root with its companions; the smoke uses isolated home, cache, workspace, and `PI_CODING_AGENT_DIR` paths and does not use real models, auth, network or HOME state. Pi itself is not bundled in the tarball and is not a runtime dependency of `jorgex-pi`.
 
 Tests use isolated temporary homes and fake executable Engram paths. They verify discovery, argv, environment filtering, adapter metadata, direct-tool projection, lifecycle recovery, JSON protocol, and tarball bindings without starting a real Engram process or reading a real Engram database.
 
