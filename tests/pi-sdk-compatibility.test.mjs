@@ -17,6 +17,7 @@ import test from "node:test";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
+const engramExpected = readJson(join(testDir, "fixtures", "mcp-engram.expected.json"));
 const configuredPi = process.env.JORGEX_PI_BIN?.trim();
 const configuredPackage = process.env.JORGEX_PI_PACKAGE_DIR?.trim() || root;
 const skipReason = configuredPi && configuredPackage
@@ -45,6 +46,8 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
     assert.ok(existsSync(configuredPackage), `configured JorgeX package must exist: ${configuredPackage}`);
     const packageManifest = readJson(join(configuredPackage, "package.json"));
     assert.equal(packageManifest.name, "jorgex-pi", "the real smoke must load the JorgeX Pi package");
+    const rootContract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
+    assert.equal(packageManifest.version, rootContract.package?.version, "the smoke package must match the root contract version");
     assert.equal(readPiVersion(configuredPi, isolatedEnv({ home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir })), "0.85.1");
 
     const fakeServer = readFileSync(join(testDir, "fixtures", "fake-engram-mcp.mjs"), "utf8");
@@ -129,10 +132,12 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
       for (const name of [
         "ask_user_question", "subagent", "subagent_wait", "web_search", "fetch_content",
         "goal_blocked", "goal_complete", "goal_wait",
-        "mem_context", "mem_current_project", "mem_get_observation", "mem_search",
       ]) {
         assert.ok(probeRecord.allTools.includes(name), `Pi 0.85.1 must load companion tool ${name}`);
       }
+      const actualEngramTools = probeRecord.allTools.filter((name) => name.startsWith("mem_")).sort();
+      assert.deepEqual(actualEngramTools, engramExpected.engramProfile.tools.slice().sort(), "Pi must register the complete reviewed Engram tool set");
+      assert.equal(actualEngramTools.includes("mem_capture_passive"), false, "Pi must keep the passive Engram capture tool excluded");
       assert.deepEqual(probeRecord.commands.sort(), commandNames.slice().sort(), "get_commands and the extension API must agree");
 
       const exit = await stopProcess(child);
