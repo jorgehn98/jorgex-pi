@@ -105,10 +105,14 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
 
   try {
     const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
-    assert.ok(Array.isArray(contract.pi?.testedVersions), "contract.pi.testedVersions must provide the lifecycle Pi version");
-    assert.equal(contract.pi.testedVersions.length, 1, "the lifecycle requires one tested Pi authority");
-    const [expectedVersion] = contract.pi.testedVersions;
-    assert.match(expectedVersion, /^\d+\.\d+\.\d+$/, "the lifecycle Pi authority must be an exact semver");
+    const packageManifest = readJson(join(root, "package.json"));
+    const expectedVersion = packageManifest.devDependencies?.["@earendil-works/pi-coding-agent"];
+    assert.equal(expectedVersion, "0.84.2", "the lifecycle uses the exact stable local Pi SDK fixture");
+    assert.ok(Array.isArray(contract.pi?.testedVersions), "contract.pi.testedVersions must provide the lifecycle Pi versions");
+    assert.ok(
+      contract.pi.testedVersions.includes(expectedVersion),
+      "the lifecycle SDK fixture must remain within the contract's tested Pi authorities",
+    );
     const pi = resolveLocalPi(expectedVersion);
     runPi(pi, ["--version"], isolatedEnv, cwd);
 

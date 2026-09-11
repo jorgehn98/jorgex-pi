@@ -154,6 +154,7 @@ test("routing always explains Web Access and reveals Playwright only from an inj
   await createBootstrap({
     loadCompanion: async (id) => companionFactory(id, { initOrder: [], upstreamCalls: [] }),
     getPermissionsService: () => ({ ready: true }),
+    resolvePlaywrightCapability: () => ({ status: "hidden" }),
   })(hiddenPi.api);
   const basePrompt = "Existing JorgeX system policy";
   const hiddenPrompt = await hiddenPi.beforeAgentPrompt({ sessionId: "hidden" }, basePrompt);
