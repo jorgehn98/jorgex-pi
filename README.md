@@ -8,7 +8,7 @@ The version in `package.json` is the release authority. Minor and major remain m
 
 | Area | Current state |
 | --- | --- |
-| Compatibility | Tested only with Pi `0.84.2`; the contract does not claim a wider range. |
+| Compatibility | Explicitly tested with Pi `0.84.2` and `0.85.1`; the contract does not claim `0.85.0` or an interval. |
 | Pi resources | Bootstrap and TUI branding extensions, 17 reviewed JorgeX skills, the canonical policy/protocol fallbacks, and the `/lean-audit` prompt are active. The `JorgeX` theme is available but opt-in. |
 | Canonical snapshot | 14 agents (one dormant primary and 13 subagents) and 18 complete skill trees (99 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
 | Runtime agents | 13 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
@@ -106,7 +106,7 @@ The managed bridge resolves Engram in a strict order: a validated absolute `ENGR
 
 When Engram state is `managed`, the main Pi session receives the 17 reviewed direct Engram tools. The `engram` subagent is deliberately narrower and read-only: it exposes only `mem_search`, `mem_context`, `mem_get_observation`, `mem_suggest_topic_key`, `mem_current_project`, and `mem_doctor`; its contract retains `requiredCapability: engram-runtime-tools-v1` so unavailable runtime state stays machine-readable. Save, update, session-write, review, pin, and unpin operations remain unavailable to that specialist.
 
-The packaged adapter closure includes the audited native keyring bindings for macOS arm64/x64; Linux armhf, arm64, riscv64, and x64 variants covered by the contract; and Windows arm64/ia32/x64. FreeBSD is intentionally outside the tested bundle. Runtime compatibility remains limited to Pi `0.84.2`; the bindings expand platform packaging, not the claimed Pi-version range.
+The packaged adapter closure includes the audited native keyring bindings for macOS arm64/x64; Linux armhf, arm64, riscv64, and x64 variants covered by the contract; and Windows arm64/ia32/x64. FreeBSD is intentionally outside the tested bundle. Runtime compatibility is limited to the explicitly tested Pi versions `0.84.2` and `0.85.1`; the bindings expand platform packaging, not the claimed Pi-version range.
 
 ## Goal continuation and orchestrator policy
 
@@ -179,7 +179,7 @@ pnpm test
 pnpm pack
 ```
 
-`pnpm test` is the build alias; execute it once rather than running `pnpm build` separately. `pnpm install --frozen-lockfile` provisions `@earendil-works/pi-coding-agent@0.84.2` as an exact development dependency. The lifecycle test invokes that local Pi entrypoint with isolated home, cache, workspace, and `PI_CODING_AGENT_DIR` paths, so verification does not depend on a globally installed Pi. Pi itself is not bundled in the tarball and is not a runtime dependency of `jorgex-pi`.
+`pnpm test` is the build alias; execute it once rather than running `pnpm build` separately. `pnpm install --frozen-lockfile` provisions `@earendil-works/pi-coding-agent@0.84.2` as the exact development dependency. Compatibility with Pi `0.85.1` is covered by the real smoke when `JORGEX_PI_BIN` and `JORGEX_PI_PACKAGE_DIR` point to that installation; the smoke uses isolated home, cache, workspace, and `PI_CODING_AGENT_DIR` paths and does not use real models, auth, network or HOME state. Pi itself is not bundled in the tarball and is not a runtime dependency of `jorgex-pi`.
 
 Tests use isolated temporary homes and fake executable Engram paths. They verify discovery, argv, environment filtering, adapter metadata, direct-tool projection, lifecycle recovery, JSON protocol, and tarball bindings without starting a real Engram process or reading a real Engram database.
 
