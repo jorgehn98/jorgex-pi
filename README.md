@@ -9,7 +9,7 @@ The version in `package.json` is the release authority. Minor and major remain m
 | Area | Current state |
 | --- | --- |
 | Compatibility | Explicitly tested with Pi `0.84.2` and `0.85.1`; the contract does not claim `0.85.0` or an interval. |
-| Pi resources | Bootstrap and TUI branding extensions, 17 reviewed JorgeX skills, the canonical policy/protocol fallbacks, modular Context7 and browser prompt assets, and the `/lean-audit` prompt are active. Context7 is projected only after its isolated HTTP server is registered successfully. The `JorgeX` theme is available but opt-in. |
+| Pi resources | Bootstrap and TUI branding extensions, 17 reviewed JorgeX skills, the canonical policy/protocol fallbacks, modular Context7 and browser prompt assets, and the `/lean-audit` prompt are active. Context7 is projected only after its isolated HTTP server is registered successfully. `sync` seeds the `JorgeX` theme only when its global setting is absent. |
 | Canonical snapshot | 14 agents (one dormant primary and 13 subagents) and 17 complete skill trees (89 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
 | Runtime agents | 13 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
 | Package assets | `contract/assets.v1.json` owns the packaged extensions, theme, runtime agents, snapshot, skills, and contracts; it declares the bounded Sol lifecycle writes and preserves companion-owned state paths. |
@@ -48,6 +48,14 @@ Pi owns the lifecycle receipt at `PI_CODING_AGENT_DIR/jorgex-pi/sol-lifecycle.v1
 
 To override the primary, set the relevant values in Pi's `settings.json` or `models.json` before running `sync`, or edit a managed value afterwards. The lifecycle will preserve the existing or changed value and will not treat it as removable package state.
 
+### Experience defaults
+
+The first `sync` also initializes the missing global experience settings in `PI_CODING_AGENT_DIR/settings.json` (normally `~/.pi/agent/settings.json`): `theme: "JorgeX"`, `quietStartup: true`, and `hideThinkingBlock: true`. The lifecycle records these fields in the separate `PI_CODING_AGENT_DIR/jorgex-pi/experience-lifecycle.v1.json` receipt. Values that already exist, including values equal to these defaults, remain user-owned and are not claimed.
+
+The receipt records the first visit even when every field already exists. Later `sync` runs therefore do not reseed a field that a user deletes. If a user changes a package-owned value, that field is released; `cleanup` removes only fields still owned by the receipt and still equal to the managed value. Project settings continue to take precedence over global experience defaults, and `defaultThinkingLevel` is left unchanged.
+
+Stack runs this `sync` before starting Pi. A direct package installation must run `node ./bin/jorgex-pi.mjs sync --json` before the next Pi start to apply the defaults; an already-running native session is not changed retroactively. The custom JorgeX header remains available alongside Pi's native settings, including `/jorgex:header builtin`, `/jorgex:header custom`, `JORGEX_PI_MOTION=reduce`, `NO_COLOR`, and `Ctrl+O`.
+
 `contract/jorgex-pi.v1.json` advertises the active versioned capabilities, including `modular-system-prompts-v1`, `mcp-adapter-v1`, `engram-runtime-tools-v1`, `runner-json-v1`, `tui-branding-v1`, and `managed-primary-model-v1`, and links the runtime-agent and runner contracts. The runtime contract records the translation from the 14 canonical agents. All 13 subagents live in `agents/`; `primary/orchestrator.md` is packaged but not activated as a subagent. The runtime-agent contract preserves each JorgeX tier without imposing model, provider, thinking, or fallback choices on subagent routing; the managed primary is documented separately above.
 
 ### F1 Pi: selección privada y límites de adopción
@@ -64,7 +72,7 @@ Esta actualización no cambia los modelos de Pi ni el Goal nativo. `openai-codex
 
 The package supplies a responsive JorgeX header for interactive Pi sessions only. Its eye mark is a terminal-safe Braille rendering derived from the canonical packaged SVG: narrow terminals keep a compact mark, medium terminals stack the identity and metadata, and wide terminals compose the detailed eye at the left with the `JorgeX Pi` wordmark at the right. The displayed Pi version, package version, runnable-agent count, packaged-skill count, and workspace basename come from their runtime manifests or session context rather than duplicated literals.
 
-The entrance is a single 800 ms reveal with deterministic timer cleanup; `JORGEX_PI_MOTION=reduce`, CI, `TERM=dumb`, and non-TTY output use the final static frame. It never clears stdout. The header is reversible for the current session with `/jorgex:header builtin` and can be restored with `/jorgex:header custom`; non-TUI modes are unchanged. The package also declares the native `JorgeX` Pi theme for selection through Pi's normal theme controls. It never selects, persists, or replaces a user's active theme. [`DESIGN.md`](./DESIGN.md) is the terminal-specific design authority and keeps its palette in tested parity with the opt-in theme.
+The entrance is a single 800 ms reveal with deterministic timer cleanup; `JORGEX_PI_MOTION=reduce`, CI, `TERM=dumb`, and non-TTY output use the final static frame. It never clears stdout. The header is reversible for the current session with `/jorgex:header builtin` and can be restored with `/jorgex:header custom`; non-TUI modes are unchanged. The package also declares the native `JorgeX` Pi theme. A fresh lifecycle `sync` fills it only when the global value is absent; Pi's normal theme controls and later user changes take precedence. [`DESIGN.md`](./DESIGN.md) is the terminal-specific design authority and keeps its palette in tested parity with the theme.
 
 The Pi projection preserves the canonical bash boundary per agent. `none` exposes no shell capability; `git-read` replaces bash with the child-only `git_read` tool, which executes only `git diff` and `git log` through validated argv without a shell; `full` exposes bash and remains governed by the user's permission policy. This dedicated tool avoids relying on `permission.bash`, which `pi-subagents@0.54.0` does not support.
 
