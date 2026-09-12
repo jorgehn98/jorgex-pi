@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "b8f3c36c81ef4a3766cb35bacf00776cc4f368da"
+    "commit": "26692997245c9f1e8cf9d51a134032039f302186"
   },
   "agents": [
     {
@@ -584,8 +584,8 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md",
-    "sourceSha256": "1dba5f7554bb79f9ad16bd4310998184c4716a2dcf44eb0211ac63cf8a72adc4",
-    "outputSha256": "1dba5f7554bb79f9ad16bd4310998184c4716a2dcf44eb0211ac63cf8a72adc4"
+    "sourceSha256": "8efcecbf36b5755e666b5b8a08b2e620420723f6995e7c5319ed0502b5c8a393",
+    "outputSha256": "8efcecbf36b5755e666b5b8a08b2e620420723f6995e7c5319ed0502b5c8a393"
   },
   "engramProtocol": {
     "sourcePath": "stack/system-prompt/engram-protocol.md",
