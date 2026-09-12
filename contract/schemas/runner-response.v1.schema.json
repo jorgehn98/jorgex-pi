@@ -191,7 +191,7 @@
         "changed": { "type": "boolean" },
         "actions": {
           "type": "array",
-          "maxItems": 9,
+          "maxItems": 12,
           "items": { "$ref": "#/$defs/lifecycleAction" }
         }
       }
@@ -218,7 +218,16 @@
         "created:settings.json",
         "created:models.json",
         "removed:settings.json",
-        "removed:models.json"
+        "removed:models.json",
+        "created:theme",
+        "created:quietStartup",
+        "created:hideThinkingBlock",
+        "released:theme",
+        "released:quietStartup",
+        "released:hideThinkingBlock",
+        "removed:theme",
+        "removed:quietStartup",
+        "removed:hideThinkingBlock"
       ]
     },
     "emptyResult": {

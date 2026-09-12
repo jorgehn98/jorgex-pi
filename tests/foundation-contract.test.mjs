@@ -145,8 +145,8 @@ test("candidate quality receipt projection stays separate from install and lifec
   );
   assert.deepEqual(
     assetManifest.managedExternalWrites?.map(({ relativePath }) => relativePath),
-    ["settings.json", "models.json", "jorgex-pi/sol-lifecycle.v1.json"],
-    "Pi lifecycle ownership must remain limited to its existing settings, models, and lifecycle receipt paths",
+    ["settings.json", "models.json", "jorgex-pi/sol-lifecycle.v1.json", "jorgex-pi/experience-lifecycle.v1.json"],
+    "Pi lifecycle ownership must include the separate experience receipt",
   );
 });
 
