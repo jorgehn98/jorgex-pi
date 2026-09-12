@@ -8,7 +8,7 @@ Paquete Pi-native del harness JorgeX. Este archivo define la relación operativa
 
 - **JorgeX Stack** es la fuente canónica de agentes, skills, system prompt y políticas compartidas, además del fleet manager que instala y verifica Pi.
 - **JorgeX Pi** posee la traducción Pi-native, el bootstrap, contratos, companions, assets, runner JSON y lifecycle del paquete.
-- El contenido compartido no se mantiene a mano en ambos sitios: `contract/parity.v2.json` fija el commit canónico de Stack y los generadores producen la snapshot, los fallbacks de política/protocolo y la proyección Pi de `/lean-audit`.
+- El contenido compartido no se mantiene a mano en ambos sitios: `contract/parity.v2.json` fija el commit canónico de Stack y los generadores producen la snapshot, los fallbacks de política/protocolo, los módulos de system prompt y la proyección Pi de `/lean-audit`.
 
 Todo cambio debe incluir una revisión explícita de impacto cruzado:
 
@@ -57,7 +57,7 @@ pnpm dlx jorgex-stack@1.9.2 uninstall --agents pi
 pnpm dlx jorgex-stack@1.9.0 install --agents pi
 ```
 
-La procedencia de la snapshot se consulta en `contract/parity.v2.json`; no repetir aquí SHA. El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md` y `prompts/lean-audit.md`; el bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
+La procedencia de la snapshot se consulta en `contract/parity.v2.json`; no repetir aquí SHA. El contrato v2 también registra `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, los módulos de browser y `prompts/lean-audit.md`. `modular-system-prompts-v1` declara la recomposición marker-aware: Web Access se incluye cuando el bootstrap está sano y no hay conflicto; Playwright solo cuando su handoff resuelve `ready`; DevTools solo cuando el bridge gestionado registra su servidor y configuración válidos. El asset de Context7 se valida y conserva en paridad, pero no se proyecta ni registra en este checkpoint. El bridge se describe como `validated and registered as managed lazy bridge`, sin prometer handshake ni readiness operativa, y el protocolo Engram solo aparece cuando su estado es `managed`.
 
 ### F1 Pi: acceso privado sin adopción implícita
 
