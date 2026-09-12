@@ -11,6 +11,7 @@
   ],
   "errorCommand": "unknown",
   "maxStdoutBytes": 65536,
+  "maxLifecycleActions": 32,
   "exitCodes": {
     "success": 0,
     "unhealthy": 1,

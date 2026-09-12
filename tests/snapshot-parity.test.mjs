@@ -24,7 +24,7 @@ test("the Stack snapshot stays complete and deterministic after runtime activati
   assert.deepEqual(parity.source, { repository: expected.sourceRepository, commit: expected.sourceCommit });
   assert.deepEqual(
     Object.keys(parity).sort(),
-    ["agents", "commands", "engramProtocol", "exclusions", "policy", "qualityCapabilities", "qualityReceipt", "schemaVersion", "skills", "source", "systemPromptModules"],
+    ["agents", "commands", "engramProtocol", "exclusions", "permissions", "policy", "qualityCapabilities", "qualityReceipt", "schemaVersion", "skills", "source", "systemPromptModules"],
     "parity v2 must expose every canonical source type explicitly",
   );
   assertAgentParity(parity.agents);
@@ -80,6 +80,7 @@ function assertSkillParity(skills) {
 function assertSharedProjectionParity(parity) {
   assertCopyProjection(parity.policy, expected.policy, "system policy");
   assertCopyProjection(parity.engramProtocol, expected.engramProtocol, "Engram protocol");
+  assertCopyProjection(parity.permissions, expected.permissions, "permissions policy");
   assertSystemPromptModulesParity(parity.systemPromptModules);
   assertQualityReceiptProjection(parity.qualityReceipt, expected.qualityReceipt);
   assertQualityCapabilitiesProjection(parity[capabilitiesExpected.parityField], capabilitiesExpected);

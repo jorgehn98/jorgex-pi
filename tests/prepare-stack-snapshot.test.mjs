@@ -294,6 +294,7 @@ function createStackFixture(root, piRoot) {
   for (const projection of [
     parity.policy,
     parity.engramProtocol,
+    parity.permissions,
     ...(parity.systemPromptModules ?? []),
     parity.qualityReceipt,
     parity.qualityCapabilities,
