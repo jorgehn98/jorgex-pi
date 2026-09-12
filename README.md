@@ -58,7 +58,7 @@ Cada tarea formal de F1 mantiene una única Spec recuperable: una observación E
 
 La comprobación usa el contrato público `resolveSubagentLaunchContract` de `pi-subagents@0.54.0` en `tests/fixtures/discover-runtime-agents.mjs`. Ese seam permite comprobar la metadata de selección, las rutas/skills resueltas y la allowlist efectiva; no demuestra que un modelo ejecute una skill, que lea el cuerpo completo, que exista una ACL universal ni que todos los runtimes compartan el mismo contrato. El agente `engram` sólo expone `mem_search`, `mem_context`, `mem_get_observation`, `mem_suggest_topic_key`, `mem_current_project` y `mem_doctor`; no recibe operaciones de escritura.
 
-Esta actualización no cambia los modelos de Pi ni el Goal nativo. `openai-codex/gpt-5.6-sol` y `contextWindow=872000` siguen siendo la política/metadata local descrita arriba; tampoco altera permisos, receipts, HOME ni configuración de usuario.
+La selección privada de skills de F1 no cambia los modelos de Pi ni el Goal nativo. `openai-codex/gpt-5.6-sol` y `contextWindow=872000` siguen siendo la política/metadata local descrita arriba; esa selección tampoco altera permisos, receipts, HOME ni configuración de usuario.
 
 ## TUI branding
 
