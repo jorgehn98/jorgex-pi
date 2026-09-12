@@ -23,6 +23,17 @@
     "maxBytes": 65536
   },
   "responseSchema": "contract/schemas/runner-response.v1.schema.json",
+  "experience": {
+    "settings": "PI_CODING_AGENT_DIR/settings.json",
+    "receipt": "PI_CODING_AGENT_DIR/jorgex-pi/experience-lifecycle.v1.json",
+    "defaults": {
+      "theme": "JorgeX",
+      "quietStartup": true,
+      "hideThinkingBlock": true
+    },
+    "initialization": "first sync only",
+    "ownership": "missing fields only; cleanup removes exact package-owned values and preserves replacements"
+  },
   "context7": {
     "transport": "http",
     "registration": "isolated in-memory bridge at Pi bootstrap",

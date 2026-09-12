@@ -135,6 +135,32 @@ test("JorgeX header is TUI-only, reversible, and leaves the active theme alone",
   assert.equal(themeSelections, 0, "neither header command may select or persist a theme");
 });
 
+test("quietStartup keeps the custom JorgeX header visible in the native TUI seam", async () => {
+  const { SettingsManager } = await import("@earendil-works/pi-coding-agent");
+  const { default: installBranding } = await import(`../extensions/branding.ts?quiet-startup=${Date.now()}`);
+  const settingsManager = SettingsManager.inMemory({ quietStartup: true });
+  const pi = createPiHarness();
+  installBranding(pi.api);
+
+  let headerFactory;
+  await pi.emitLifecycle("session_start", {}, {
+    mode: "tui",
+    cwd: root,
+    settingsManager,
+    ui: {
+      setHeader(factory) {
+        headerFactory = factory;
+      },
+    },
+  });
+
+  assert.equal(settingsManager.getQuietStartup(), true, "the native SDK must expose quietStartup to the TUI session");
+  assert.equal(typeof headerFactory, "function", "quiet startup must not suppress an extension-provided header");
+  const header = headerFactory({ requestRender() {} }, fakeTheme());
+  assert.match(header.render(100).join("\n"), /JorgeX Pi/, "the custom JorgeX header must remain visible");
+  header.dispose();
+});
+
 test("branding has no stdout clearing, shell, network, or settings-write surface", () => {
   const source = readFileSync(join(root, "extensions", "branding.ts"), "utf8");
   assert.doesNotMatch(

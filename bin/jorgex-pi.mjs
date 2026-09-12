@@ -29,6 +29,7 @@ const exitCodes = { success: 0, unhealthy: 1, usage: 2, internal: 3 };
 const maxStdoutBytes = 65536;
 const maxLifecycleJsonBytes = 1024 * 1024;
 const lifecycleReceiptName = "sol-lifecycle.v1.json";
+const experienceReceiptName = "experience-lifecycle.v1.json";
 const lifecycleFields = [
   {
     key: "settings.defaultProvider",
@@ -58,6 +59,12 @@ const lifecycleContainerPaths = new Map(
 );
 const lifecycleContainerKeys = new Set(lifecycleContainerPaths.keys());
 const lifecycleFileKeys = new Set(["settings", "models"]);
+const experienceFields = [
+  { key: "theme", path: ["theme"], value: "JorgeX" },
+  { key: "quietStartup", path: ["quietStartup"], value: true },
+  { key: "hideThinkingBlock", path: ["hideThinkingBlock"], value: true },
+];
+const experienceFieldByKey = new Map(experienceFields.map((field) => [field.key, field]));
 let temporaryFileCounter = 0;
 let currentCommand = "unknown";
 
@@ -240,6 +247,7 @@ function syncLifecycleUnlocked() {
     }
   }
 
+  syncExperienceLifecycle(state, actions);
   releaseUnusedContainerOwnership(receipt);
   finalizeReceipt(state);
   const permissionResult = syncPermissions({ agentDir, packageRoot: root });
@@ -259,7 +267,15 @@ function cleanupLifecycleUnlocked() {
   const { receipt } = state;
   const actions = [];
   const permissionResult = cleanupPermissions({ agentDir, packageRoot: root });
-  if (!receipt.exists) return permissionResult;
+  if (state.experienceReceipt.exists) cleanupExperienceLifecycle(state, actions);
+  if (!receipt.exists) {
+    finalizeExperienceReceipt(state);
+    const lifecycleResult = persistLifecycle(state, actions);
+    return {
+      changed: permissionResult.changed || lifecycleResult.changed,
+      actions: [...lifecycleResult.actions, ...permissionResult.actions],
+    };
+  }
 
   for (const field of lifecycleFields) {
     if (!hasOwn(receipt.value.fields, field.key)) continue;
@@ -301,11 +317,55 @@ function cleanupLifecycleUnlocked() {
   }
 
   finalizeReceipt(state);
+  finalizeExperienceReceipt(state);
   const lifecycleResult = persistLifecycle(state, actions);
   return {
     changed: permissionResult.changed || lifecycleResult.changed,
     actions: [...lifecycleResult.actions, ...permissionResult.actions],
   };
+}
+
+function syncExperienceLifecycle(state, actions) {
+  const { experienceReceipt, configs: { settings } } = state;
+  if (experienceReceipt.exists) {
+    for (const field of experienceFields) {
+      if (!hasOwn(experienceReceipt.value.fields, field.key)) continue;
+      const current = readPath(settings.value, field.path);
+      if (current.exists && Object.is(current.value, field.value)) continue;
+      delete experienceReceipt.value.fields[field.key];
+      experienceReceipt.dirty = true;
+      actions.push(`released:${field.key}`);
+    }
+    return;
+  }
+
+  experienceReceipt.value = emptyExperienceReceipt();
+  experienceReceipt.dirty = true;
+  for (const field of experienceFields) {
+    const current = readPath(settings.value, field.path);
+    if (current.exists) continue;
+    settings.value[field.key] = field.value;
+    settings.dirty = true;
+    experienceReceipt.value.fields[field.key] = field.value;
+    actions.push(`created:${field.key}`);
+  }
+}
+
+function cleanupExperienceLifecycle(state, actions) {
+  const { experienceReceipt, configs: { settings } } = state;
+  for (const field of experienceFields) {
+    if (!hasOwn(experienceReceipt.value.fields, field.key)) continue;
+    const current = readPath(settings.value, field.path);
+    if (current.exists && Object.is(current.value, field.value)) {
+      delete current.parent[current.key];
+      settings.dirty = true;
+      actions.push(`removed:${field.key}`);
+    } else {
+      actions.push(`released:${field.key}`);
+    }
+    delete experienceReceipt.value.fields[field.key];
+    experienceReceipt.dirty = true;
+  }
 }
 
 function shouldCreateLifecycleField(field, state) {
@@ -374,8 +434,12 @@ function loadLifecycleState() {
     settings: readLifecycleConfig("settings", join(agentDir, "settings.json"), "Pi settings"),
     models: readLifecycleConfig("models", join(agentDir, "models.json"), "Pi models"),
   };
-  const receiptPath = join(agentDir, "jorgex-pi", lifecycleReceiptName);
-  return { configs, receipt: readLifecycleReceipt(receiptPath) };
+  const receiptDir = join(agentDir, "jorgex-pi");
+  return {
+    configs,
+    receipt: readLifecycleReceipt(join(receiptDir, lifecycleReceiptName)),
+    experienceReceipt: readExperienceReceipt(join(receiptDir, experienceReceiptName)),
+  };
 }
 
 function readLifecycleConfig(name, path, label) {
@@ -389,6 +453,15 @@ function readLifecycleReceipt(path) {
     return { exists: false, path, value: emptyReceipt(), dirty: false, remove: false };
   }
   validateReceipt(document.value);
+  return { ...document, path, dirty: false, remove: false };
+}
+
+function readExperienceReceipt(path) {
+  const document = readBoundedJsonObject(path, "Pi experience lifecycle receipt", "INVALID_RECEIPT", "RECEIPT_TOO_LARGE");
+  if (!document.exists) {
+    return { exists: false, path, value: emptyExperienceReceipt(), dirty: false, remove: false };
+  }
+  validateExperienceReceipt(document.value);
   return { ...document, path, dirty: false, remove: false };
 }
 
@@ -471,10 +544,19 @@ function finalizeReceipt(state) {
   }
 }
 
+function finalizeExperienceReceipt(state) {
+  const { experienceReceipt } = state;
+  if (experienceReceipt.exists && Object.keys(experienceReceipt.value.fields).length === 0) {
+    experienceReceipt.remove = true;
+    experienceReceipt.dirty = true;
+  }
+}
+
 function persistLifecycle(state, actions) {
   const configChanges = Object.values(state.configs).some((config) => config.dirty);
-  const receiptChanges = state.receipt.dirty;
-  if (!configChanges && !receiptChanges) return { changed: false, actions: [] };
+  const solReceiptChanges = state.receipt.dirty;
+  const experienceReceiptChanges = state.experienceReceipt.dirty;
+  if (!configChanges && !solReceiptChanges && !experienceReceiptChanges) return { changed: false, actions: [] };
 
   if (state.receipt.dirty && !state.receipt.remove) writeJsonAtomic(state.receipt.path, orderedReceipt(state.receipt.value));
   for (const config of Object.values(state.configs)) {
@@ -482,9 +564,16 @@ function persistLifecycle(state, actions) {
     if (config.remove) removeFile(config.path);
     else writeJsonAtomic(config.path, config.value);
   }
+  if (state.experienceReceipt.dirty && !state.experienceReceipt.remove) {
+    writeJsonAtomic(state.experienceReceipt.path, orderedExperienceReceipt(state.experienceReceipt.value));
+  }
   if (state.receipt.remove) {
     removeFile(state.receipt.path);
     removeEmptyDirectory(dirname(state.receipt.path));
+  }
+  if (state.experienceReceipt.remove) {
+    removeFile(state.experienceReceipt.path);
+    removeEmptyDirectory(dirname(state.experienceReceipt.path));
   }
   return { changed: true, actions };
 }
@@ -551,6 +640,10 @@ function emptyReceipt() {
   return { schemaVersion: 1, fields: {}, containers: {}, files: {} };
 }
 
+function emptyExperienceReceipt() {
+  return { schemaVersion: 1, initialized: true, fields: {} };
+}
+
 function orderedReceipt(receipt) {
   const ordered = emptyReceipt();
   for (const field of lifecycleFields) {
@@ -561,6 +654,14 @@ function orderedReceipt(receipt) {
   }
   for (const configName of [...lifecycleFileKeys].sort()) {
     if (hasOwn(receipt.files, configName)) ordered.files[configName] = true;
+  }
+  return ordered;
+}
+
+function orderedExperienceReceipt(receipt) {
+  const ordered = emptyExperienceReceipt();
+  for (const field of experienceFields) {
+    if (hasOwn(receipt.fields, field.key)) ordered.fields[field.key] = field.value;
   }
   return ordered;
 }
@@ -583,6 +684,22 @@ function validateReceipt(receipt) {
   for (const [key, value] of Object.entries(receipt.files)) {
     if (!lifecycleFileKeys.has(key) || value !== true) {
       throw new LifecycleError("INVALID_RECEIPT", "Pi lifecycle receipt contains an unsupported file.");
+    }
+  }
+}
+
+function validateExperienceReceipt(receipt) {
+  const keys = Object.keys(receipt);
+  if (keys.some((key) => !["schemaVersion", "initialized", "fields"].includes(key))
+    || receipt.schemaVersion !== 1
+    || receipt.initialized !== true
+    || !isJsonObject(receipt.fields)) {
+    throw new LifecycleError("INVALID_RECEIPT", "Pi experience lifecycle receipt has an unsupported shape.");
+  }
+  for (const [key, value] of Object.entries(receipt.fields)) {
+    const field = experienceFieldByKey.get(key);
+    if (!field || !Object.is(value, field.value)) {
+      throw new LifecycleError("INVALID_RECEIPT", "Pi experience lifecycle receipt contains an unsupported field.");
     }
   }
 }

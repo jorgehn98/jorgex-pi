@@ -153,8 +153,9 @@ test("candidate quality receipt projection stays separate from install and lifec
       "extensions/pi-permission-system/config.json",
       "jorgex-pi/permissions-lifecycle.v1.json",
       "jorgex-pi/permissions-backups",
+      "jorgex-pi/experience-lifecycle.v1.json",
     ],
-    "Pi lifecycle ownership must enumerate settings, models, and permission policy state separately",
+    "Pi lifecycle ownership must enumerate settings, models, permission policy, and experience state separately",
   );
 });
 
