@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEngramChildSpec } from "./engram-mcp-wrapper.mjs";
+import { inspectContext7Config } from "./context7-config.mjs";
 
 const wrapperPath = fileURLToPath(new URL("./engram-mcp-wrapper.mjs", import.meta.url));
 const DEVTOOLS_HANDOFF_RELATIVE_PATH = ["jorgex-pi", "devtools.v1.json"];
@@ -27,11 +28,22 @@ export async function resolveMcpEngramConfig({
   wrapperPath: managedWrapperPath = wrapperPath,
   env = process.env,
   platform = process.platform,
+  cwd = process.cwd(),
 } = {}) {
   const config = { mcpServers: {} };
+  const context7 = inspectContext7Config({ env, platform, cwd });
+  if (context7.state === "available") {
+    config.mcpServers.context7 = {
+      url: "https://mcp.context7.com/mcp",
+      auth: false,
+      lifecycle: "lazy",
+      directTools: false,
+      ...(env.CONTEXT7_API_KEY?.trim() ? { headers: { CONTEXT7_API_KEY: "${CONTEXT7_API_KEY}" } } : {}),
+    };
+  }
   try {
     const binary = await (resolveEngramBinary ?? (() => resolveConfiguredEngramBinary({ env, platform })))();
-    if (!binary) return { state: "missing", config };
+    if (!binary) return { state: "missing", config, context7 };
     if (!isAbsolute(nodePath) || !isAbsolute(managedWrapperPath) || !isAbsolute(binary)) {
       throw new Error("Managed Engram command paths must be absolute");
     }
@@ -52,11 +64,12 @@ export async function resolveMcpEngramConfig({
         directTools: false,
       };
     }
-    return { state: "managed", config, binary };
+    return { state: "managed", config, binary, context7 };
   } catch (error) {
     return {
       state: "failed",
       config,
+      context7,
       reason: error instanceof Error ? error.message : String(error),
     };
   }
@@ -66,16 +79,19 @@ export async function installMcpEngram(pi, {
   resolveEngramBinary,
   env = process.env,
   platform = process.platform,
+  cwd = process.cwd(),
 } = {}) {
   const resolution = await resolveMcpEngramConfig({
     resolveEngramBinary,
     env,
     platform,
+    cwd,
   });
   if (resolution.state !== "managed") return resolution;
   const adapterEntry = import.meta.resolve("pi-mcp-adapter");
   const { createMcpAdapter } = await import(adapterEntry);
   createMcpAdapter({ config: resolution.config })(pi);
+  if (resolution.context7.state === "available") resolution.context7 = { state: "registered" };
   registerEngramCompactionRecovery(pi, { isAvailable: () => resolution.state === "managed" });
   return resolution;
 }

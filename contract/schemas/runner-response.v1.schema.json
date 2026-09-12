@@ -121,13 +121,24 @@
         "reason": { "type": "string" }
       }
     },
+    "context7": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "enum": ["available", "conflict", "invalid"] },
+        "source": { "type": "string" },
+        "code": { "type": "string" }
+      }
+    },
     "statusResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["installation", "engram"],
+      "required": ["installation", "engram", "context7"],
       "properties": {
         "installation": { "$ref": "#/$defs/installation" },
-        "engram": { "$ref": "#/$defs/engram" }
+        "engram": { "$ref": "#/$defs/engram" },
+        "context7": { "$ref": "#/$defs/context7" }
       }
     },
     "doctorResult": {
@@ -138,14 +149,14 @@
         "healthy": { "type": "boolean" },
         "checks": {
           "type": "array",
-          "minItems": 2,
-          "maxItems": 2,
+          "minItems": 3,
+          "maxItems": 3,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["id", "status"],
             "properties": {
-              "id": { "enum": ["package", "engram"] },
+              "id": { "enum": ["package", "engram", "context7"] },
               "status": { "enum": ["ok", "error"] }
             }
           }
