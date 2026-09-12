@@ -176,6 +176,12 @@ test("routing always explains Web Access and reveals Playwright only from an inj
   for (const phrase of expected.routing.webAccess) assert.match(readyBrowserBlock, new RegExp(escapeRegExp(phrase), "i"));
   for (const phrase of expected.routing.playwright) assert.match(readyBrowserBlock, new RegExp(escapeRegExp(phrase), "i"));
   assert.match(readyBrowserBlock, /\/managed\/bin\/playwright-cli/);
+  assert.match(readyBrowserBlock, /open with --browser=chromium/i, "ready routing must use the installed Chromium channel");
+  assert.match(readyBrowserBlock, /--help/i, "ready Playwright routing must point to the managed CLI help when needed");
+  assert.match(readyBrowserBlock, /task-specific session[^.\n]*-s=<name>/i, "ready Playwright routing must require a task-specific session");
+  assert.match(readyBrowserBlock, /refs with snapshot/i, "ready Playwright routing must use snapshots for element refs");
+  assert.match(readyBrowserBlock, /verify action results/i, "ready Playwright routing must verify action results");
+  assert.match(readyBrowserBlock, /close only the session you created/i, "ready Playwright routing must close only its own session");
   assert.match(readyBrowserBlock, /only when (?:the )?task requires browser interaction/i, "Playwright routing must establish necessity before use");
   assert.match(
     readyBrowserBlock,
