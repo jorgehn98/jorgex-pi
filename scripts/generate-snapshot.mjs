@@ -32,7 +32,6 @@ const COMMAND_SOURCES = [
   },
 ];
 const EXCLUSIONS = [
-  { kind: "capability-integration", id: "context7-mcp" },
   { kind: "capability-integration", id: "post-pr-shell-hook-translation" },
   { kind: "capability-integration", id: "programmatic-mode-negotiation" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/commands/claude-code/xreview.md" },

@@ -5,6 +5,18 @@ import { join } from "node:path";
 const root = process.argv[2];
 if (!root) throw new Error("package root argument is required");
 const settingsPath = join(process.env.PI_CODING_AGENT_DIR, "settings.json");
+const metadataCachePath = join(process.env.PI_CODING_AGENT_DIR, "mcp-cache.json");
+if (!existsSync(metadataCachePath)) writeFileSync(metadataCachePath, '{"version":1,"servers":{}}\n');
+const originalFetch = globalThis.fetch;
+let context7FetchCount = 0;
+globalThis.fetch = async (...args) => {
+  const target = fetchTarget(args[0]);
+  if (target?.hostname === "mcp.context7.com") {
+    context7FetchCount += 1;
+    throw new Error("Context7 network blocked by loader fixture");
+  }
+  return originalFetch(...args);
+};
 
 const eventBus = createEventBus();
 const loader = new DefaultResourceLoader({
@@ -78,9 +90,10 @@ const guard = await runner.emitToolCall({
 
 const realCommandNames = runner.getRegisteredCommands().map(({ name }) => name).sort();
 await runner.emit({ type: "session_start", reason: "startup" });
-for (let attempt = 0; attempt < 20 && !runner.getAllRegisteredTools().some(({ definition }) => definition.name.startsWith("mem_")); attempt += 1) {
-  await new Promise((resolve) => setTimeout(resolve, 50));
-}
+await waitFor(
+  () => runner.getAllRegisteredTools().some(({ definition }) => definition.name.startsWith("mem_")),
+  { timeoutMs: 3_000, intervalMs: 25 },
+);
 const realToolNames = runner.getAllRegisteredTools().map(({ definition }) => definition.name).sort();
 const goalCommand = runner.getCommand("goal");
 if (!goalCommand) throw new Error("real /goal command was not registered");
@@ -99,6 +112,7 @@ await runner.emit({ type: "session_shutdown" });
 
 writeFileSync(1, `${JSON.stringify({
   errors: loaded.errors,
+  context7FetchCount,
   extensionCount: loaded.extensions.length,
   themeNames: themes.themes.map(({ name }) => name).sort(),
   themeDiagnostics: themes.diagnostics,
@@ -123,3 +137,23 @@ writeFileSync(1, `${JSON.stringify({
     piPackageDirConfigured: Object.hasOwn(process.env, "PI_PACKAGE_DIR"),
   },
 })}\n`);
+
+function fetchTarget(input) {
+  const value = typeof input === "string"
+    ? input
+    : input instanceof URL
+      ? input.href
+      : input?.url;
+  if (typeof value !== "string") return undefined;
+  try { return new URL(value); } catch { return undefined; }
+}
+
+async function waitFor(predicate, { timeoutMs, intervalMs }) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
+  }
+  return true;
+}

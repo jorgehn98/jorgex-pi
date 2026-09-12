@@ -12,12 +12,13 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let manifest;
+let inspectContext7Config;
+let agentDir;
 let packageInfo = { name: "jorgex-pi", version: "unknown", root };
 const commands = new Set(["status", "doctor", "models", "sync", "cleanup"]);
 const exitCodes = { success: 0, unhealthy: 1, usage: 2, internal: 3 };
@@ -66,6 +67,9 @@ class LifecycleError extends Error {
 try {
   manifest = readJson(join(root, "package.json"));
   packageInfo = { name: manifest.name, version: manifest.version, root };
+  const context7Module = await import("../extensions/context7-config.mjs");
+  inspectContext7Config = context7Module.inspectContext7Config;
+  agentDir = context7Module.resolvePiAgentDir();
   const args = process.argv.slice(2);
   const command = args[0];
   currentCommand = command ?? "unknown";
@@ -87,7 +91,7 @@ try {
   } else {
     const state = inspectState();
     if (command === "status") {
-      const healthy = state.installation.state !== "invalid" && state.engram.state !== "invalid";
+      const healthy = state.installation.state !== "invalid" && state.engram.state !== "invalid" && state.context7.state === "available";
       emit(command, healthy, state, healthy ? undefined : stateError(state), healthy ? exitCodes.success : exitCodes.unhealthy);
     } else {
       const checks = [
@@ -99,6 +103,10 @@ try {
           id: "engram",
           status: state.engram.state === "ready" ? "ok" : "error",
         },
+        {
+          id: "context7",
+          status: state.context7.state === "available" ? "ok" : "error",
+        },
       ];
       const healthy = checks.every(({ status }) => status === "ok");
       emit(command, healthy, { healthy, checks }, healthy ? undefined : {
@@ -109,7 +117,9 @@ try {
           ? `Register exactly npm:${manifest.name}@${manifest.version} in Pi settings and retry.`
           : state.engram.state === "missing"
             ? "Set ENGRAM_BIN to the existing Engram executable and retry."
-            : undefined,
+            : state.context7.state !== "available"
+              ? "Preserve the existing MCP configuration, resolve the Context7 conflict, and reload Pi."
+              : undefined,
       }, healthy ? exitCodes.success : exitCodes.unhealthy);
     }
   }
@@ -133,11 +143,12 @@ function inspectState() {
   return {
     installation: inspectInstallation(),
     engram: inspectEngram(),
+    context7: inspectContext7Config(),
   };
 }
 
 function inspectInstallation() {
-  const settingsPath = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "settings.json");
+  const settingsPath = join(agentDir, "settings.json");
   const invalid = (reason, matches = 0) => ({ state: "invalid", matches, path: settingsPath, reason });
   let settings;
   try {
@@ -183,6 +194,8 @@ function inspectEngram() {
 }
 
 function syncLifecycle() {
+  const context7 = inspectContext7Config();
+  if (context7.state !== "available") throw new LifecycleError("CONTEXT7_CONFIG_BLOCKED", `Context7 configuration is blocked: ${context7.code} (${context7.source}). Preserve the existing configuration and resolve the conflict before sync.`);
   return withLifecycleLocks(syncLifecycleUnlocked, true);
 }
 
@@ -289,7 +302,6 @@ function shouldCreateLifecycleField(field, state) {
 }
 
 function withLifecycleLocks(callback, createAgentDir) {
-  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
   if (!createAgentDir && !existsSync(agentDir)) return callback();
   const lockPaths = [join(agentDir, "settings.json.lock"), join(agentDir, "models.json.lock")];
   const acquired = [];
@@ -333,7 +345,6 @@ function withLifecycleLocks(callback, createAgentDir) {
 }
 
 function loadLifecycleState() {
-  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
   const configs = {
     settings: readLifecycleConfig("settings", join(agentDir, "settings.json"), "Pi settings"),
     models: readLifecycleConfig("models", join(agentDir, "models.json"), "Pi models"),
@@ -608,6 +619,12 @@ function stateError(state) {
       remedy: "Set ENGRAM_BIN to an absolute executable path or remove it to use PATH discovery.",
     };
   }
+  if (state.context7.state !== "available") return {
+    phase: "context7",
+    code: "CONTEXT7_CONFIG_BLOCKED",
+    message: `Context7 configuration is blocked: ${state.context7.code} (${state.context7.source}).`,
+    remedy: "Preserve the existing MCP configuration, resolve the conflict, and reload Pi.",
+  };
   return { phase: "status", code: "INVALID_STATE", message: "Runtime state is invalid." };
 }
 

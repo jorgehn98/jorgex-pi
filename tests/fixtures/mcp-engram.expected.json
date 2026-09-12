@@ -43,6 +43,13 @@
     "directTools": true,
     "toolPrefix": "none"
   },
+  "context7": {
+    "name": "context7",
+    "url": "https://mcp.context7.com/mcp",
+    "auth": false,
+    "lifecycle": "lazy",
+    "directTools": false
+  },
   "childEnvKeys": [
     "HOME",
     "USERPROFILE",

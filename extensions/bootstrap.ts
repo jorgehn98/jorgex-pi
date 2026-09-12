@@ -61,6 +61,8 @@ export function createBootstrap({
     let mcpEngramFailure;
     let mcpEngramFailureNotified = false;
     let mcpEngramState;
+    let context7State;
+    let context7FailureNotified = false;
     let devtoolsRegistered = false;
     let mcpAdapterConflict;
     let mcpAdapterConflictNotified = false;
@@ -168,6 +170,9 @@ export function createBootstrap({
       if (mcpEngramFailure && !mcpEngramFailureNotified) {
         mcpEngramFailureNotified = notifyError(ctx, `JorgeX Engram bridge is unavailable: ${mcpEngramFailure}`);
       }
+      if (context7State && context7State.state !== "registered" && !context7FailureNotified) {
+        context7FailureNotified = notifyError(ctx, `JorgeX Context7 is unavailable: ${context7State.code ?? "registration-incomplete"} (${context7State.source ?? "managed bridge"}). Preserve the existing configuration, resolve the conflict, and reload Pi.`);
+      }
       if (mcpAdapterConflict && !mcpAdapterConflictNotified) {
         mcpAdapterConflictNotified = notifyError(ctx, formatMcpAdapterConflict(mcpAdapterConflict));
       }
@@ -243,6 +248,7 @@ export function createBootstrap({
       try {
         const resolution = await mcpInstaller(createToolCaptureApi(pi, companionTools));
         mcpEngramState = resolution.state;
+        context7State = resolution.context7;
         devtoolsRegistered = resolution.state === "managed" && Boolean(resolution.config?.mcpServers?.["chrome-devtools"]);
         if (resolution.state !== "managed") {
           mcpEngramFailure = resolution.state === "collision"
@@ -282,6 +288,7 @@ export function createBootstrap({
               mcpEngramState === "managed",
               browserRouting(systemPromptAssets, resolvePlaywrightCapability, devtoolsRegistered),
               companionsHealthy && !webAccessConflict,
+              context7State?.state === "registered",
             ),
       };
     });
@@ -638,10 +645,11 @@ function validateSystemPromptAssets(assets) {
   return assets;
 }
 
-function composeDirectInstallPrompt(systemPrompt, assets, hasManagedEngram, browserSections, hasWebAccess) {
+function composeDirectInstallPrompt(systemPrompt, assets, hasManagedEngram, browserSections, hasWebAccess, hasContext7) {
   return composeManagedPrompt(systemPrompt, [
     { marker: systemPromptMarker, contents: assets.policy },
     ...(hasManagedEngram ? [{ marker: engramProtocolMarker, contents: assets.engramProtocol }] : []),
+    ...(hasContext7 ? [{ marker: "jorgex:context7", contents: assets.context7 }] : []),
     ...(hasWebAccess ? [{ marker: webAccessMarker, contents: webAccessGuide }] : []),
     ...browserSections,
   ]);
