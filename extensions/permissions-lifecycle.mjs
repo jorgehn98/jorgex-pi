@@ -75,6 +75,9 @@ export function syncPermissions({ agentDir, packageRoot }) {
 
 export function cleanupPermissions({ agentDir }) {
   const paths = permissionPaths(agentDir);
+  for (const path of [paths.config, paths.receipt]) {
+    ensureManagedDirectory(paths.agentDir, dirname(path), "permission cleanup directory", false);
+  }
   const current = readPermissionFile(paths.config);
   if (current.exists && (!current.regular || !current.readable)) {
     throw new PermissionsLifecycleError("INVALID_CONFIG", current.error ?? "Pi permission config is not a readable regular file.");
@@ -378,7 +381,7 @@ function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function ensureManagedDirectory(baseDir, target, label) {
+function ensureManagedDirectory(baseDir, target, label, create = true) {
   const base = resolve(baseDir);
   const directory = resolve(target);
   let baseStat;
@@ -386,6 +389,7 @@ function ensureManagedDirectory(baseDir, target, label) {
     baseStat = lstatSync(base);
   } catch (error) {
     if (error?.code !== "ENOENT") throw fsError("WRITE_FAILED", "inspect", base, error);
+    if (!create) return;
     try {
       mkdirSync(base, { recursive: true });
       baseStat = lstatSync(base);
@@ -408,6 +412,7 @@ function ensureManagedDirectory(baseDir, target, label) {
       stat = lstatSync(current);
     } catch (error) {
       if (error?.code !== "ENOENT") throw fsError("WRITE_FAILED", "inspect", current, error);
+      if (!create) return;
       try {
         mkdirSync(current);
         stat = lstatSync(current);

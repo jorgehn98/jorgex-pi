@@ -3,10 +3,13 @@ import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -187,6 +190,48 @@ test("permission sync fails closed when the config path is occupied by a directo
     assert.equal(readFileSync(marker, "utf8"), markerBytes, "a config path collision must preserve its contents");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("permission cleanup fails closed when an owned parent is replaced by an external symlink", {
+  skip: process.platform === "win32" ? "native symlink support is not reliable in the Windows fixture" : false,
+}, async (t) => {
+  for (const [label, parentName] of [
+    ["config-parent", "extensions"],
+    ["receipt-parent", "jorgex-pi"],
+  ]) {
+    await t.test(label, () => {
+      const sandbox = createSandbox("permission-external-symlink-" + label);
+      const parentPath = join(sandbox.agentDir, parentName);
+      const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+      const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+      const externalRoot = join(sandbox.root, "external-" + label);
+      try {
+        const sync = runRunner("sync", sandbox);
+        assert.equal(sync.status, 0, sync.stderr);
+        const configBytes = readFileSync(permissionPath);
+        const receiptBytes = readFileSync(receiptPath, "utf8");
+
+        renameSync(parentPath, externalRoot);
+        symlinkSync(externalRoot, parentPath);
+
+        const preservedConfigPath = parentName === "extensions"
+          ? join(externalRoot, "pi-permission-system", "config.json")
+          : permissionPath;
+        const preservedReceiptPath = parentName === "jorgex-pi"
+          ? join(externalRoot, "permissions-lifecycle.v1.json")
+          : receiptPath;
+        const cleanup = runRunner("cleanup", sandbox);
+        assert.notEqual(cleanup.status, 0, "cleanup must fail closed instead of deleting through an external symlink");
+        const output = JSON.parse(cleanup.stdout);
+        assert.equal(output.ok, false);
+        assert.equal(readFileSync(preservedConfigPath).equals(configBytes), true, "cleanup must preserve the config bytes");
+        assert.equal(readFileSync(preservedReceiptPath, "utf8"), receiptBytes, "cleanup must preserve the ownership receipt");
+        assert.equal(lstatSync(parentPath).isSymbolicLink(), true, "cleanup must preserve the external symlink");
+      } finally {
+        rmSync(sandbox.root, { recursive: true, force: true });
+      }
+    });
   }
 });
 
