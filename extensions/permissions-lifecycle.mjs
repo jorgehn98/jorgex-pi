@@ -245,7 +245,7 @@ function readReceipt(path) {
 }
 
 function validateReceipt(value) {
-  if (!isRecord(value) || value.schemaVersion !== 1 || typeof value.initialized !== "boolean") {
+  if (!isRecord(value) || value.schemaVersion !== 1 || value.initialized !== true) {
     throw new PermissionsLifecycleError("INVALID_RECEIPT", "Pi permission lifecycle receipt has an unsupported shape.");
   }
   if (value.owned !== undefined

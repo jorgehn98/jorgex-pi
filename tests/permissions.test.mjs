@@ -62,6 +62,25 @@ test("permission lifecycle seeds only an absent config and never reseeds after u
   }
 });
 
+test("an uninitialized permission receipt fails closed without reseeding or rewriting state", () => {
+  const sandbox = createSandbox("permission-uninitialized-receipt");
+  const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+  const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+  const receiptBytes = JSON.stringify({ schemaVersion: 1, initialized: false }, null, 2) + "\n";
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  writeFileSync(receiptPath, receiptBytes);
+  try {
+    const result = runRunner("sync", sandbox);
+    assert.notEqual(result.status, 0, "an uninitialized permission receipt must fail closed");
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.ok, false);
+    assert.equal(existsSync(permissionPath), false, "a rejected receipt must not trigger default permission seeding");
+    assert.equal(readFileSync(receiptPath, "utf8"), receiptBytes, "a rejected receipt must remain byte-identical");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
 test("preexisting empty permission config remains untouched while initialization is recorded", () => {
   const sandbox = createSandbox("permission-empty-preexisting");
   const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
