@@ -2,7 +2,7 @@
 
 `jorgex-pi` is the single Pi-native package for the JorgeX harness. JorgeX Stack remains the fleet manager and canonical source of shared assets; this repository owns their reviewed Pi representation and lifecycle. `contract/parity.v2.json` records the canonical snapshot, with `source.commit` as its source authority.
 
-The version in `package.json` is the release authority. Minor and major remain manual decisions; after merge, the automatic release workflow preserves and publishes an unpublished selection from `main`. Later publicable changes increment the patch automatically. The current line adds the portable `work-audit` PRE/POST gates, the native opt-in JorgeX theme and TUI-only startup branding, modular system-prompt assets, the `/lean-audit` prompt, and local quality-capability diagnostics while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned Stack snapshot.
+The version in `package.json` is the release authority. Minor and major remain manual decisions; after merge, the automatic release workflow preserves and publishes an unpublished selection from `main`. Later publicable changes increment the patch automatically. The current line adds the portable `work-audit` PRE/POST gates, the native JorgeX theme with first-sync absent-only defaults and TUI-only startup branding, modular system-prompt assets, the `/lean-audit` prompt, and local quality-capability diagnostics while retaining the fail-closed bootstrap, JSON runner, isolated Engram MCP bridge, and versioned Stack snapshot.
 
 ## Current boundary
 
@@ -298,7 +298,7 @@ These changes are represented by parity v2 and its `source.commit`; the managed 
 
 Pi may relocate its agent directory through `PI_CODING_AGENT_DIR`; the package relies on Pi and its companions to resolve that location rather than assuming a fixed user path.
 
-The ownership boundary is `contract/assets.v1.json`. Package-owned external writes are limited to the Sol lifecycle fields in `PI_CODING_AGENT_DIR/settings.json`, `PI_CODING_AGENT_DIR/models.json`, and the receipt at `PI_CODING_AGENT_DIR/jorgex-pi/sol-lifecycle.v1.json`. Permission-system, ask, Web Access, Goal, and MCP adapter state is companion- or user-owned: the bootstrap does not seed, replace, or remove it. The manifest records fourteen `preservedExternalState` paths that must survive JorgeX install, reinstall, and removal:
+The ownership boundary is `contract/assets.v1.json`. Package-owned external writes include the Sol lifecycle fields in `PI_CODING_AGENT_DIR/settings.json`, `PI_CODING_AGENT_DIR/models.json`, and its receipt at `PI_CODING_AGENT_DIR/jorgex-pi/sol-lifecycle.v1.json`, plus the first-sync experience fields in `PI_CODING_AGENT_DIR/settings.json` and their separate receipt at `PI_CODING_AGENT_DIR/jorgex-pi/experience-lifecycle.v1.json`. Experience defaults are written only when their global fields are absent; existing values and project settings remain user-owned. Permission-system, ask, Web Access, Goal, and MCP adapter state is companion- or user-owned: the bootstrap does not seed, replace, or remove it. The manifest records fourteen `preservedExternalState` paths that must survive JorgeX install, reinstall, and removal:
 
 - `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/config.json`
 - `@gotgenes/pi-permission-system`: `PI_CODING_AGENT_DIR/extensions/pi-permission-system/logs`
