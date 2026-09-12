@@ -328,7 +328,6 @@ function withLifecycleLocks(callback, createAgentDir) {
   const lockPaths = [
     join(agentDir, "settings.json.lock"),
     join(agentDir, "models.json.lock"),
-    join(agentDir, "jorgex-pi", "permissions.lock"),
   ];
   const acquired = [];
   let result;
@@ -341,7 +340,6 @@ function withLifecycleLocks(callback, createAgentDir) {
     }
     for (const lockPath of lockPaths) {
       try {
-        mkdirSync(dirname(lockPath), { recursive: true });
         mkdirSync(lockPath);
         acquired.push(lockPath);
       } catch (error) {
