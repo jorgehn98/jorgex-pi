@@ -100,6 +100,70 @@ test("Context7 inspection recognizes a direct Pi config without importing or rew
   }
 });
 
+test("Context7 and Engram resolution expand a tilde agent directory under an isolated HOME", async () => {
+  const { inspectContext7Config } = await import("../extensions/context7-config.mjs");
+  const { resolveConfiguredEngramBinary, resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-tilde-agent-"));
+  const home = join(sandbox, "home");
+  const resolvedAgentDir = join(home, ".pi", "agent");
+  const tildeAgentDir = "~/.pi/agent";
+  const configPath = join(resolvedAgentDir, "mcp.json");
+  const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
+  const manifest = readJson(join(root, "package.json"));
+  const env = {
+    HOME: home,
+    USERPROFILE: home,
+    PI_CODING_AGENT_DIR: tildeAgentDir,
+  };
+  const previousConfig = {
+    mcpServers: {
+      context7: { url: "https://example.invalid/user-context7" },
+      foreign: { url: "https://example.invalid/foreign" },
+    },
+  };
+  const previousBytes = `${JSON.stringify(previousConfig, null, 2)}\n`;
+  mkdirSync(resolvedAgentDir, { recursive: true });
+  writeFileSync(configPath, previousBytes);
+  writeFileSync(fakeBin, "fake binary; never execute\n");
+  chmodSync(fakeBin, 0o755);
+  writeReceipt(
+    join(home, ".jorgex-stack", "pi-receipt.json"),
+    createReceipt({
+      source: `npm:jorgex-pi@${manifest.version}`,
+      version: manifest.version,
+      codingAgentDir: resolvedAgentDir,
+      binary: fakeBin,
+    }),
+  );
+
+  try {
+    const context7 = inspectContext7Config({ env, cwd: sandbox, platform: process.platform });
+    assert.equal(context7.state, "conflict");
+    assert.equal(context7.source, "pi-global");
+    assert.equal(readFileSync(configPath, "utf8"), previousBytes);
+
+    assert.equal(
+      resolveConfiguredEngramBinary({ env, platform: process.platform }),
+      fakeBin,
+      "the managed receipt must match Pi's tilde-normalized agent directory",
+    );
+    const bridge = await resolveMcpEngramConfig({
+      nodePath: resolve(process.execPath),
+      wrapperPath: join(root, "extensions", "engram-mcp-wrapper.mjs"),
+      env,
+      platform: process.platform,
+      cwd: sandbox,
+    });
+    assert.equal(bridge.state, "managed");
+    assert.equal(bridge.context7?.state, "conflict");
+    assert.equal(bridge.config.mcpServers.context7, undefined);
+    assert.equal(bridge.config.mcpServers.engram.args.at(-1), fakeBin);
+    assert.equal(existsSync(join(sandbox, "~")), false, "tilde expansion must not write a literal relative directory");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("managed Engram registers anonymous Context7 over HTTP and keeps an optional key as an env reference", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-context7-config-"));

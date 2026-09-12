@@ -1,10 +1,26 @@
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
+import { fileURLToPath } from "node:url";
 import stripJsonComments from "strip-json-comments";
 
 const maxConfigBytes = 1024 * 1024;
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+export function resolvePiAgentDir({ env = process.env, cwd = process.cwd(), platform = process.platform, configDir = ".pi" } = {}) {
+  const paths = platform === "win32" ? win32 : posix;
+  const home = (platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? homedir();
+  let configured = env.PI_CODING_AGENT_DIR || paths.join(home, configDir, "agent");
+  if (typeof configured !== "string" || !paths.isAbsolute(home)) throw new Error("Invalid Pi agent directory");
+  if (configured === "~") configured = home;
+  else if (configured.startsWith("~/") || (platform === "win32" && configured.startsWith("~\\"))) configured = paths.join(home, configured.slice(2));
+  else if (configured.startsWith("file://")) configured = fileURLToPath(configured, { windows: platform === "win32" });
+  else if (platform === "win32" && !configured.includes("\\")) {
+    const drive = /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i.exec(configured);
+    if (drive) configured = `${drive[1].toUpperCase()}:\\${(drive[2] ?? "").replaceAll("/", "\\")}`;
+  }
+  return paths.resolve(cwd, configured);
+}
 
 export function inspectContext7Config({ env = process.env, cwd = process.cwd(), platform = process.platform, argv = process.argv } = {}) {
   const paths = platform === "win32" ? win32 : posix;
@@ -23,8 +39,9 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
       }
     } catch { return invalid("runtime", "invalid-pi-manifest"); }
   }
-  const agentDir = env.PI_CODING_AGENT_DIR ?? paths.join(home, configDir, "agent");
-  if (!paths.isAbsolute(agentDir)) return invalid("pi-global", "invalid-path");
+  let agentDir;
+  try { agentDir = resolvePiAgentDir({ env, cwd, platform, configDir }); }
+  catch { return invalid("pi-global", "invalid-path"); }
   for (const [source, file] of [
     ["pi-global-settings", paths.join(agentDir, "settings.json")],
     ["pi-project-settings", paths.join(cwd, configDir, "settings.json")],

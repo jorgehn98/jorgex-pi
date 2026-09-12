@@ -135,6 +135,39 @@ test("status and doctor expose a preserved Context7 conflict without rewriting t
   }
 });
 
+test("runner expands a tilde Pi agent directory consistently across status, sync, and cleanup", () => {
+  const sandbox = createSandbox("tilde-agent-dir");
+  const resolvedAgentDir = join(sandbox.home, ".pi", "agent");
+  const tildeAgentDir = "~/.pi/agent";
+  const settingsPath = join(resolvedAgentDir, "settings.json");
+  const registration = `npm:jorgex-pi@${packageVersion}`;
+  mkdirSync(resolvedAgentDir, { recursive: true });
+  writeJson(settingsPath, { packages: [registration], foreign: { keep: true } });
+  const env = { ...sandbox.env, PI_CODING_AGENT_DIR: tildeAgentDir };
+  try {
+    const status = runRunner("status", env, sandbox.project, ["--json"]);
+    assert.equal(status.status, expected.exitCodes.success);
+    assertEnvelope(status, "status");
+    assert.equal(status.json.result.installation.state, "registered");
+
+    const sync = runRunner("sync", env, sandbox.project, ["--json"]);
+    assert.equal(sync.status, expected.exitCodes.success);
+    assertEnvelope(sync, "sync");
+    assert.equal(readJson(settingsPath).defaultProvider, "openai-codex");
+    assert.equal(readJson(settingsPath).defaultModel, "gpt-5.6-sol");
+    assert.equal(existsSync(join(resolvedAgentDir, "models.json")), true);
+
+    const cleanup = runRunner("cleanup", env, sandbox.project, ["--json"]);
+    assert.equal(cleanup.status, expected.exitCodes.success);
+    assertEnvelope(cleanup, "cleanup");
+    assert.deepEqual(readJson(settingsPath), { packages: [registration], foreign: { keep: true } });
+    assert.equal(existsSync(join(resolvedAgentDir, "models.json")), false);
+    assert.equal(existsSync(join(sandbox.project, "~")), false, "tilde expansion must not create a literal relative directory");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
 test("status diagnoses an external Pi MCP adapter before advertising Context7", () => {
   const sandbox = createSandbox("context7-external-adapter");
   const settingsPath = join(sandbox.agentDir, "settings.json");

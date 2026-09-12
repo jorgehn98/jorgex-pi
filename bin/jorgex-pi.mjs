@@ -12,13 +12,13 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let manifest;
 let inspectContext7Config;
+let agentDir;
 let packageInfo = { name: "jorgex-pi", version: "unknown", root };
 const commands = new Set(["status", "doctor", "models", "sync", "cleanup"]);
 const exitCodes = { success: 0, unhealthy: 1, usage: 2, internal: 3 };
@@ -67,7 +67,9 @@ class LifecycleError extends Error {
 try {
   manifest = readJson(join(root, "package.json"));
   packageInfo = { name: manifest.name, version: manifest.version, root };
-  ({ inspectContext7Config } = await import("../extensions/context7-config.mjs"));
+  const context7Module = await import("../extensions/context7-config.mjs");
+  inspectContext7Config = context7Module.inspectContext7Config;
+  agentDir = context7Module.resolvePiAgentDir();
   const args = process.argv.slice(2);
   const command = args[0];
   currentCommand = command ?? "unknown";
@@ -146,7 +148,7 @@ function inspectState() {
 }
 
 function inspectInstallation() {
-  const settingsPath = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "settings.json");
+  const settingsPath = join(agentDir, "settings.json");
   const invalid = (reason, matches = 0) => ({ state: "invalid", matches, path: settingsPath, reason });
   let settings;
   try {
@@ -300,7 +302,6 @@ function shouldCreateLifecycleField(field, state) {
 }
 
 function withLifecycleLocks(callback, createAgentDir) {
-  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
   if (!createAgentDir && !existsSync(agentDir)) return callback();
   const lockPaths = [join(agentDir, "settings.json.lock"), join(agentDir, "models.json.lock")];
   const acquired = [];
@@ -344,7 +345,6 @@ function withLifecycleLocks(callback, createAgentDir) {
 }
 
 function loadLifecycleState() {
-  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
   const configs = {
     settings: readLifecycleConfig("settings", join(agentDir, "settings.json"), "Pi settings"),
     models: readLifecycleConfig("models", join(agentDir, "models.json"), "Pi models"),
