@@ -136,6 +136,8 @@ The JorgeX wrapper gives `web_search` a safe workflow precedence: a valid per-ca
 
 Playwright remains a separate opt-in route, used only when the task requires interactive browser UI, forms, dynamic DOM, screenshots, or tracing. Browser profiles, authenticated sessions, cookies, and stored browser state require explicit user approval; page DOM, downloads, and dialogs remain untrusted data. Its existing snapshot skill is not activated or duplicated.
 
+When the Playwright handoff is ready, the bootstrap adds a package-local fallback using the managed command path. The guidance tells the agent to consult `--help`, use its own task-specific session (`-s=<name>`), open Chromium with `--browser=chromium`, obtain refs with `snapshot`, verify action results, and close only the session it created.
+
 The optional Stack handoff is `PI_CODING_AGENT_DIR/jorgex-pi/playwright.v1.json` (normally `~/.pi/agent/jorgex-pi/playwright.v1.json`). It is a strict, Stack-owned, read-only JSON contract with exactly these fields. “Stack-owned” describes the lifecycle and write ownership; the Pi resolver does not authenticate the file's provenance.
 
 ```json
