@@ -29,5 +29,12 @@
     "diagnostic": "available means configuration permits registration; no HTTP handshake is implied",
     "conflicts": "preserve existing MCP files; block managed Context7 activation",
     "cleanup": "no managed MCP configuration or credentials are written"
+  },
+  "permissions": {
+    "config": "PI_CODING_AGENT_DIR/extensions/pi-permission-system/config.json",
+    "receipt": "PI_CODING_AGENT_DIR/jorgex-pi/permissions-lifecycle.v1.json",
+    "defaults": "assets/permissions/defaults.json",
+    "semantics": "sync seeds only an absent config through exclusive publication; existing, invalid, and concurrent user state is preserved; cleanup keeps an exact owned copy in a retained backup",
+    "diagnostic": "permission state reports invalid or unreadable files without exposing their contents"
   }
 }

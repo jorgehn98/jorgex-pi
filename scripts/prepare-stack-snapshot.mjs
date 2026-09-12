@@ -11,7 +11,7 @@ const FIXTURE = "tests/fixtures/snapshot-parity.expected.json";
 const PARITY = "contract/parity.v2.json";
 const RUNTIME = "contract/runtime-agents.v1.json";
 const DESTINATIONS = [
-  "snapshot", "skills", "assets/system-prompt", "prompts", PARITY,
+  "snapshot", "skills", "assets/system-prompt", "assets/permissions", "prompts", PARITY,
   "contract/schemas/quality-receipt.v1.schema.json", "contract/schemas/quality-capabilities.v1.schema.json",
   "agents", "deferred/agents", "primary", RUNTIME, DEFAULT_SCRIPT, FIXTURE,
 ];
@@ -106,7 +106,7 @@ function topology(parity) {
       else stripHashes(item[key]);
     }
   };
-  for (const key of ["agents", "skills", "policy", "engramProtocol", "systemPromptModules", "commands"]) stripHashes(value[key]);
+  for (const key of ["agents", "skills", "policy", "engramProtocol", "systemPromptModules", "permissions", "commands"]) stripHashes(value[key]);
   return value;
 }
 

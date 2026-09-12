@@ -134,11 +134,25 @@
     "statusResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["installation", "engram", "context7"],
+      "required": ["installation", "engram", "context7", "permissions"],
       "properties": {
         "installation": { "$ref": "#/$defs/installation" },
         "engram": { "$ref": "#/$defs/engram" },
-        "context7": { "$ref": "#/$defs/context7" }
+        "context7": { "$ref": "#/$defs/context7" },
+        "permissions": { "$ref": "#/$defs/permissions" }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "path", "receiptPath", "initialized", "owned"],
+      "properties": {
+        "state": { "enum": ["absent", "missing-owned", "managed", "preexisting", "invalid", "unreadable"] },
+        "path": { "type": "string" },
+        "receiptPath": { "type": "string" },
+        "initialized": { "type": "boolean" },
+        "owned": { "type": "boolean" },
+        "reason": { "type": "string" }
       }
     },
     "doctorResult": {
@@ -149,14 +163,14 @@
         "healthy": { "type": "boolean" },
         "checks": {
           "type": "array",
-          "minItems": 3,
-          "maxItems": 3,
+          "minItems": 4,
+          "maxItems": 4,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["id", "status"],
             "properties": {
-              "id": { "enum": ["package", "engram", "context7"] },
+              "id": { "enum": ["package", "engram", "context7", "permissions"] },
               "status": { "enum": ["ok", "error"] }
             }
           }
@@ -191,7 +205,7 @@
         "changed": { "type": "boolean" },
         "actions": {
           "type": "array",
-          "maxItems": 9,
+          "maxItems": 32,
           "items": { "$ref": "#/$defs/lifecycleAction" }
         }
       }
@@ -218,7 +232,13 @@
         "created:settings.json",
         "created:models.json",
         "removed:settings.json",
-        "removed:models.json"
+        "removed:models.json",
+        "created:permissions.config",
+        "initialized:permissions",
+        "preserved:permissions.config",
+        "released:permissions.config",
+        "backup:permissions.config",
+        "removed:permissions.config"
       ]
     },
     "emptyResult": {

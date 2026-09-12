@@ -300,6 +300,15 @@ function createStackFixture(root, piRoot) {
   ]) {
     copyProjection(piRoot, root, projection.sourcePath, projection.targetPath);
   }
+  const permissions = JSON.parse(readFileSync(join(piRoot, parity.permissions.targetPath), "utf8"));
+  writeFixtureFile(root, parity.permissions.sourcePath, JSON.stringify({
+    opencode: {
+      permission: {
+        read: permissions.permission.path,
+        bash: permissions.permission.bash,
+      },
+    },
+  }, null, 2) + "\n");
   for (const command of parity.commands) {
     const output = readFileSync(join(piRoot, command.targetPath), "utf8");
     writeFixtureFile(root, command.sourcePath, output.replaceAll("$ARGUMENTS", "{{input}}"));

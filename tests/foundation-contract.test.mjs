@@ -38,6 +38,7 @@ test("parity v2 records the direct-install policy, Engram protocol, and portable
   assert.equal(parity.schemaVersion, expected.parityV2.schemaVersion);
   assert.deepEqual(projectionShape(parity.policy), expected.parityV2.policy, "parity v2 must record the system policy projection");
   assert.deepEqual(projectionShape(parity.engramProtocol), expected.parityV2.engramProtocol, "parity v2 must record the Engram protocol projection");
+  assert.deepEqual(projectionShape(parity.permissions), expected.parityV2.permissions, "parity v2 must record the generated permissions projection");
   assert.deepEqual(
     parity.systemPromptModules?.map(({ name, ...projection }) => ({ name, ...projectionShape(projection) })),
     expected.parityV2.systemPromptModules,
@@ -145,8 +146,15 @@ test("candidate quality receipt projection stays separate from install and lifec
   );
   assert.deepEqual(
     assetManifest.managedExternalWrites?.map(({ relativePath }) => relativePath),
-    ["settings.json", "models.json", "jorgex-pi/sol-lifecycle.v1.json"],
-    "Pi lifecycle ownership must remain limited to its existing settings, models, and lifecycle receipt paths",
+    [
+      "settings.json",
+      "models.json",
+      "jorgex-pi/sol-lifecycle.v1.json",
+      "extensions/pi-permission-system/config.json",
+      "jorgex-pi/permissions-lifecycle.v1.json",
+      "jorgex-pi/permissions-backups",
+    ],
+    "Pi lifecycle ownership must enumerate settings, models, and permission policy state separately",
   );
 });
 
@@ -241,6 +249,7 @@ function assertPackedParityTargets(archive, entries, parity) {
   }
   expectedTargets.set(`package/${parity.policy.targetPath}`, parity.policy.outputSha256);
   expectedTargets.set(`package/${parity.engramProtocol.targetPath}`, parity.engramProtocol.outputSha256);
+  expectedTargets.set(`package/${parity.permissions.targetPath}`, parity.permissions.outputSha256);
   for (const module of parity.systemPromptModules ?? []) {
     expectedTargets.set(`package/${module.targetPath}`, module.outputSha256);
   }
@@ -252,6 +261,7 @@ function assertPackedParityTargets(archive, entries, parity) {
       path.startsWith("package/snapshot/agents/")
       || path.startsWith("package/skills/")
       || path.startsWith("package/assets/system-prompt/")
+      || path.startsWith("package/assets/permissions/")
       || path.startsWith("package/prompts/")
       || path === `package/${parity.qualityReceipt.targetPath}`
       || path === `package/${parity.qualityCapabilities.targetPath}`
