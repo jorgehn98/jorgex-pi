@@ -52,6 +52,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     });
     const loaded = JSON.parse(output);
     assert.deepEqual(loaded.errors, [], "the package bootstrap must not call runtime actions during Pi extension loading");
+    assert.equal(loaded.context7FetchCount, 0, "the offline loader fixture must never connect to Context7");
     assert.equal(loaded.extensionCount, 2, "the root package manifest must load the bootstrap and TUI branding extensions");
     assert.deepEqual(loaded.themeNames, ["JorgeX"], "the real Pi loader must load the package's opt-in JorgeX theme");
     assert.deepEqual(loaded.themeDiagnostics, [], "the package theme must load without Pi diagnostics");
@@ -128,6 +129,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
       stdio: ["ignore", "pipe", "pipe"],
     });
     const receiptLoaded = JSON.parse(receiptOutput);
+    assert.equal(receiptLoaded.context7FetchCount, 0, "the receipt loader fixture must never connect to Context7");
     assert.deepEqual(
       receiptLoaded.engramToolNames,
       loaded.engramToolNames,
@@ -156,6 +158,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
       stdio: ["ignore", "pipe", "pipe"],
     });
     const missing = JSON.parse(missingOutput);
+    assert.equal(missing.context7FetchCount, 0, "the missing-Engram loader fixture must never connect to Context7");
     assert.deepEqual(missing.engramToolNames, [], "missing Engram must not expose memory tools");
     assert.equal(missing.realGoal.toolNames.includes("mcp"), false, "missing Engram must not register the generic MCP proxy");
     assert.equal(missing.realGoal.toolNames.includes("mcpScript"), false, "missing Engram must not register the generic MCP script tool");
