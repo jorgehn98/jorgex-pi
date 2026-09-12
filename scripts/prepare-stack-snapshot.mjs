@@ -106,7 +106,7 @@ function topology(parity) {
       else stripHashes(item[key]);
     }
   };
-  for (const key of ["agents", "skills", "policy", "engramProtocol", "commands"]) stripHashes(value[key]);
+  for (const key of ["agents", "skills", "policy", "engramProtocol", "systemPromptModules", "commands"]) stripHashes(value[key]);
   return value;
 }
 

@@ -20,6 +20,21 @@
       "path": "assets/system-prompt/engram-protocol.md",
       "marker": "jorgex:engram-protocol"
     },
+    "context7": {
+      "path": "assets/system-prompt/context7.md",
+      "marker": "jorgex:context7"
+    },
+    "playwright": {
+      "path": "assets/system-prompt/browser-playwright.md",
+      "marker": "jorgex:playwright"
+    },
+    "devtools": {
+      "path": "assets/system-prompt/browser-chrome-devtools.md",
+      "marker": "jorgex:chrome-devtools"
+    },
+    "webAccess": {
+      "marker": "jorgex:web-access"
+    },
     "browser": {
       "marker": "jorgex:browser"
     }

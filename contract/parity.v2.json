@@ -593,6 +593,29 @@
     "sourceSha256": "e23997eda1d8d43c587b5e864b280d4c77055dd30f558c9e9288264398929591",
     "outputSha256": "e23997eda1d8d43c587b5e864b280d4c77055dd30f558c9e9288264398929591"
   },
+  "systemPromptModules": [
+    {
+      "name": "context7",
+      "sourcePath": "stack/system-prompt/context7.md",
+      "targetPath": "assets/system-prompt/context7.md",
+      "sourceSha256": "a3865faa3b082943b7342ba3e9e12a0ee46ea7126b77e7924e8a7893355266b4",
+      "outputSha256": "a3865faa3b082943b7342ba3e9e12a0ee46ea7126b77e7924e8a7893355266b4"
+    },
+    {
+      "name": "playwright",
+      "sourcePath": "stack/system-prompt/browser-playwright.md",
+      "targetPath": "assets/system-prompt/browser-playwright.md",
+      "sourceSha256": "dbaa960442b923fe11dae62cbff0037a2f760c3e58a0e827a5c717f6b9376eb2",
+      "outputSha256": "dbaa960442b923fe11dae62cbff0037a2f760c3e58a0e827a5c717f6b9376eb2"
+    },
+    {
+      "name": "chrome-devtools",
+      "sourcePath": "stack/system-prompt/browser-chrome-devtools.md",
+      "targetPath": "assets/system-prompt/browser-chrome-devtools.md",
+      "sourceSha256": "7252c2e8caf282021cab7cb8b9fe994014a841b45a9c0b94e40a7d05138b271b",
+      "outputSha256": "7252c2e8caf282021cab7cb8b9fe994014a841b45a9c0b94e40a7d05138b271b"
+    }
+  ],
   "qualityReceipt": {
     "namespace": "jorgex.quality.receipt",
     "version": 1,
@@ -638,14 +661,6 @@
     {
       "kind": "runtime-specific-overlay",
       "sourcePath": "stack/commands/opencode/xreview.md"
-    },
-    {
-      "kind": "runtime-specific-overlay",
-      "sourcePath": "stack/system-prompt/browser-chrome-devtools.md"
-    },
-    {
-      "kind": "runtime-specific-overlay",
-      "sourcePath": "stack/system-prompt/browser-playwright.md"
     }
   ]
 }

@@ -19,6 +19,11 @@ const QUALITY_CAPABILITIES_SOURCE_PATH = "stack/contracts/quality-capabilities.v
 const QUALITY_CAPABILITIES_TARGET_PATH = "contract/schemas/quality-capabilities.v1.schema.json";
 const POLICY_SOURCE_PATH = "stack/system-prompt/AGENTS.md";
 const ENGRAM_PROTOCOL_SOURCE_PATH = "stack/system-prompt/engram-protocol.md";
+const SYSTEM_PROMPT_MODULES = [
+  { name: "context7", file: "context7.md" },
+  { name: "playwright", file: "browser-playwright.md" },
+  { name: "chrome-devtools", file: "browser-chrome-devtools.md" },
+];
 const COMMAND_SOURCES = [
   {
     name: "lean-audit",
@@ -32,8 +37,6 @@ const EXCLUSIONS = [
   { kind: "capability-integration", id: "programmatic-mode-negotiation" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/commands/claude-code/xreview.md" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/commands/opencode/xreview.md" },
-  { kind: "runtime-specific-overlay", sourcePath: "stack/system-prompt/browser-chrome-devtools.md" },
-  { kind: "runtime-specific-overlay", sourcePath: "stack/system-prompt/browser-playwright.md" },
 ];
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(scriptDir, "..");
@@ -67,6 +70,10 @@ try {
     skills: generateSkills(skillSources),
     policy: generateCopyProjection(POLICY_SOURCE_PATH, "assets/system-prompt/AGENTS.md"),
     engramProtocol: generateCopyProjection(ENGRAM_PROTOCOL_SOURCE_PATH, "assets/system-prompt/engram-protocol.md"),
+    systemPromptModules: SYSTEM_PROMPT_MODULES.map(({ name, file }) => ({
+      name,
+      ...generateCopyProjection(`stack/system-prompt/${file}`, `assets/system-prompt/${file}`),
+    })),
     qualityReceipt: generateQualityReceiptProjection(),
     qualityCapabilities: generateQualityCapabilitiesProjection(),
     commands: COMMAND_SOURCES.map(generateCommand),

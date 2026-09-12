@@ -49,6 +49,23 @@
     "sourcePath": "stack/system-prompt/engram-protocol.md",
     "targetPath": "assets/system-prompt/engram-protocol.md"
   },
+  "systemPromptModules": [
+    {
+      "name": "context7",
+      "sourcePath": "stack/system-prompt/context7.md",
+      "targetPath": "assets/system-prompt/context7.md"
+    },
+    {
+      "name": "playwright",
+      "sourcePath": "stack/system-prompt/browser-playwright.md",
+      "targetPath": "assets/system-prompt/browser-playwright.md"
+    },
+    {
+      "name": "chrome-devtools",
+      "sourcePath": "stack/system-prompt/browser-chrome-devtools.md",
+      "targetPath": "assets/system-prompt/browser-chrome-devtools.md"
+    }
+  ],
   "qualityReceipt": {
     "namespace": "jorgex.quality.receipt",
     "version": 1,
@@ -92,14 +109,6 @@
     {
       "kind": "runtime-specific-overlay",
       "sourcePath": "stack/commands/opencode/xreview.md"
-    },
-    {
-      "kind": "runtime-specific-overlay",
-      "sourcePath": "stack/system-prompt/browser-chrome-devtools.md"
-    },
-    {
-      "kind": "runtime-specific-overlay",
-      "sourcePath": "stack/system-prompt/browser-playwright.md"
     }
   ]
 }

@@ -24,7 +24,7 @@ test("the Stack snapshot stays complete and deterministic after runtime activati
   assert.deepEqual(parity.source, { repository: expected.sourceRepository, commit: expected.sourceCommit });
   assert.deepEqual(
     Object.keys(parity).sort(),
-    ["agents", "commands", "engramProtocol", "exclusions", "policy", "qualityCapabilities", "qualityReceipt", "schemaVersion", "skills", "source"],
+    ["agents", "commands", "engramProtocol", "exclusions", "policy", "qualityCapabilities", "qualityReceipt", "schemaVersion", "skills", "source", "systemPromptModules"],
     "parity v2 must expose every canonical source type explicitly",
   );
   assertAgentParity(parity.agents);
@@ -80,6 +80,7 @@ function assertSkillParity(skills) {
 function assertSharedProjectionParity(parity) {
   assertCopyProjection(parity.policy, expected.policy, "system policy");
   assertCopyProjection(parity.engramProtocol, expected.engramProtocol, "Engram protocol");
+  assertSystemPromptModulesParity(parity.systemPromptModules);
   assertQualityReceiptProjection(parity.qualityReceipt, expected.qualityReceipt);
   assertQualityCapabilitiesProjection(parity[capabilitiesExpected.parityField], capabilitiesExpected);
 
@@ -101,14 +102,35 @@ function assertSharedProjectionParity(parity) {
 
   assert.deepEqual(
     listFiles(join(root, "assets", "system-prompt")),
-    [parity.policy.targetPath, parity.engramProtocol.targetPath].sort(),
-    "the bundled policy directory must contain only tracked canonical fallbacks",
+    [
+      parity.policy.targetPath,
+      parity.engramProtocol.targetPath,
+      ...parity.systemPromptModules.map(({ targetPath }) => targetPath),
+    ].sort(),
+    "the bundled policy directory must contain only tracked canonical fallbacks and prompt modules",
   );
   assert.deepEqual(
     listFiles(join(root, "prompts")),
     parity.commands.map(({ targetPath }) => targetPath).sort(),
     "the bundled prompt directory must contain only tracked canonical projections",
   );
+}
+
+function assertSystemPromptModulesParity(modules) {
+  assert.ok(Array.isArray(modules), "parity systemPromptModules must be an array");
+  assert.deepEqual(
+    modules.map(({ name, sourcePath, targetPath }) => ({ name, sourcePath, targetPath })),
+    expected.systemPromptModules,
+    "parity system prompt modules must match the reviewed canonical sources",
+  );
+  for (const module of modules) {
+    assert.deepEqual(Object.keys(module).sort(), ["name", "outputSha256", "sourcePath", "sourceSha256", "targetPath"]);
+    assert.match(module.name, /^[a-z0-9-]+$/);
+    assert.equal(module.sourcePath, `stack/system-prompt/${module.name === "playwright" ? "browser-playwright" : module.name === "chrome-devtools" ? "browser-chrome-devtools" : module.name}.md`);
+    assert.equal(module.targetPath, `assets/system-prompt/${module.name === "playwright" ? "browser-playwright" : module.name === "chrome-devtools" ? "browser-chrome-devtools" : module.name}.md`);
+    assertSha256(module.sourceSha256, `${module.name} source hash`);
+    assert.equal(module.outputSha256, hashFile(join(root, module.targetPath)), `${module.name} output hash must match packaged bytes`);
+  }
 }
 
 function assertQualityReceiptProjection(projection, projectionExpected) {
