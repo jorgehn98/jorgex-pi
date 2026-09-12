@@ -23,6 +23,8 @@ const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "runner.expected.json"));
 const runnerEntry = join(root, expected.entrypoint);
 const packageVersion = readJson(join(root, "package.json")).version;
+const permissionConfigRelativePath = join("extensions", "pi-permission-system", "config.json");
+const permissionReceiptRelativePath = join("jorgex-pi", "permissions-lifecycle.v1.json");
 
 test("the package exposes one versioned JSON-only runner contract", () => {
   const manifest = readJson(join(root, "package.json"));
@@ -66,7 +68,7 @@ test("the package exposes one versioned JSON-only runner contract", () => {
   assert.equal(schema.$defs?.primaryModel?.additionalProperties, false);
   assert.deepEqual(schema.$defs?.lifecycleResult?.required, ["changed", "actions"]);
   assert.equal(schema.$defs?.lifecycleResult?.additionalProperties, false);
-  assert.equal(schema.$defs?.lifecycleResult?.properties?.actions?.maxItems, 12);
+  assert.equal(schema.$defs?.lifecycleResult?.properties?.actions?.maxItems, expected.maxLifecycleActions);
 });
 
 test("status, models, doctor, and usage use the bounded machine envelope and stable exits", () => {
@@ -201,7 +203,8 @@ test("experience defaults seed once, keep ownership separate from Sol, and prese
     assert.deepEqual(readJson(settingsPath).foreign, { keep: true }, "experience sync must preserve unrelated settings");
 
     const experienceReceiptPath = join(sandbox.agentDir, "jorgex-pi", "experience-lifecycle.v1.json");
-    assert.equal(receiptPaths(sandbox.agentDir).length, 1, "experience ownership must use one dedicated receipt when Sol is preexisting");
+    assert.equal(existsSync(join(sandbox.agentDir, "jorgex-pi", "sol-lifecycle.v1.json")), false, "preexisting Sol values must remain unowned");
+    assert.equal(existsSync(join(sandbox.agentDir, "jorgex-pi", "permissions-lifecycle.v1.json")), true, "permission initialization must keep its receipt separate");
     assert.equal(existsSync(experienceReceiptPath), true, "experience ownership must be stored separately from the Sol receipt");
     const experienceReceipt = readJson(experienceReceiptPath);
     assert.equal(experienceReceipt.schemaVersion, 1, "experience ownership receipt must be versioned");
@@ -566,7 +569,7 @@ test("status resolves an absolute ENGRAM_BIN before an isolated PATH fallback wi
 
 test("Sol lifecycle sync and cleanup preserve field-level ownership at the runner boundary", async (t) => {
   await t.test("fresh sync writes exact Sol defaults once, preserves siblings, and cleanup removes its exact leaves", () => {
-    const sandbox = createSandbox("sol-fresh");
+    const sandbox = createSolSandbox("sol-fresh");
     const settingsPath = join(sandbox.agentDir, "settings.json");
     const modelsPath = join(sandbox.agentDir, "models.json");
     const foreignSettings = { packages: ["npm:foreign@1.0.0"], foreign: { keep: true } };
@@ -634,6 +637,8 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
     const sandbox = createSandbox("sol-preexisting");
     const settingsPath = join(sandbox.agentDir, "settings.json");
     const modelsPath = join(sandbox.agentDir, "models.json");
+    const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+    const permissionReceiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
     writeJson(settingsPath, {
       defaultProvider: "openai-codex",
       defaultModel: "gpt-5.6-sol",
@@ -647,14 +652,16 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
         },
       },
     });
+    writeJson(permissionPath, { permission: { "*": "ask" } });
+    const permissionBytes = readFileSync(permissionPath, "utf8");
     const before = digestRoots([sandbox.agentDir]);
     try {
       const sync = runRunner("sync", sandbox.env, sandbox.project);
       assert.equal(sync.status, expected.exitCodes.success);
       assertEnvelope(sync, "sync");
-    assert.equal(sync.json.result.changed, true, "first experience initialization must persist metadata even when Sol leaves preexist");
-    assert.equal(existsSync(join(sandbox.agentDir, "jorgex-pi", "sol-lifecycle.v1.json")), false, "preexisting Sol leaves must remain unowned");
-    assert.deepEqual(readJson(join(sandbox.agentDir, "jorgex-pi", "experience-lifecycle.v1.json")), {
+      assert.equal(sync.json.result.changed, true, "first visit must persist both lifecycle initialization records");
+      assert.equal(existsSync(join(sandbox.agentDir, "jorgex-pi", "sol-lifecycle.v1.json")), false, "preexisting Sol leaves must remain unowned");
+      assert.deepEqual(readJson(join(sandbox.agentDir, "jorgex-pi", "experience-lifecycle.v1.json")), {
         schemaVersion: 1,
         initialized: true,
         fields: {
@@ -663,12 +670,27 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
           hideThinkingBlock: true,
         },
       }, "missing experience leaves must be owned while first visit is recorded");
+      assert.deepEqual(readJson(permissionReceiptPath), {
+        schemaVersion: 1,
+        initialized: true,
+      }, "preexisting permission policy must receive initialization metadata without ownership");
 
       const cleanup = runRunner("cleanup", sandbox.env, sandbox.project);
       assert.equal(cleanup.status, expected.exitCodes.success);
       assertEnvelope(cleanup, "cleanup");
-      assert.equal(cleanup.json.result.changed, true, "cleanup must remove the experience receipt it created");
-      assert.equal(digestRoots([sandbox.agentDir]), before, "preexisting user config must remain byte-identical");
+      assert.equal(cleanup.json.result.changed, true, "cleanup must remove the lifecycle receipts it created");
+      assert.equal(existsSync(permissionReceiptPath), false, "cleanup must remove the unowned permission lifecycle receipt");
+      assert.equal(readFileSync(permissionPath, "utf8"), permissionBytes, "cleanup must preserve the preexisting permission config");
+      assert.equal(existsSync(join(sandbox.agentDir, "jorgex-pi", "experience-lifecycle.v1.json")), false, "cleanup must remove the experience receipt it created");
+      assert.deepEqual(readJson(settingsPath), {
+        defaultProvider: "openai-codex",
+        defaultModel: "gpt-5.6-sol",
+        foreign: { keep: true },
+      }, "cleanup must remove only the experience leaves it created");
+      assert.equal(readJson(modelsPath).providers["openai-codex"].modelOverrides["gpt-5.6-sol"].contextWindow, 872_000);
+      assert.equal(readJson(modelsPath).providers["openai-codex"].modelOverrides["gpt-5.6-sol"].maxTokens, 128_000);
+      assert.deepEqual(readJson(modelsPath).providers["openai-codex"].foreign, { keep: true });
+      assert.equal(digestRoots([sandbox.agentDir]), before, "cleanup must restore preexisting settings, models, and permission bytes");
     } finally {
       rmSync(sandbox.root, { recursive: true, force: true });
     }
@@ -680,7 +702,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
         { defaultProvider: "foreign-provider" },
         { defaultModel: "foreign-model" },
       ]) {
-        const sandbox = createSandbox("sol-foreign-half");
+        const sandbox = createSolSandbox("sol-foreign-half");
         const settingsPath = join(sandbox.agentDir, "settings.json");
         const modelsPath = join(sandbox.agentDir, "models.json");
         writeJson(settingsPath, settings);
@@ -710,7 +732,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
         { defaultProvider: "openai-codex" },
         { defaultModel: "gpt-5.6-sol" },
       ]) {
-        const sandbox = createSandbox("sol-matching-half");
+        const sandbox = createSolSandbox("sol-matching-half");
         const settingsPath = join(sandbox.agentDir, "settings.json");
         const modelsPath = join(sandbox.agentDir, "models.json");
         writeJson(settingsPath, settings);
@@ -739,6 +761,8 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
     const sandbox = createSandbox("sol-user-replacement");
     const settingsPath = join(sandbox.agentDir, "settings.json");
     const modelsPath = join(sandbox.agentDir, "models.json");
+    const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+    const permissionReceiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
     writeJson(settingsPath, { foreign: { keep: true } });
     writeJson(modelsPath, { providers: { foreign: { keep: true } } });
     try {
@@ -749,10 +773,13 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
 
       const settings = readJson(settingsPath);
       settings.defaultModel = "user-selected-model";
+      settings.theme = "user-theme";
+      settings.quietStartup = false;
       writeJson(settingsPath, settings);
       const models = readJson(modelsPath);
       models.providers["openai-codex"].modelOverrides["gpt-5.6-sol"].contextWindow = 64_000;
       writeJson(modelsPath, models);
+      const permissionBytes = readFileSync(permissionPath, "utf8");
       const receiptPath = findReceiptPath(sandbox.agentDir);
 
       const cleanup = runRunner("cleanup", sandbox.env, sandbox.project);
@@ -763,6 +790,9 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
       const modelsAfterCleanup = readJson(modelsPath);
       assert.equal("defaultProvider" in settingsAfterCleanup, false, "cleanup must remove a still-owned exact leaf");
       assert.equal(settingsAfterCleanup.defaultModel, "user-selected-model", "cleanup must preserve a user replacement");
+      assert.equal(settingsAfterCleanup.theme, "user-theme", "cleanup must preserve a user replacement of theme");
+      assert.equal(settingsAfterCleanup.quietStartup, false, "cleanup must preserve a user replacement of quietStartup");
+      assert.equal("hideThinkingBlock" in settingsAfterCleanup, false, "cleanup must remove an owned exact experience leaf");
       assert.deepEqual(settingsAfterCleanup.foreign, { keep: true });
       assert.equal(
         modelsAfterCleanup.providers["openai-codex"].modelOverrides["gpt-5.6-sol"].contextWindow,
@@ -771,6 +801,13 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
       );
       assert.deepEqual(modelsAfterCleanup.providers.foreign, { keep: true });
       assert.equal(existsSync(receiptPath), false, "released field ownership must remove an empty receipt");
+      assert.equal(existsSync(permissionPath), false, "cleanup must remove the exact owned permission config");
+      assert.equal(existsSync(permissionReceiptPath), false, "cleanup must remove the permission lifecycle receipt");
+      const backupRoot = join(sandbox.agentDir, "jorgex-pi", "permissions-backups");
+      const backups = readdirSync(backupRoot);
+      assert.equal(backups.length, 1, "cleanup must retain one backup of the exact owned permission config");
+      assert.equal(readFileSync(join(backupRoot, backups[0], "config.json"), "utf8"), permissionBytes, "permission backup must preserve the exact managed bytes");
+      assert.equal(existsSync(join(sandbox.agentDir, "jorgex-pi", "experience-lifecycle.v1.json")), false, "cleanup must remove the experience receipt after releasing replacements");
     } finally {
       rmSync(sandbox.root, { recursive: true, force: true });
     }
@@ -920,7 +957,15 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
       assert.equal(cleanup.status, expected.exitCodes.success);
       assertEnvelope(cleanup, "cleanup");
       assert.equal(cleanup.json.result.changed, true);
-      assert.deepEqual(readdirSync(sandbox.agentDir), [], "cleanup must remove all files and the empty receipt directory it created");
+      assert.equal(existsSync(join(sandbox.agentDir, "settings.json")), false, "cleanup must remove the owned settings file");
+      assert.equal(existsSync(join(sandbox.agentDir, "models.json")), false, "cleanup must remove the owned models file");
+      assert.equal(existsSync(join(sandbox.agentDir, permissionConfigRelativePath)), false, "cleanup must remove the owned permission config");
+      assert.equal(existsSync(join(sandbox.agentDir, permissionReceiptRelativePath)), false, "cleanup must remove the permission lifecycle receipt");
+      const backupRoot = join(sandbox.agentDir, "jorgex-pi", "permissions-backups");
+      const backups = readdirSync(backupRoot);
+      assert.equal(backups.length, 1, "cleanup must retain one backup of the exact owned permission config");
+      assert.match(backups[0], /^permissions-backup-/);
+      assert.equal(existsSync(join(backupRoot, backups[0], "config.json")), true, "the retained backup must contain the owned config");
     } finally {
       rmSync(sandbox.root, { recursive: true, force: true });
     }
@@ -966,7 +1011,7 @@ function assertEnvelope(result, command) {
       assert.ok(json.error[field].length > 0, `schema-required error.${field} must not be empty`);
     }
   }
-  if (command === "status") assert.deepEqual(Object.keys(json.result).sort(), ["context7", "engram", "installation"]);
+  if (command === "status") assert.deepEqual(Object.keys(json.result).sort(), ["context7", "engram", "installation", "permissions"]);
   if (command === "doctor") {
     assert.equal(typeof json.result.healthy, "boolean");
     assert.ok(Array.isArray(json.result.checks));
@@ -1024,6 +1069,15 @@ function createSandbox(label) {
   };
 }
 
+function createSolSandbox(label) {
+  const sandbox = createSandbox(label);
+  const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+  const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+  writeJson(permissionPath, { permission: { "*": "ask" } });
+  writeJson(receiptPath, { schemaVersion: 1, initialized: true });
+  return sandbox;
+}
+
 function allowedHostEnv() {
   const env = {};
   for (const key of ["PATHEXT", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec", "WINDIR", "windir"]) {
@@ -1045,7 +1099,7 @@ function receiptPaths(agentDir) {
   const receiptDir = join(agentDir, "jorgex-pi");
   if (!existsSync(receiptDir)) return [];
   return readdirSync(receiptDir)
-    .filter((name) => name.endsWith(".json"))
+    .filter((name) => name === "sol-lifecycle.v1.json")
     .map((name) => join(receiptDir, name));
 }
 

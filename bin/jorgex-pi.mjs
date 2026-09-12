@@ -14,6 +14,10 @@ import {
 } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+let cleanupPermissions;
+let inspectPermissions;
+let PermissionsLifecycleError;
+let syncPermissions;
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let manifest;
@@ -74,6 +78,7 @@ class LifecycleError extends Error {
 try {
   manifest = readJson(join(root, "package.json"));
   packageInfo = { name: manifest.name, version: manifest.version, root };
+  ({ cleanupPermissions, inspectPermissions, PermissionsLifecycleError, syncPermissions } = await import("../extensions/permissions-lifecycle.mjs"));
   const context7Module = await import("../extensions/context7-config.mjs");
   inspectContext7Config = context7Module.inspectContext7Config;
   agentDir = context7Module.resolvePiAgentDir();
@@ -98,7 +103,10 @@ try {
   } else {
     const state = inspectState();
     if (command === "status") {
-      const healthy = state.installation.state !== "invalid" && state.engram.state !== "invalid" && state.context7.state === "available";
+      const healthy = state.installation.state !== "invalid"
+        && state.engram.state !== "invalid"
+        && state.context7.state === "available"
+        && !["invalid", "unreadable"].includes(state.permissions.state);
       emit(command, healthy, state, healthy ? undefined : stateError(state), healthy ? exitCodes.success : exitCodes.unhealthy);
     } else {
       const checks = [
@@ -113,6 +121,10 @@ try {
         {
           id: "context7",
           status: state.context7.state === "available" ? "ok" : "error",
+        },
+        {
+          id: "permissions",
+          status: ["invalid", "unreadable"].includes(state.permissions.state) ? "error" : "ok",
         },
       ];
       const healthy = checks.every(({ status }) => status === "ok");
@@ -131,7 +143,7 @@ try {
     }
   }
 } catch (error) {
-  if (error instanceof LifecycleError) {
+  if (error instanceof LifecycleError || (PermissionsLifecycleError && error instanceof PermissionsLifecycleError)) {
     emit(currentCommand, false, { changed: false, actions: [] }, {
       phase: "lifecycle",
       code: error.code,
@@ -151,6 +163,7 @@ function inspectState() {
     installation: inspectInstallation(),
     engram: inspectEngram(),
     context7: inspectContext7Config(),
+    permissions: inspectPermissions({ agentDir, packageRoot: root }),
   };
 }
 
@@ -210,7 +223,6 @@ function syncLifecycleUnlocked() {
   const state = loadLifecycleState();
   const { receipt } = state;
   const actions = [];
-
   for (const field of lifecycleFields) {
     const config = state.configs[field.config];
     const current = readPath(config.value, field.path);
@@ -238,7 +250,12 @@ function syncLifecycleUnlocked() {
   syncExperienceLifecycle(state, actions);
   releaseUnusedContainerOwnership(receipt);
   finalizeReceipt(state);
-  return persistLifecycle(state, actions);
+  const permissionResult = syncPermissions({ agentDir, packageRoot: root });
+  const lifecycleResult = persistLifecycle(state, actions);
+  return {
+    changed: permissionResult.changed || lifecycleResult.changed,
+    actions: [...lifecycleResult.actions, ...permissionResult.actions],
+  };
 }
 
 function cleanupLifecycle() {
@@ -249,10 +266,15 @@ function cleanupLifecycleUnlocked() {
   const state = loadLifecycleState();
   const { receipt } = state;
   const actions = [];
+  const permissionResult = cleanupPermissions({ agentDir, packageRoot: root });
   if (state.experienceReceipt.exists) cleanupExperienceLifecycle(state, actions);
   if (!receipt.exists) {
     finalizeExperienceReceipt(state);
-    return persistLifecycle(state, actions);
+    const lifecycleResult = persistLifecycle(state, actions);
+    return {
+      changed: permissionResult.changed || lifecycleResult.changed,
+      actions: [...lifecycleResult.actions, ...permissionResult.actions],
+    };
   }
 
   for (const field of lifecycleFields) {
@@ -296,7 +318,11 @@ function cleanupLifecycleUnlocked() {
 
   finalizeReceipt(state);
   finalizeExperienceReceipt(state);
-  return persistLifecycle(state, actions);
+  const lifecycleResult = persistLifecycle(state, actions);
+  return {
+    changed: permissionResult.changed || lifecycleResult.changed,
+    actions: [...lifecycleResult.actions, ...permissionResult.actions],
+  };
 }
 
 function syncExperienceLifecycle(state, actions) {
@@ -359,7 +385,10 @@ function shouldCreateLifecycleField(field, state) {
 
 function withLifecycleLocks(callback, createAgentDir) {
   if (!createAgentDir && !existsSync(agentDir)) return callback();
-  const lockPaths = [join(agentDir, "settings.json.lock"), join(agentDir, "models.json.lock")];
+  const lockPaths = [
+    join(agentDir, "settings.json.lock"),
+    join(agentDir, "models.json.lock"),
+  ];
   const acquired = [];
   let result;
   let failure;
@@ -737,6 +766,12 @@ function stateError(state) {
     code: "CONTEXT7_CONFIG_BLOCKED",
     message: `Context7 configuration is blocked: ${state.context7.code} (${state.context7.source}).`,
     remedy: "Preserve the existing MCP configuration, resolve the conflict, and reload Pi.",
+  };
+  if (["invalid", "unreadable"].includes(state.permissions.state)) return {
+    phase: "permissions",
+    code: "INVALID_PERMISSIONS",
+    message: state.permissions.reason ?? "Pi permission configuration is invalid or unreadable.",
+    remedy: `Preserve the existing permission configuration at ${state.permissions.path}, correct it manually, and retry.`,
   };
   return { phase: "status", code: "INVALID_STATE", message: "Runtime state is invalid." };
 }
