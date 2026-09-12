@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "bd06c4f771e1ff0b080f45c552cba470c66b8ba4"
+    "commit": "fe6cb473e4996b415fa02b5d7085143397c9d9cd"
   },
   "agents": [
     {
@@ -231,53 +231,6 @@
         {
           "path": "references/standard-workflow.md",
           "sha256": "9fa367660d4eefcb0039e78538808244e87e88ef748a2770b9e38cf8e71829ba"
-        }
-      ]
-    },
-    {
-      "name": "playwright-cli",
-      "sourcePath": "stack/skills/playwright-cli",
-      "targetPath": "skills/playwright-cli",
-      "files": [
-        {
-          "path": "SKILL.md",
-          "sha256": "d8e3e2428103ba39a6fcddaee0dd84f1412b7761580579d3bc54eef1d1e61c7c"
-        },
-        {
-          "path": "references/element-attributes.md",
-          "sha256": "bf19aa4671e0a50a0fefa9c790f39124e803060eefe395042b723c29fcb7faa2"
-        },
-        {
-          "path": "references/playwright-tests.md",
-          "sha256": "ac55b80ad6e8e51a5b713318dbba6c2290733c69dec9f456518898c201651a80"
-        },
-        {
-          "path": "references/request-mocking.md",
-          "sha256": "54e801c9663fc2b6d68ceb058cb1c360724c2499f42acc7852a68e83e5b5f37c"
-        },
-        {
-          "path": "references/running-code.md",
-          "sha256": "d95c539a5990b71d02d8bdf1d9414df16191eb6cff95b0063820518b7a13dcb2"
-        },
-        {
-          "path": "references/session-management.md",
-          "sha256": "cd3e261b8763bf952f1e371b876cb78d054379afec85482f9250633e1b7e6c44"
-        },
-        {
-          "path": "references/storage-state.md",
-          "sha256": "9ac47f9ae4a1aedcd2077f8ac9ab1ba6bee1962cb83ff51adcd36fb6d83b5ec6"
-        },
-        {
-          "path": "references/test-generation.md",
-          "sha256": "227c70e9f8869ab7677ccaa3d4587c17cfd783fcfd60fce75fac451b80687cfb"
-        },
-        {
-          "path": "references/tracing.md",
-          "sha256": "792e0ac7705e56ac48df84c0f5400221ce86107897c671590a64a4ea6a82508e"
-        },
-        {
-          "path": "references/video-recording.md",
-          "sha256": "8555ab5400df0d90e66318aacc0a8a4418fbf872e7463824d55d5c41615abd83"
         }
       ]
     },

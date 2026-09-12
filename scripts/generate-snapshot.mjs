@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const DEFAULT_SOURCE_COMMIT = "bd06c4f771e1ff0b080f45c552cba470c66b8ba4";
+const DEFAULT_SOURCE_COMMIT = "fe6cb473e4996b415fa02b5d7085143397c9d9cd";
 const SOURCE_COMMIT = process.env.JORGEX_STACK_COMMIT?.trim() || DEFAULT_SOURCE_COMMIT;
 const QUALITY_RECEIPT_SOURCE_PATH = "stack/contracts/quality-receipt.v1.schema.json";
 const QUALITY_RECEIPT_TARGET_PATH = "contract/schemas/quality-receipt.v1.schema.json";

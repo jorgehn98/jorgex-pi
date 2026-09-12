@@ -187,7 +187,7 @@ test("the runtime contract translates one primary and thirteen canonical subagen
   const contract = readJson(join(root, expected.contractPath), "runtime agent contract");
   const manifest = readJson(join(root, "package.json"), "package manifest");
   const parity = readJson(join(root, "contract", "parity.v2.json"), "snapshot parity contract");
-  const activeSnapshotSkills = parity.skills.map(({ name }) => name).filter((name) => name !== "playwright-cli");
+  const activeSnapshotSkills = parity.skills.map(({ name }) => name);
   const packageSkills = manifest.pi.skills.map((path) => path.replace(/^\.\/skills\//, ""));
   assert.deepEqual(Object.keys(contract).sort(), ["agents", "dependency", "primary", "schemaVersion", "skillSelections", "skills"]);
   assert.equal(contract.schemaVersion, expected.schemaVersion);
@@ -195,7 +195,7 @@ test("the runtime contract translates one primary and thirteen canonical subagen
   assert.deepEqual(contract.primary, expected.primary);
   assert.deepEqual(contract.skillSelections, expected.skillSelections, "runtime contract must retain the reviewed private skill selection by role");
   assert.deepEqual(contract.skills, expected.skills, "runtime skill allowlist must match its reviewed fixture");
-  assert.deepEqual(contract.skills, activeSnapshotSkills, "runtime skills must equal the canonical snapshot minus opt-in Playwright");
+  assert.deepEqual(contract.skills, activeSnapshotSkills, "runtime skills must equal the canonical snapshot");
   assert.deepEqual(packageSkills, activeSnapshotSkills, "package activation must match the runtime skill contract");
   assert.equal(contract.skills.includes("playwright-cli"), false, "Playwright remains a separate opt-in integration");
   assert.equal(new Set(contract.skills).size, expected.skills.length, "runtime skill names must be unique");
