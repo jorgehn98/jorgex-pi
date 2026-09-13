@@ -238,7 +238,16 @@
         "preserved:permissions.config",
         "released:permissions.config",
         "backup:permissions.config",
-        "removed:permissions.config"
+        "removed:permissions.config",
+        "created:theme",
+        "created:quietStartup",
+        "created:hideThinkingBlock",
+        "released:theme",
+        "released:quietStartup",
+        "released:hideThinkingBlock",
+        "removed:theme",
+        "removed:quietStartup",
+        "removed:hideThinkingBlock"
       ]
     },
     "emptyResult": {

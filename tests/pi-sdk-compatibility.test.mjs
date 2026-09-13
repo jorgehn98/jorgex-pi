@@ -6,13 +6,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -23,6 +24,78 @@ const configuredPackage = process.env.JORGEX_PI_PACKAGE_DIR?.trim() || root;
 const skipReason = configuredPi && configuredPackage
   ? false
   : "requires JORGEX_PI_BIN for the real Pi 0.85.1 smoke; set JORGEX_PI_PACKAGE_DIR to use an extracted published package";
+
+test("experience settings use the native contract in Pi 0.84.2 and Pi 0.85.1", { skip: skipReason }, async () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-settings-compat-"));
+  const versions = [
+    {
+      name: "0.84.2",
+      sdk: await import("@earendil-works/pi-coding-agent"),
+    },
+    {
+      name: "0.85.1",
+      sdk: await import(pathToFileURL(resolveSdkModule(configuredPi, "core/settings-manager.js")).href),
+    },
+  ];
+
+  try {
+    const packageManifest = readJson(join(root, "package.json"));
+    assert.equal(packageManifest.devDependencies?.["@earendil-works/pi-coding-agent"], "0.84.2");
+    const versionEnvironment = isolatedEnv({
+      home: join(sandbox, "version-home"),
+      agentDir: join(sandbox, "version-agent"),
+      cwd: sandbox,
+      xdgConfig: join(sandbox, "version-xdg-config"),
+      xdgCache: join(sandbox, "version-xdg-cache"),
+      xdgData: join(sandbox, "version-xdg-data"),
+      tempDir: join(sandbox, "version-temp"),
+    });
+    for (const path of [
+      versionEnvironment.HOME,
+      versionEnvironment.PI_CODING_AGENT_DIR,
+      versionEnvironment.XDG_CONFIG_HOME,
+      versionEnvironment.XDG_CACHE_HOME,
+      versionEnvironment.XDG_DATA_HOME,
+      versionEnvironment.TMPDIR,
+    ]) mkdirSync(path, { recursive: true });
+    assert.equal(readPiVersion(configuredPi, versionEnvironment), "0.85.1");
+
+    for (const { name, sdk } of versions) {
+      const agentDir = join(sandbox, name, "agent");
+      const cwd = join(sandbox, name, "workspace");
+      const settingsPath = join(agentDir, "settings.json");
+      const projectSettingsPath = join(cwd, ".pi", "settings.json");
+      mkdirSync(agentDir, { recursive: true });
+      mkdirSync(join(cwd, ".pi"), { recursive: true });
+      writeJson(settingsPath, {
+        theme: "JorgeX",
+        quietStartup: true,
+        hideThinkingBlock: true,
+        defaultThinkingLevel: "high",
+      });
+      writeJson(projectSettingsPath, {
+        theme: "project-theme",
+        quietStartup: false,
+        hideThinkingBlock: false,
+        defaultThinkingLevel: "low",
+      });
+
+      const settingsManager = sdk.SettingsManager.create(cwd, agentDir);
+      assert.deepEqual(
+        pickExperienceSettings(settingsManager.getGlobalSettings()),
+        { theme: "JorgeX", quietStartup: true, hideThinkingBlock: true },
+        `${name} must read all three global experience settings`,
+      );
+      assert.equal(settingsManager.getGlobalSettings().defaultThinkingLevel, "high", `${name} must preserve the global thinking level`);
+      assert.equal(settingsManager.getTheme(), "project-theme", `${name} must preserve project theme precedence`);
+      assert.equal(settingsManager.getQuietStartup(), false, `${name} must preserve project quietStartup precedence`);
+      assert.equal(settingsManager.getHideThinkingBlock(), false, `${name} must preserve project hideThinkingBlock precedence`);
+      assert.equal(settingsManager.getDefaultThinkingLevel(), "low", `${name} must preserve project defaultThinkingLevel precedence`);
+    }
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
 
 test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC contract", { skip: skipReason }, async () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-085-compat-"));
@@ -196,6 +269,16 @@ function readPiVersion(pi, env) {
   }).trim();
 }
 
+function resolveSdkModule(piBinary, modulePath) {
+  let directory = dirname(realpathSync(piBinary));
+  while (directory !== dirname(directory)) {
+    const candidate = join(directory, "dist", modulePath);
+    if (existsSync(candidate)) return candidate;
+    directory = dirname(directory);
+  }
+  throw new Error(`Unable to resolve Pi SDK module ${modulePath} from ${piBinary}`);
+}
+
 function requestRpc(child, records, type, extra = {}) {
   const id = `jx-compat-${type}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   child.stdin.write(`${JSON.stringify({ id, type, ...extra })}\n`);
@@ -277,6 +360,14 @@ function terminateProcessGroup(child, signal) {
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function pickExperienceSettings(settings) {
+  return Object.fromEntries(
+    ["theme", "quietStartup", "hideThinkingBlock"]
+      .filter((key) => Object.hasOwn(settings, key))
+      .map((key) => [key, settings[key]]),
+  );
 }
 
 function writeJson(path, value) {

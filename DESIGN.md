@@ -7,7 +7,7 @@ Este documento es la fuente de verdad visual de JorgeX Pi. Solo contiene reglas 
 - El símbolo canónico es `assets/brand/eye-logo.svg`, copia exacta del ojo de JorgeX.pro (SHA-256 `0bd562e7707995135a5751ecf055a032c8f12a3d0b1f373e2299a6b94c4dab5d`).
 - La TUI no intenta mostrar SVG. Usa una representación Braille generada y revisada a partir de ese asset.
 - El wordmark es `JorgeX Pi`. No se sustituye el ojo por el nombre ni se usa una estética distinta a la marca.
-- El theme nativo es descubrible y opt-in: el paquete nunca cambia la preferencia del usuario.
+- El theme nativo `JorgeX` se siembra durante el primer `sync` solo si falta la preferencia global; los valores existentes y los cambios posteriores del usuario prevalecen.
 
 ## Tokens canónicos
 
@@ -49,6 +49,7 @@ El bloque JSON siguiente es machine-readable. Los tests exigen paridad con `them
 - Sin limpieza ANSI de pantalla, flashes ni loops.
 - `JORGEX_PI_MOTION=reduce`, `CI`, `TERM=dumb` o una salida no TTY producen el frame final estático. `JORGEX_PI_MOTION=full` solo fuerza movimiento en una TTY.
 - `NO_COLOR` elimina color, no cambia la política de movimiento.
+- `quietStartup` oculta la cabecera nativa de Pi y sus bloques de diagnóstico; la cabecera JorgeX permanece visible. `hideThinkingBlock` oculta la representación completa del thinking sin cambiar su razonamiento ni `defaultThinkingLevel`.
 - El componente es dueño de su timer: `dispose()` y `session_shutdown` lo cancelan de forma idempotente.
 
 ## Mantenimiento
