@@ -79,6 +79,7 @@ test("status, models, doctor, and usage use the bounded machine envelope and sta
     assert.equal(status.json.result.installation.state, "unregistered");
     assert.equal(status.json.result.engram.state, "missing");
     assert.equal(status.json.result.engram.ownership, "user");
+    assert.equal(status.json.result.context7.state, "available", "status must diagnose Context7 without probing the remote service");
 
     const models = runRunner("models", sandbox.env, sandbox.project);
     assert.equal(models.status, expected.exitCodes.success);
@@ -93,12 +94,121 @@ test("status, models, doctor, and usage use the bounded machine envelope and sta
     assert.equal(doctor.json.result.healthy, false);
     const engramCheck = doctor.json.result.checks.find(({ id }) => id === "engram");
     assert.equal(engramCheck?.status, "error");
+    const context7Check = doctor.json.result.checks.find(({ id }) => id === "context7");
+    assert.equal(context7Check?.status, "ok", "doctor must include the local Context7 registration check");
 
     const usage = runRunner("not-a-command", sandbox.env, sandbox.project);
     assert.equal(usage.status, expected.exitCodes.usage);
     assertEnvelope(usage, expected.errorCommand);
     assert.equal(usage.json.ok, false);
     assert.equal(usage.json.error?.code, "USAGE");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("status and doctor expose a preserved Context7 conflict without rewriting the user's config", () => {
+  const sandbox = createSandbox("context7-conflict");
+  const configPath = join(sandbox.agentDir, "mcp.json");
+  const configBytes = `${JSON.stringify({
+    mcpServers: {
+      context7: { url: "https://example.invalid/user-context7" },
+      foreign: { url: "https://example.invalid/foreign" },
+    },
+  }, null, 2)}\n`;
+  writeFileSync(configPath, configBytes);
+  try {
+    const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+    assert.equal(status.status, expected.exitCodes.unhealthy);
+    assertEnvelope(status, "status");
+    assert.equal(status.json.ok, false);
+    assert.equal(status.json.result.context7.state, "conflict");
+    assert.equal(status.json.result.context7.source, "pi-global");
+    assert.equal(readFileSync(configPath, "utf8"), configBytes);
+
+    const doctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+    assert.equal(doctor.status, expected.exitCodes.unhealthy);
+    assertEnvelope(doctor, "doctor");
+    assert.equal(doctor.json.result.checks.find(({ id }) => id === "context7")?.status, "error");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("runner expands a tilde Pi agent directory consistently across status, sync, and cleanup", () => {
+  const sandbox = createSandbox("tilde-agent-dir");
+  const resolvedAgentDir = join(sandbox.home, ".pi", "agent");
+  const tildeAgentDir = "~/.pi/agent";
+  const settingsPath = join(resolvedAgentDir, "settings.json");
+  const registration = `npm:jorgex-pi@${packageVersion}`;
+  mkdirSync(resolvedAgentDir, { recursive: true });
+  writeJson(settingsPath, { packages: [registration], foreign: { keep: true } });
+  const env = { ...sandbox.env, PI_CODING_AGENT_DIR: tildeAgentDir };
+  try {
+    const status = runRunner("status", env, sandbox.project, ["--json"]);
+    assert.equal(status.status, expected.exitCodes.success);
+    assertEnvelope(status, "status");
+    assert.equal(status.json.result.installation.state, "registered");
+
+    const sync = runRunner("sync", env, sandbox.project, ["--json"]);
+    assert.equal(sync.status, expected.exitCodes.success);
+    assertEnvelope(sync, "sync");
+    assert.equal(readJson(settingsPath).defaultProvider, "openai-codex");
+    assert.equal(readJson(settingsPath).defaultModel, "gpt-5.6-sol");
+    assert.equal(existsSync(join(resolvedAgentDir, "models.json")), true);
+
+    const cleanup = runRunner("cleanup", env, sandbox.project, ["--json"]);
+    assert.equal(cleanup.status, expected.exitCodes.success);
+    assertEnvelope(cleanup, "cleanup");
+    assert.deepEqual(readJson(settingsPath), { packages: [registration], foreign: { keep: true } });
+    assert.equal(existsSync(join(resolvedAgentDir, "models.json")), false);
+    assert.equal(existsSync(join(sandbox.project, "~")), false, "tilde expansion must not create a literal relative directory");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("status diagnoses an external Pi MCP adapter before advertising Context7", () => {
+  const sandbox = createSandbox("context7-external-adapter");
+  const settingsPath = join(sandbox.agentDir, "settings.json");
+  const settingsBytes = `${JSON.stringify({ packages: ["npm:pi-mcp-adapter@2.27.0"], foreign: true }, null, 2)}\n`;
+  writeFileSync(settingsPath, settingsBytes);
+  try {
+    const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+    assert.equal(status.status, expected.exitCodes.unhealthy);
+    assertEnvelope(status, "status");
+    assert.equal(status.json.result.context7.state, "conflict");
+    assert.equal(status.json.result.context7.source, "pi-global-settings");
+    assert.equal(status.json.result.context7.code, "external-mcp-adapter");
+    assert.equal(readFileSync(settingsPath, "utf8"), settingsBytes);
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("sync fails closed on a Context7 conflict while cleanup preserves the foreign MCP config", () => {
+  const sandbox = createSandbox("context7-lifecycle-conflict");
+  const configPath = join(sandbox.agentDir, "mcp.json");
+  const configBytes = `${JSON.stringify({
+    mcpServers: { context7: { url: "https://example.invalid/user-context7" } },
+  }, null, 2)}\n`;
+  writeFileSync(configPath, configBytes);
+  try {
+    const sync = runRunner("sync", sandbox.env, sandbox.project, ["--json"]);
+    assert.equal(sync.status, expected.exitCodes.unhealthy);
+    assertEnvelope(sync, "sync");
+    assert.equal(sync.json.ok, false);
+    assert.equal(sync.json.error.code, "CONTEXT7_CONFIG_BLOCKED");
+    assert.equal(sync.json.result.changed, false);
+    assert.deepEqual(sync.json.result.actions, []);
+    assert.equal(readFileSync(configPath, "utf8"), configBytes, "blocked sync must not rewrite the foreign MCP config");
+
+    const cleanup = runRunner("cleanup", sandbox.env, sandbox.project, ["--json"]);
+    assert.equal(cleanup.status, expected.exitCodes.success);
+    assertEnvelope(cleanup, "cleanup");
+    assert.equal(cleanup.json.result.changed, false);
+    assert.deepEqual(cleanup.json.result.actions, []);
+    assert.equal(readFileSync(configPath, "utf8"), configBytes, "cleanup must preserve the foreign MCP config");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
   }
@@ -606,7 +716,7 @@ function assertEnvelope(result, command) {
       assert.ok(json.error[field].length > 0, `schema-required error.${field} must not be empty`);
     }
   }
-  if (command === "status") assert.deepEqual(Object.keys(json.result).sort(), ["engram", "installation"]);
+  if (command === "status") assert.deepEqual(Object.keys(json.result).sort(), ["context7", "engram", "installation"]);
   if (command === "doctor") {
     assert.equal(typeof json.result.healthy, "boolean");
     assert.ok(Array.isArray(json.result.checks));

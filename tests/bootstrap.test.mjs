@@ -25,6 +25,47 @@ test("modular capability blocks replace legacy browser without announcing Contex
   assert.equal(await composeDirectInstallPrompt({ systemPrompt: prompt, ...options }), prompt);
 });
 
+test("Context7 guidance is exposed only after its managed HTTP server registration succeeds", async () => {
+  const context7 = directInstallAsset("context7");
+  const scenarios = [
+    {
+      name: "registered",
+      context7State: { state: "registered" },
+      mcpConfig: { mcpServers: { engram: {}, context7: { url: "https://mcp.context7.com/mcp" } } },
+      expected: true,
+    },
+    {
+      name: "homonymous user configuration",
+      context7State: { state: "conflict", reason: "an existing Context7 server was preserved" },
+      mcpConfig: { mcpServers: { engram: {}, context7: { url: "https://example.invalid/user-context7" } } },
+      expected: false,
+    },
+    {
+      name: "factory failure",
+      context7State: { state: "failed", reason: "Context7 registration failed" },
+      mcpConfig: { mcpServers: { engram: {} } },
+      expected: false,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const prompt = await composeDirectInstallPrompt({
+      systemPrompt: "Existing Pi prompt.",
+      engramState: "managed",
+      context7State: scenario.context7State,
+      mcpConfig: scenario.mcpConfig,
+      browser: { status: "hidden" },
+    });
+    assert.equal(
+      countManagedMarkers(prompt, context7.marker),
+      scenario.expected ? 1 : 0,
+      `${scenario.name} must ${scenario.expected ? "expose" : "hide"} the Context7 module`,
+    );
+    if (scenario.expected) assert.equal(managedSectionContents(prompt, context7.marker), context7.contents);
+    else assert.doesNotMatch(prompt, /Context7/i, `${scenario.name} must not announce an unregistered server`);
+  }
+});
+
 test("the root manifest activates the JorgeX extensions, portable prompt, opt-in theme, and reviewed skills", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.deepEqual(manifest.pi, {
@@ -1090,7 +1131,7 @@ function outputSection(prompt, kind) {
   return { ...asset, contents: managedSectionContents(prompt, asset.marker) };
 }
 
-async function composeDirectInstallPrompt({ systemPrompt, engramState, browser, mcpConfig }) {
+async function composeDirectInstallPrompt({ systemPrompt, engramState, context7State, browser, mcpConfig }) {
   const { createBootstrap } = await import("../extensions/bootstrap.ts");
   const pi = createPiHarness();
   await createBootstrap({
@@ -1102,6 +1143,7 @@ async function composeDirectInstallPrompt({ systemPrompt, engramState, browser, 
     readGoalConfig: () => ({ kind: "loaded" }),
     installMcpEngram: async () => ({
       state: engramState,
+      ...(context7State === undefined ? {} : { context7: context7State }),
       ...(mcpConfig === undefined ? {} : { config: mcpConfig }),
     }),
     resolvePlaywrightCapability: () => browser,

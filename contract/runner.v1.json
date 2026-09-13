@@ -22,5 +22,12 @@
     "trailingNewline": true,
     "maxBytes": 65536
   },
-  "responseSchema": "contract/schemas/runner-response.v1.schema.json"
+  "responseSchema": "contract/schemas/runner-response.v1.schema.json",
+  "context7": {
+    "transport": "http",
+    "registration": "isolated in-memory bridge at Pi bootstrap",
+    "diagnostic": "available means configuration permits registration; no HTTP handshake is implied",
+    "conflicts": "preserve existing MCP files; block managed Context7 activation",
+    "cleanup": "no managed MCP configuration or credentials are written"
+  }
 }

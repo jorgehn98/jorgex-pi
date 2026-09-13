@@ -62,6 +62,8 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
     writeJson(join(agentDir, "settings.json"), {
       packages: [configuredPackage],
     });
+    const metadataCachePath = join(agentDir, "mcp-cache.json");
+    if (!existsSync(metadataCachePath)) writeJson(metadataCachePath, { version: 1, servers: {} });
 
     const env = isolatedEnv({ home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir });
     env.ENGRAM_BIN = fakeEngram;

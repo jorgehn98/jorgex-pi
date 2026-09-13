@@ -1,8 +1,8 @@
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { isAbsolute, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEngramChildSpec } from "./engram-mcp-wrapper.mjs";
+import { inspectContext7Config, resolvePiAgentDir } from "./context7-config.mjs";
 
 const wrapperPath = fileURLToPath(new URL("./engram-mcp-wrapper.mjs", import.meta.url));
 const DEVTOOLS_HANDOFF_RELATIVE_PATH = ["jorgex-pi", "devtools.v1.json"];
@@ -27,11 +27,22 @@ export async function resolveMcpEngramConfig({
   wrapperPath: managedWrapperPath = wrapperPath,
   env = process.env,
   platform = process.platform,
+  cwd = process.cwd(),
 } = {}) {
   const config = { mcpServers: {} };
+  const context7 = inspectContext7Config({ env, platform, cwd });
+  if (context7.state === "available") {
+    config.mcpServers.context7 = {
+      url: "https://mcp.context7.com/mcp",
+      auth: false,
+      lifecycle: "lazy",
+      directTools: false,
+      ...(env.CONTEXT7_API_KEY?.trim() ? { headers: { CONTEXT7_API_KEY: "${CONTEXT7_API_KEY}" } } : {}),
+    };
+  }
   try {
     const binary = await (resolveEngramBinary ?? (() => resolveConfiguredEngramBinary({ env, platform })))();
-    if (!binary) return { state: "missing", config };
+    if (!binary) return { state: "missing", config, context7 };
     if (!isAbsolute(nodePath) || !isAbsolute(managedWrapperPath) || !isAbsolute(binary)) {
       throw new Error("Managed Engram command paths must be absolute");
     }
@@ -52,11 +63,12 @@ export async function resolveMcpEngramConfig({
         directTools: false,
       };
     }
-    return { state: "managed", config, binary };
+    return { state: "managed", config, binary, context7 };
   } catch (error) {
     return {
       state: "failed",
       config,
+      context7,
       reason: error instanceof Error ? error.message : String(error),
     };
   }
@@ -66,23 +78,26 @@ export async function installMcpEngram(pi, {
   resolveEngramBinary,
   env = process.env,
   platform = process.platform,
+  cwd = process.cwd(),
 } = {}) {
   const resolution = await resolveMcpEngramConfig({
     resolveEngramBinary,
     env,
     platform,
+    cwd,
   });
   if (resolution.state !== "managed") return resolution;
   const adapterEntry = import.meta.resolve("pi-mcp-adapter");
   const { createMcpAdapter } = await import(adapterEntry);
   createMcpAdapter({ config: resolution.config })(pi);
+  if (resolution.context7.state === "available") resolution.context7 = { state: "registered" };
   registerEngramCompactionRecovery(pi, { isAvailable: () => resolution.state === "managed" });
   return resolution;
 }
 
 function readChromeDevToolsHandoff({ env, platform }) {
   const paths = platformPaths(platform);
-  const agentDir = resolvePiAgentDir({ env, platform, paths });
+  const agentDir = resolvePiAgentDir({ env, platform });
   const handoffPath = paths.join(agentDir, ...DEVTOOLS_HANDOFF_RELATIVE_PATH);
   let raw;
   try {
@@ -119,25 +134,6 @@ function readChromeDevToolsHandoff({ env, platform }) {
     throw new Error(`Chrome DevTools handoff has invalid arguments at ${handoffPath}`);
   }
   return { command: handoff.command, args: handoff.args };
-}
-
-function resolvePiAgentDir({ env, platform, paths }) {
-  const configured = env?.PI_CODING_AGENT_DIR;
-  if (configured !== undefined) {
-    if (typeof configured !== "string" || !configured || !paths.isAbsolute(configured)) {
-      throw new Error("PI_CODING_AGENT_DIR must be an absolute path");
-    }
-    return paths.resolve(configured);
-  }
-
-  const configuredHome = platform === "win32"
-    ? env?.USERPROFILE ?? env?.HOME
-    : env?.HOME ?? env?.USERPROFILE;
-  const home = typeof configuredHome === "string" && paths.isAbsolute(configuredHome)
-    ? configuredHome
-    : homedir();
-  if (!paths.isAbsolute(home)) throw new Error("The default Pi home directory must be absolute");
-  return paths.join(paths.resolve(home), ".pi", "agent");
 }
 
 export function registerEngramCompactionRecovery(pi, { isAvailable }) {
@@ -191,7 +187,7 @@ function resolveStackReceiptEngramBinary({ env, platform }) {
   }
 
   const packageIdentity = readPackageIdentity();
-  const codingAgentDir = env.PI_CODING_AGENT_DIR ?? paths.join(home, ".pi", "agent");
+  const codingAgentDir = resolvePiAgentDir({ env, platform });
   if (!packageIdentity || !paths.isAbsolute(codingAgentDir) || !isExactInstalledReceipt(receipt, packageIdentity, codingAgentDir, platform)) {
     return undefined;
   }

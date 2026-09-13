@@ -178,6 +178,11 @@
         "owner": "pi-mcp-adapter",
         "root": "PI_CODING_AGENT_DIR",
         "relativePath": "mcp-cache.json"
+      },
+      {
+        "owner": "user",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "mcp.json"
       }
     ]
   },
@@ -192,6 +197,7 @@
     "goal-continuation-v1",
     "mcp-adapter-v1",
     "engram-runtime-tools-v1",
+    "context7-http-v1",
     "chrome-devtools-handoff-v1",
     "playwright-handoff-v1",
     "runner-json-v1",
