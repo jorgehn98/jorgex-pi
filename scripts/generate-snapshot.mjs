@@ -11,12 +11,14 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const DEFAULT_SOURCE_COMMIT = "26692997245c9f1e8cf9d51a134032039f302186";
+const DEFAULT_SOURCE_COMMIT = "64f15d9f4c7ce737fbf9f317c1080ee159142eb9";
 const SOURCE_COMMIT = process.env.JORGEX_STACK_COMMIT?.trim() || DEFAULT_SOURCE_COMMIT;
 const QUALITY_RECEIPT_SOURCE_PATH = "stack/contracts/quality-receipt.v1.schema.json";
 const QUALITY_RECEIPT_TARGET_PATH = "contract/schemas/quality-receipt.v1.schema.json";
 const QUALITY_CAPABILITIES_SOURCE_PATH = "stack/contracts/quality-capabilities.v1.schema.json";
 const QUALITY_CAPABILITIES_TARGET_PATH = "contract/schemas/quality-capabilities.v1.schema.json";
+const PERMISSIONS_SOURCE_PATH = "stack/config/defaults.json";
+const PERMISSIONS_TARGET_PATH = "assets/permissions/defaults.json";
 const POLICY_SOURCE_PATH = "stack/system-prompt/AGENTS.md";
 const ENGRAM_PROTOCOL_SOURCE_PATH = "stack/system-prompt/engram-protocol.md";
 const SYSTEM_PROMPT_MODULES = [
@@ -73,6 +75,7 @@ try {
       name,
       ...generateCopyProjection(`stack/system-prompt/${file}`, `assets/system-prompt/${file}`),
     })),
+    permissions: generatePermissionsProjection(),
     qualityReceipt: generateQualityReceiptProjection(),
     qualityCapabilities: generateQualityCapabilitiesProjection(),
     commands: COMMAND_SOURCES.map(generateCommand),
@@ -94,6 +97,99 @@ try {
       if (!generationError) throw cleanupError;
     }
   }
+}
+
+function generatePermissionsProjection() {
+  const sourceBytes = gitBytes(PERMISSIONS_SOURCE_PATH);
+  let source;
+  try {
+    source = JSON.parse(sourceBytes.toString("utf8"));
+  } catch {
+    throw new Error(`${PERMISSIONS_SOURCE_PATH} must contain valid JSON`);
+  }
+  const opencode = source?.opencode?.permission;
+  if (!isRecord(opencode) || !isRecord(opencode.read) || !isRecord(opencode.bash)) {
+    throw new Error(`${PERMISSIONS_SOURCE_PATH} must contain the reviewed OpenCode permission defaults`);
+  }
+  const pathRules = structuredClone(opencode.read);
+  const policy = {
+    "*": "ask",
+    path: pathRules,
+    read: "allow",
+    write: "allow",
+    edit: "allow",
+    grep: "allow",
+    find: "allow",
+    ls: "allow",
+    bash: structuredClone(opencode.bash),
+    mcp: {
+      "*": "ask",
+      ...knownMcpTools("allow"),
+    },
+    skill: "allow",
+    external_directory: "allow",
+    git_read: "allow",
+    ...knownCompanionTools("allow"),
+  };
+  const output = {
+    "$schema": "https://raw.githubusercontent.com/gotgenes/pi-packages/main/packages/pi-permission-system/schemas/permissions.schema.json",
+    permission: policy,
+  };
+  const outputBytes = Buffer.from(`${JSON.stringify(output, null, 2)}\n`, "utf8");
+  writeBytes(join(stage, PERMISSIONS_TARGET_PATH), outputBytes);
+  return {
+    sourcePath: PERMISSIONS_SOURCE_PATH,
+    targetPath: PERMISSIONS_TARGET_PATH,
+    sourceSha256: sha256(sourceBytes),
+    outputSha256: sha256(outputBytes),
+  };
+}
+
+function knownMcpTools(action) {
+  return Object.fromEntries([
+    "mcp_status",
+    "mcp_list",
+    "mcp_search",
+    "mcp_describe",
+    "mcp_connect",
+    "engram_*",
+    "context7_*",
+    "context7:*",
+    "engram:*",
+  ].map((name) => [name, action]));
+}
+
+function knownCompanionTools(action) {
+  return Object.fromEntries([
+    "ask_user_question",
+    "subagent",
+    "subagent_wait",
+    "contact_supervisor",
+    "web_search",
+    "fetch_content",
+    "get_search_content",
+    "source_check",
+    "goal_blocked",
+    "goal_complete",
+    "goal_wait",
+    "mem_save",
+    "mem_search",
+    "mem_context",
+    "mem_session_summary",
+    "mem_session_start",
+    "mem_session_end",
+    "mem_get_observation",
+    "mem_suggest_topic_key",
+    "mem_save_prompt",
+    "mem_update",
+    "mem_current_project",
+    "mem_judge",
+    "mem_compare",
+    "mem_doctor",
+    "mem_review",
+    "mem_pin",
+    "mem_unpin",
+  ].map((name) => [name, action]));
 }
 
 function generateAgent(sourcePath) {
@@ -227,4 +323,8 @@ function assertSafeRelativePath(value, label) {
   if (!value || value.startsWith("/") || normalized !== value || value.split("/").some((part) => !part || part === "." || part === "..")) {
     throw new Error(`${label} is not a safe normalized relative path`);
   }
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

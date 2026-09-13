@@ -18,12 +18,14 @@ test("snapshot parity v1-to-v2 migration rolls back every owned root and retains
   const previous = {
     "snapshot/agents/original.md": "original agent\n",
     "skills/original/SKILL.md": "original skill\n",
+    "assets/permissions/defaults.json": "original permissions\n",
     "contract/parity.v1.json": "{\"schemaVersion\":1,\"generation\":\"original\"}\n",
     "contract/schemas/quality-capabilities.v1.schema.json": "original quality capabilities schema\n",
   };
   const replacement = {
     "snapshot/agents/replacement.md": "replacement agent\n",
     "skills/replacement/SKILL.md": "replacement skill\n",
+    "assets/permissions/defaults.json": "replacement permissions\n",
     "assets/system-prompt/AGENTS.md": "replacement policy\n",
     "assets/system-prompt/engram-protocol.md": "replacement protocol\n",
     "prompts/lean-audit.md": "replacement prompt\n",
@@ -71,12 +73,14 @@ test("snapshot parity v1-to-v2 migration publishes every v2 root and removes the
   const previous = {
     "snapshot/agents/original.md": "original agent\n",
     "skills/original/SKILL.md": "original skill\n",
+    "assets/permissions/defaults.json": "original permissions\n",
     "contract/parity.v1.json": "{\"schemaVersion\":1,\"generation\":\"original\"}\n",
     "contract/schemas/quality-capabilities.v1.schema.json": "original quality capabilities schema\n",
   };
   const replacement = {
     "snapshot/agents/replacement.md": "replacement agent\n",
     "skills/replacement/SKILL.md": "replacement skill\n",
+    "assets/permissions/defaults.json": "replacement permissions\n",
     "assets/system-prompt/AGENTS.md": "replacement policy\n",
     "assets/system-prompt/engram-protocol.md": "replacement protocol\n",
     "prompts/lean-audit.md": "replacement prompt\n",

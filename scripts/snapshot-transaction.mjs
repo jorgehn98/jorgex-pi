@@ -21,6 +21,7 @@ export function commitSnapshot({ root, stage, move = renameSync }) {
     destinations: existsSync(join(stage, "contract", "parity.v2.json"))
       ? [
           ...V2_DESTINATIONS,
+          ...(existsSync(join(stage, "assets", "permissions")) ? ["assets/permissions"] : []),
           ...(existsSync(join(stage, QUALITY_RECEIPT_DESTINATION)) ? [QUALITY_RECEIPT_DESTINATION] : []),
           ...(existsSync(join(stage, QUALITY_CAPABILITIES_DESTINATION)) ? [QUALITY_CAPABILITIES_DESTINATION] : []),
         ]

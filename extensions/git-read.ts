@@ -20,17 +20,62 @@ const parameters = Type.Object({
   args: Type.Optional(Type.Array(Type.String(), { maxItems: 128 })),
 });
 
-export function createGitReadExtension({ execFile = runGit } = {}) {
-  return function gitReadExtension(pi) {
+export function createGitReadExtension({ execFile = runGit, getPermissionsService: injectedLocator } = {}) {
+  return async function gitReadExtension(pi) {
+    const activeAgents = new Map();
+    const sessionManagers = new Map();
+    let currentSessionId;
+    let registeredService;
+    let disposeExtractor;
+    const getPermissionsService = injectedLocator ?? await resolvePermissionsLocator();
+
+    pi.on?.("session_start", (_event, ctx) => {
+      currentSessionId = readSessionId(ctx);
+      if (currentSessionId && ctx?.sessionManager) sessionManagers.set(currentSessionId, ctx.sessionManager);
+    });
+    pi.on?.("before_agent_start", (event, ctx) => {
+      const sessionId = readSessionId(ctx) ?? currentSessionId;
+      if (!sessionId) return;
+      const agentName = readActiveAgentNameFromContext(ctx) ?? readActiveAgentName(event?.systemPrompt);
+      if (agentName) activeAgents.set(sessionId, agentName);
+    });
+    pi.on?.("session_shutdown", (_event, ctx) => {
+      const sessionId = readSessionId(ctx) ?? currentSessionId;
+      const isCurrent = sessionId === currentSessionId;
+      if (sessionId) activeAgents.delete(sessionId);
+      if (sessionId) sessionManagers.delete(sessionId);
+      if (isCurrent && disposeExtractor) disposeExtractor();
+      if (isCurrent) {
+        disposeExtractor = undefined;
+        registeredService = undefined;
+        currentSessionId = undefined;
+      }
+    });
+    pi.events?.on?.("permissions:ready", (event) => {
+      const sessionId = typeof event?.sessionId === "string" && event.sessionId ? event.sessionId : undefined;
+      if (!sessionId || !getPermissionsService) return;
+      const service = getPermissionsService(sessionId);
+      if (!service || registeredService === service) return;
+      disposeExtractor?.();
+      disposeExtractor = service.registerToolAccessExtractor("git_read", (input) => {
+        const agentName = readActiveAgentNameFromManager(sessionManagers.get(sessionId)) ?? activeAgents.get(sessionId);
+        return selectMostRestrictivePath(input, service, agentName);
+      });
+      registeredService = service;
+    });
+
     pi.registerTool({
       name: "git_read",
       label: "Git read",
       description: "Inspect repository history or changes with shell-free git diff/git log argv. This tool cannot write output files or compare arbitrary external paths.",
       parameters,
       async execute(_toolCallId, input, signal, _onUpdate, ctx) {
+        if (!registeredService || !disposeExtractor) {
+          throw new Error("git_read permission extractor is unavailable; refusing to execute without the native path gate.");
+        }
         const action = validateAction(input?.action);
         const args = validateArguments(input?.args);
-        const fixed = ["--no-pager", "-c", "core.fsmonitor=false", action, "--no-ext-diff", "--no-textconv"];
+        const fixed = ["--no-pager", "-c", "core.fsmonitor=false", "-c", "log.showSignature=false", action, "--no-ext-diff", "--no-textconv"];
         const { stdout, stderr } = await execFile("git", [...fixed, ...args], {
           cwd: ctx.cwd,
           env: gitEnvironment(process.env),
@@ -41,6 +86,62 @@ export function createGitReadExtension({ execFile = runGit } = {}) {
       },
     });
   };
+}
+
+async function resolvePermissionsLocator() {
+  try {
+    const module = await import("@gotgenes/pi-permission-system");
+    return typeof module?.getPermissionsService === "function" ? module.getPermissionsService : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function selectMostRestrictivePath(input, service, agentName) {
+  const args = Array.isArray(input?.args) ? input.args : [];
+  let selected;
+  let selectedState;
+  for (const value of args) {
+    if (typeof value !== "string" || value.length === 0) continue;
+    const check = service.checkPermission("path", value, agentName);
+    if (selected === undefined || rankPermissionState(check.state) < rankPermissionState(selectedState)) {
+      selected = value;
+      selectedState = check.state;
+    }
+    if (selectedState === "deny") break;
+  }
+  return selected;
+}
+
+function rankPermissionState(state) {
+  return state === "deny" ? 0 : state === "ask" ? 1 : 2;
+}
+
+function readSessionId(ctx) {
+  const value = ctx?.sessionId ?? ctx?.sessionManager?.getSessionId?.();
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function readActiveAgentName(systemPrompt) {
+  if (typeof systemPrompt !== "string") return undefined;
+  const match = /<active_agent\s+name=["']([^"']+)["'][^>]*>/i.exec(systemPrompt);
+  const name = match?.[1]?.trim();
+  return name || undefined;
+}
+
+function readActiveAgentNameFromContext(ctx) {
+  const entries = ctx?.sessionManager?.getEntries?.();
+  if (!Array.isArray(entries)) return undefined;
+  for (const entry of entries.slice().reverse()) {
+    if (entry?.type !== "custom" || entry.customType !== "active_agent") continue;
+    const name = entry.data?.name;
+    if (typeof name === "string" && name.trim()) return name.trim();
+  }
+  return undefined;
+}
+
+function readActiveAgentNameFromManager(sessionManager) {
+  return readActiveAgentNameFromContext({ sessionManager });
 }
 
 function validateAction(action) {

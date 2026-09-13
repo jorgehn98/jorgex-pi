@@ -25,6 +25,7 @@
     "mcp-adapter-v1",
     "engram-runtime-tools-v1",
     "context7-http-v1",
+    "permissions-policy-v1",
     "chrome-devtools-handoff-v1",
     "playwright-handoff-v1",
     "runner-json-v1",
