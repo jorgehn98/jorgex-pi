@@ -39,6 +39,7 @@ test("generated outputs match raw pinned objects with the documented byte policy
 
   assertCopyProjection(stackDir, modes, parity.policy, expected.policy, "system policy");
   assertCopyProjection(stackDir, modes, parity.engramProtocol, expected.engramProtocol, "Engram protocol");
+  assertSystemPromptModulesProjection(stackDir, modes, parity.systemPromptModules);
   assertQualityReceiptProjection(stackDir, modes, parity.qualityReceipt, expected.qualityReceipt);
   assertQualityCapabilitiesProjection(stackDir, modes, parity.qualityCapabilities, expected.qualityCapabilities);
   assert.deepEqual(parity.exclusions, expected.exclusions, "parity v2 must retain every deliberate exclusion");
@@ -151,6 +152,7 @@ function generatedTree(packageRoot) {
     ...listFiles(join(packageRoot, "skills")),
     join(packageRoot, expected.policy.targetPath),
     join(packageRoot, expected.engramProtocol.targetPath),
+    ...expected.systemPromptModules.map(({ targetPath }) => join(packageRoot, targetPath)),
     ...expected.commands.map(({ targetPath }) => join(packageRoot, targetPath)),
     join(packageRoot, expected.qualityReceipt.targetPath),
     join(packageRoot, expected.qualityCapabilities.targetPath),
@@ -200,11 +202,23 @@ function trackedSourcePaths(parity) {
     ...parity.skills.map(({ sourcePath }) => sourcePath),
     parity.policy.sourcePath,
     parity.engramProtocol.sourcePath,
+    ...parity.systemPromptModules.map(({ sourcePath }) => sourcePath),
     parity.qualityReceipt.sourcePath,
     parity.qualityCapabilities.sourcePath,
     ...parity.commands.map(({ sourcePath }) => sourcePath),
     ...parity.exclusions.filter(({ kind }) => kind === "runtime-specific-overlay").map(({ sourcePath }) => sourcePath),
   ];
+}
+
+function assertSystemPromptModulesProjection(stackDir, modes, modules) {
+  assert.deepEqual(
+    modules?.map(({ name, sourcePath, targetPath }) => ({ name, sourcePath, targetPath })),
+    expected.systemPromptModules,
+    "system prompt modules must match the reviewed canonical sources",
+  );
+  for (const module of modules ?? []) {
+    assertCopyProjection(stackDir, modes, module, module, `${module.name} system prompt module`);
+  }
 }
 
 function assertQualityReceiptProjection(stackDir, modes, projection, projectionExpected) {

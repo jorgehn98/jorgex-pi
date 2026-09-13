@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const DEFAULT_SOURCE_COMMIT = "b8f3c36c81ef4a3766cb35bacf00776cc4f368da";
+const DEFAULT_SOURCE_COMMIT = "26692997245c9f1e8cf9d51a134032039f302186";
 const SOURCE_COMMIT = process.env.JORGEX_STACK_COMMIT?.trim() || DEFAULT_SOURCE_COMMIT;
 const QUALITY_RECEIPT_SOURCE_PATH = "stack/contracts/quality-receipt.v1.schema.json";
 const QUALITY_RECEIPT_TARGET_PATH = "contract/schemas/quality-receipt.v1.schema.json";
@@ -19,6 +19,11 @@ const QUALITY_CAPABILITIES_SOURCE_PATH = "stack/contracts/quality-capabilities.v
 const QUALITY_CAPABILITIES_TARGET_PATH = "contract/schemas/quality-capabilities.v1.schema.json";
 const POLICY_SOURCE_PATH = "stack/system-prompt/AGENTS.md";
 const ENGRAM_PROTOCOL_SOURCE_PATH = "stack/system-prompt/engram-protocol.md";
+const SYSTEM_PROMPT_MODULES = [
+  { name: "context7", file: "context7.md" },
+  { name: "playwright", file: "browser-playwright.md" },
+  { name: "chrome-devtools", file: "browser-chrome-devtools.md" },
+];
 const COMMAND_SOURCES = [
   {
     name: "lean-audit",
@@ -32,8 +37,6 @@ const EXCLUSIONS = [
   { kind: "capability-integration", id: "programmatic-mode-negotiation" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/commands/claude-code/xreview.md" },
   { kind: "runtime-specific-overlay", sourcePath: "stack/commands/opencode/xreview.md" },
-  { kind: "runtime-specific-overlay", sourcePath: "stack/system-prompt/browser-chrome-devtools.md" },
-  { kind: "runtime-specific-overlay", sourcePath: "stack/system-prompt/browser-playwright.md" },
 ];
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(scriptDir, "..");
@@ -67,6 +70,10 @@ try {
     skills: generateSkills(skillSources),
     policy: generateCopyProjection(POLICY_SOURCE_PATH, "assets/system-prompt/AGENTS.md"),
     engramProtocol: generateCopyProjection(ENGRAM_PROTOCOL_SOURCE_PATH, "assets/system-prompt/engram-protocol.md"),
+    systemPromptModules: SYSTEM_PROMPT_MODULES.map(({ name, file }) => ({
+      name,
+      ...generateCopyProjection(`stack/system-prompt/${file}`, `assets/system-prompt/${file}`),
+    })),
     qualityReceipt: generateQualityReceiptProjection(),
     qualityCapabilities: generateQualityCapabilitiesProjection(),
     commands: COMMAND_SOURCES.map(generateCommand),

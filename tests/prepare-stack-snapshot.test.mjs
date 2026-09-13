@@ -291,7 +291,13 @@ function createStackFixture(root, piRoot) {
   for (const skill of parity.skills) {
     for (const file of skill.files) copyProjection(piRoot, root, `${skill.sourcePath}/${file.path}`, `${skill.targetPath}/${file.path}`);
   }
-  for (const projection of [parity.policy, parity.engramProtocol, parity.qualityReceipt, parity.qualityCapabilities]) {
+  for (const projection of [
+    parity.policy,
+    parity.engramProtocol,
+    ...(parity.systemPromptModules ?? []),
+    parity.qualityReceipt,
+    parity.qualityCapabilities,
+  ]) {
     copyProjection(piRoot, root, projection.sourcePath, projection.targetPath);
   }
   for (const command of parity.commands) {

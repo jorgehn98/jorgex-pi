@@ -39,6 +39,11 @@ test("parity v2 records the direct-install policy, Engram protocol, and portable
   assert.deepEqual(projectionShape(parity.policy), expected.parityV2.policy, "parity v2 must record the system policy projection");
   assert.deepEqual(projectionShape(parity.engramProtocol), expected.parityV2.engramProtocol, "parity v2 must record the Engram protocol projection");
   assert.deepEqual(
+    parity.systemPromptModules?.map(({ name, ...projection }) => ({ name, ...projectionShape(projection) })),
+    expected.parityV2.systemPromptModules,
+    "parity v2 must record the modular system-prompt projections",
+  );
+  assert.deepEqual(
     parity.commands?.map((command) => ({ name: command.name, ...projectionShape(command) })),
     expected.parityV2.commands,
     "parity v2 must record the portable lean-audit projection",
@@ -236,6 +241,9 @@ function assertPackedParityTargets(archive, entries, parity) {
   }
   expectedTargets.set(`package/${parity.policy.targetPath}`, parity.policy.outputSha256);
   expectedTargets.set(`package/${parity.engramProtocol.targetPath}`, parity.engramProtocol.outputSha256);
+  for (const module of parity.systemPromptModules ?? []) {
+    expectedTargets.set(`package/${module.targetPath}`, module.outputSha256);
+  }
   expectedTargets.set(`package/${parity.qualityReceipt.targetPath}`, parity.qualityReceipt.outputSha256);
   expectedTargets.set(`package/${parity.qualityCapabilities.targetPath}`, parity.qualityCapabilities.outputSha256);
   for (const command of parity.commands) expectedTargets.set(`package/${command.targetPath}`, command.outputSha256);

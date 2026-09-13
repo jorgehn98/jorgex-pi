@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "b8f3c36c81ef4a3766cb35bacf00776cc4f368da"
+    "commit": "26692997245c9f1e8cf9d51a134032039f302186"
   },
   "agents": [
     {
@@ -584,8 +584,8 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md",
-    "sourceSha256": "1dba5f7554bb79f9ad16bd4310998184c4716a2dcf44eb0211ac63cf8a72adc4",
-    "outputSha256": "1dba5f7554bb79f9ad16bd4310998184c4716a2dcf44eb0211ac63cf8a72adc4"
+    "sourceSha256": "8efcecbf36b5755e666b5b8a08b2e620420723f6995e7c5319ed0502b5c8a393",
+    "outputSha256": "8efcecbf36b5755e666b5b8a08b2e620420723f6995e7c5319ed0502b5c8a393"
   },
   "engramProtocol": {
     "sourcePath": "stack/system-prompt/engram-protocol.md",
@@ -593,6 +593,29 @@
     "sourceSha256": "e23997eda1d8d43c587b5e864b280d4c77055dd30f558c9e9288264398929591",
     "outputSha256": "e23997eda1d8d43c587b5e864b280d4c77055dd30f558c9e9288264398929591"
   },
+  "systemPromptModules": [
+    {
+      "name": "context7",
+      "sourcePath": "stack/system-prompt/context7.md",
+      "targetPath": "assets/system-prompt/context7.md",
+      "sourceSha256": "a3865faa3b082943b7342ba3e9e12a0ee46ea7126b77e7924e8a7893355266b4",
+      "outputSha256": "a3865faa3b082943b7342ba3e9e12a0ee46ea7126b77e7924e8a7893355266b4"
+    },
+    {
+      "name": "playwright",
+      "sourcePath": "stack/system-prompt/browser-playwright.md",
+      "targetPath": "assets/system-prompt/browser-playwright.md",
+      "sourceSha256": "dbaa960442b923fe11dae62cbff0037a2f760c3e58a0e827a5c717f6b9376eb2",
+      "outputSha256": "dbaa960442b923fe11dae62cbff0037a2f760c3e58a0e827a5c717f6b9376eb2"
+    },
+    {
+      "name": "chrome-devtools",
+      "sourcePath": "stack/system-prompt/browser-chrome-devtools.md",
+      "targetPath": "assets/system-prompt/browser-chrome-devtools.md",
+      "sourceSha256": "7252c2e8caf282021cab7cb8b9fe994014a841b45a9c0b94e40a7d05138b271b",
+      "outputSha256": "7252c2e8caf282021cab7cb8b9fe994014a841b45a9c0b94e40a7d05138b271b"
+    }
+  ],
   "qualityReceipt": {
     "namespace": "jorgex.quality.receipt",
     "version": 1,
@@ -638,14 +661,6 @@
     {
       "kind": "runtime-specific-overlay",
       "sourcePath": "stack/commands/opencode/xreview.md"
-    },
-    {
-      "kind": "runtime-specific-overlay",
-      "sourcePath": "stack/system-prompt/browser-chrome-devtools.md"
-    },
-    {
-      "kind": "runtime-specific-overlay",
-      "sourcePath": "stack/system-prompt/browser-playwright.md"
     }
   ]
 }

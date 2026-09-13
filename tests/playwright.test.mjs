@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import test from "node:test";
@@ -147,15 +147,19 @@ test("the default bootstrap resolver advertises only the verified temporary Play
         detectMcpAdapterConflict: () => undefined,
         readGoalConfig: () => ({ kind: "loaded" }),
         installMcpEngram: async () => ({ state: "managed" }),
-        readSystemPromptAssets: () => ({ policy: "policy", engramProtocol: "protocol" }),
+        readSystemPromptAssets: readSystemPromptAssets,
       })(pi.api);
       const result = await pi.beforeAgentStart({ systemPrompt: "Existing prompt" }, { sessionId: "playwright-default" });
-      const browserBlock = result.systemPrompt.match(/<!-- jorgex:browser -->\n([\s\S]*?)<!-- \/jorgex:browser -->/)?.[1] ?? "";
+      const webAccessBlock = extractManagedBlock(result.systemPrompt, "jorgex:web-access");
+      const playwrightBlock = extractManagedBlock(result.systemPrompt, "jorgex:playwright");
 
-      assert.match(browserBlock, new RegExp(`Use Playwright at ${escapeRegExp(fixture.command)}`));
-      assert.equal((browserBlock.match(/Use Playwright at /g) ?? []).length, 1);
-      assert.equal(browserBlock.includes("PI_CODING_AGENT_DIR"), false);
-      assert.equal(browserBlock.includes("playwright.v1.json"), false);
+      assert.match(playwrightBlock, new RegExp(`Use Playwright at ${escapeRegExp(fixture.command)}`));
+      assert.equal((playwrightBlock.match(/Use Playwright at /g) ?? []).length, 1);
+      assert.match(webAccessBlock, /Use Web Access for web research/i);
+      assert.equal(result.systemPrompt.includes("<!-- jorgex:browser -->"), false);
+      assert.equal(result.systemPrompt.includes("<!-- jorgex:context7 -->"), false);
+      assert.equal(playwrightBlock.includes("PI_CODING_AGENT_DIR"), false);
+      assert.equal(playwrightBlock.includes("playwright.v1.json"), false);
     });
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
@@ -256,4 +260,25 @@ function createWindowsSandbox() {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function readSystemPromptAssets() {
+  return Object.fromEntries([
+    ["policy", "AGENTS.md"],
+    ["engramProtocol", "engram-protocol.md"],
+    ["context7", "context7.md"],
+    ["playwright", "browser-playwright.md"],
+    ["devtools", "browser-chrome-devtools.md"],
+  ].map(([name, file]) => [name, readFileSync(new URL(`../assets/system-prompt/${file}`, import.meta.url), "utf8")]));
+}
+
+function extractManagedBlock(prompt, marker) {
+  const opening = `<!-- ${marker} -->`;
+  const closing = `<!-- /${marker} -->`;
+  assert.equal((prompt.match(new RegExp(escapeRegExp(opening), "g")) ?? []).length, 1, `${marker} must have one opening marker`);
+  assert.equal((prompt.match(new RegExp(escapeRegExp(closing), "g")) ?? []).length, 1, `${marker} must have one closing marker`);
+  const start = prompt.indexOf(opening) + opening.length;
+  const end = prompt.indexOf(closing, start);
+  assert.ok(end >= start, `${marker} must close after its opening marker`);
+  return prompt.slice(start, end);
 }

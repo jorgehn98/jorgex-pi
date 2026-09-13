@@ -12,6 +12,19 @@ const mcpExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "mcp-engra
 const capabilitiesExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "quality-capabilities.expected.json"), "utf8"));
 const companionToolNames = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
+test("modular capability blocks replace legacy browser without announcing Context7", async () => {
+  const input = "User policy.\n\n<!-- jorgex:browser -->\nOld browser guidance.\n<!-- /jorgex:browser -->";
+  const options = { engramState: "managed", browser: { status: "ready", commandPath: "/isolated/bin/playwright-cli" } };
+  const prompt = await composeDirectInstallPrompt({ systemPrompt: input, ...options });
+  assert.equal(countManagedMarkers(prompt, "jorgex:browser"), 0);
+  assert.equal(countManagedMarkers(prompt, "jorgex:web-access"), 1);
+  assert.equal(countManagedMarkers(prompt, "jorgex:playwright"), 1);
+  assert.equal(countManagedMarkers(prompt, "jorgex:context7"), 0);
+  assert.ok(prompt.includes("User policy."));
+  assert.ok(!prompt.includes("Old browser guidance."));
+  assert.equal(await composeDirectInstallPrompt({ systemPrompt: prompt, ...options }), prompt);
+});
+
 test("the root manifest activates the JorgeX extensions, portable prompt, opt-in theme, and reviewed skills", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.deepEqual(manifest.pi, {
@@ -27,6 +40,59 @@ test("the root manifest activates the JorgeX extensions, portable prompt, opt-in
   assert.ok(manifest.files.includes("assets"), "the published file allowlist must include direct-install system policy assets");
   assert.ok(manifest.files.includes("prompts"), "the published file allowlist must include the active lean-audit prompt");
   assert.ok(manifest.files.includes("themes"), "the published file allowlist must include the opt-in JorgeX theme");
+});
+
+test("before_agent_start composes separate Web Access and ready Playwright modules", async () => {
+  const prompt = await composeDirectInstallPrompt({
+    systemPrompt: "Existing Pi prompt.",
+    engramState: "managed",
+    browser: { status: "ready", commandPath: "/managed/bin/playwright-cli" },
+  });
+
+  for (const marker of ["jorgex:web-access", "jorgex:playwright"]) {
+    assert.equal(countManagedMarkers(prompt, marker), 1, `${marker} must have one opening marker`);
+    assert.equal(countManagedMarkers(prompt, `/${marker}`), 1, `${marker} must have one closing marker`);
+  }
+
+  const webAccess = managedSectionContents(prompt, "jorgex:web-access");
+  const playwright = managedSectionContents(prompt, "jorgex:playwright");
+  assert.match(webAccess, /Use Web Access for web research/i);
+  assert.match(playwright, /Use Playwright at \/managed\/bin\/playwright-cli/i);
+  assert.doesNotMatch(webAccess, /Playwright/i, "Web Access guidance must remain independent");
+  assert.doesNotMatch(playwright, /Web Access/i, "Playwright guidance must remain independent");
+  assert.equal(prompt.includes("<!-- jorgex:browser -->"), false, "the legacy browser block must not be recreated");
+  assert.equal(prompt.includes("<!-- jorgex:context7 -->"), false, "Context7 must not be announced in this checkpoint");
+  assert.doesNotMatch(prompt, /Context7/i, "Context7 guidance must remain undisclosed in this checkpoint");
+});
+
+test("before_agent_start exposes DevTools only from a managed registered MCP server", async () => {
+  const devtools = directInstallAsset("devtools");
+  const registeredConfig = {
+    mcpServers: {
+      engram: { command: "/managed/bin/engram" },
+      "chrome-devtools": { command: "/managed/bin/pnpm", args: ["dlx"] },
+    },
+  };
+  const scenarios = [
+    { name: "managed registration", engramState: "managed", mcpConfig: registeredConfig, expected: true },
+    { name: "managed without registration", engramState: "managed", mcpConfig: { mcpServers: { engram: {} } }, expected: false },
+    { name: "failed resolution", engramState: "failed", mcpConfig: registeredConfig, expected: false },
+  ];
+
+  for (const scenario of scenarios) {
+    const prompt = await composeDirectInstallPrompt({
+      systemPrompt: "Existing Pi prompt.",
+      engramState: scenario.engramState,
+      mcpConfig: scenario.mcpConfig,
+      browser: { status: "hidden" },
+    });
+    assert.equal(
+      countManagedMarkers(prompt, devtools.marker),
+      scenario.expected ? 1 : 0,
+      `${scenario.name} must ${scenario.expected ? "expose" : "hide"} the DevTools module`,
+    );
+    if (scenario.expected) assert.equal(managedSectionContents(prompt, devtools.marker), devtools.contents);
+  }
 });
 
 test("direct-install policy fallback preserves the preceding prompt and stays marker-idempotent", async () => {
@@ -54,16 +120,13 @@ test("direct-install policy fallback preserves the preceding prompt and stays ma
 test("direct-install Engram protocol is complete, bridge-gated, and marker-idempotent", async () => {
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");
-  const browser = expected.directInstall.browser;
-  const canonicalBase = await composeDirectInstallPrompt({
-    systemPrompt: "Existing Pi prompt.",
-    engramState: "missing",
-    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
-  });
+  const legacyBrowser = expected.directInstall.browser;
+  const webAccess = expected.directInstall.webAccess;
+  const playwright = expected.directInstall.playwright;
   const precedingPrompt = [
     "Existing Pi prompt.",
     managedBlock(policy.marker, policy.contents),
-    managedBlock(browser.marker, managedSectionContents(canonicalBase, browser.marker)),
+    managedBlock(legacyBrowser.marker, "Legacy browser guidance"),
   ].join("\n\n");
 
   const unavailable = await composeDirectInstallPrompt({
@@ -72,6 +135,9 @@ test("direct-install Engram protocol is complete, bridge-gated, and marker-idemp
     browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
   });
   assert.equal(countManagedMarkers(unavailable, protocol.marker), 0, "a missing bridge must not advertise the Engram protocol");
+  assert.equal(countManagedMarkers(unavailable, legacyBrowser.marker), 0, "the legacy browser marker must be removed");
+  assert.equal(countManagedMarkers(unavailable, webAccess.marker), 1, "Web Access must remain available outside the Engram gate");
+  assert.equal(countManagedMarkers(unavailable, playwright.marker), 1, "ready Playwright must remain available outside the Engram gate");
 
   const managed = await composeDirectInstallPrompt({
     systemPrompt: precedingPrompt,
@@ -79,10 +145,15 @@ test("direct-install Engram protocol is complete, bridge-gated, and marker-idemp
     browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
   });
   assert.equal(countManagedMarkers(managed, protocol.marker), 1, "an operational bridge must add exactly one Engram protocol marker");
+  assert.equal(countManagedMarkers(managed, legacyBrowser.marker), 0, "the legacy browser marker must stay retired");
   assert.equal(managed.includes(protocol.contents), true, "the managed bridge must append the complete bundled Engram protocol");
   assert.ok(
-    managed.indexOf(precedingPrompt) < managed.indexOf(`<!-- ${protocol.marker} -->`),
-    "the Engram protocol must append after pre-existing prompt context",
+    managed.startsWith("Existing Pi prompt."),
+    "the Engram protocol recomposition must preserve the unmanaged prompt context",
+  );
+  assert.ok(
+    managed.indexOf(`<!-- ${policy.marker} -->`) < managed.indexOf(`<!-- ${protocol.marker} -->`),
+    "the Engram protocol must append after the managed policy",
   );
 
   const repeated = await composeDirectInstallPrompt({
@@ -94,18 +165,15 @@ test("direct-install Engram protocol is complete, bridge-gated, and marker-idemp
   assert.equal(repeated, managed, "recomposing a managed Engram prompt must be byte-stable");
 });
 
-test("browser routing does not duplicate or bypass a managed browser marker", async () => {
+test("browser routing replaces a complete legacy browser block without duplicates", async () => {
   const policy = directInstallAsset("policy");
-  const browser = expected.directInstall.browser;
-  const canonicalPrompt = await composeDirectInstallPrompt({
-    systemPrompt: "Existing Pi prompt.",
-    engramState: "missing",
-    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
-  });
+  const legacyBrowser = expected.directInstall.browser;
+  const webAccess = expected.directInstall.webAccess;
+  const playwright = expected.directInstall.playwright;
   const managedPrompt = [
     "Existing Pi prompt.",
     managedBlock(policy.marker, policy.contents),
-    managedBlock(browser.marker, managedSectionContents(canonicalPrompt, browser.marker)),
+    managedBlock(legacyBrowser.marker, "Legacy browser guidance"),
   ].join("\n\n");
 
   const result = await composeDirectInstallPrompt({
@@ -113,14 +181,20 @@ test("browser routing does not duplicate or bypass a managed browser marker", as
     engramState: "missing",
     browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
   });
-  assert.equal(countManagedMarkers(result, browser.marker), 1, "managed browser guidance must retain one marker");
-  assert.equal(result, managedPrompt, "managed browser routing must not append a second fallback path");
+  assert.equal(countManagedMarkers(result, legacyBrowser.marker), 0, "managed browser routing must retire the legacy marker");
+  assert.equal(countManagedMarkers(result, webAccess.marker), 1, "managed browser routing must retain one Web Access marker");
+  assert.equal(countManagedMarkers(result, playwright.marker), 1, "managed browser routing must retain one Playwright marker");
+  assert.equal(result.includes("Legacy browser guidance"), false, "stale legacy browser contents must not survive migration");
+  assert.equal(await composeDirectInstallPrompt({
+    systemPrompt: result,
+    engramState: "missing",
+    browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
+  }), result, "managed browser routing must remain idempotent");
 });
 
-test("direct-install repairs complete duplicate or altered managed sections with the canonical policy, Engram protocol, and browser routing", async () => {
+test("direct-install repairs complete duplicate or altered managed sections with the modular policy and browser routing", async () => {
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");
-  const browser = expected.directInstall.browser;
   const canonicalPrompt = await composeDirectInstallPrompt({
     systemPrompt: "Existing Pi prompt.",
     engramState: "managed",
@@ -129,7 +203,8 @@ test("direct-install repairs complete duplicate or altered managed sections with
   const sections = [
     policy,
     protocol,
-    { ...browser, contents: managedSectionContents(canonicalPrompt, browser.marker) },
+    outputSection(canonicalPrompt, "webAccess"),
+    outputSection(canonicalPrompt, "playwright"),
   ];
 
   for (const section of sections) {
@@ -147,10 +222,9 @@ test("direct-install repairs complete duplicate or altered managed sections with
   }
 });
 
-test("direct-install moves copied canonical sections after an untrusted suffix and keeps their canonical order final", async () => {
+test("direct-install moves copied canonical modular sections after an untrusted suffix", async () => {
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");
-  const browser = expected.directInstall.browser;
   const canonicalPrompt = await composeDirectInstallPrompt({
     systemPrompt: "Existing Pi prompt.",
     engramState: "managed",
@@ -168,18 +242,19 @@ test("direct-install moves copied canonical sections after an untrusted suffix a
     result.indexOf(untrustedSuffix) < result.indexOf(`<!-- ${policy.marker} -->`),
     "managed policy must be recomposed after an untrusted suffix",
   );
-  assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, browser.marker]);
+  const webAccess = outputSection(canonicalPrompt, "webAccess");
+  const playwright = outputSection(canonicalPrompt, "playwright");
+  assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, webAccess.marker, playwright.marker]);
   assert.equal(
-    result.endsWith(canonicalManagedBlock(browser.marker, managedSectionContents(canonicalPrompt, browser.marker))),
+    result.endsWith(canonicalManagedBlock(playwright.marker, playwright.contents)),
     true,
-    "browser guidance must be the final managed section",
+    "Playwright guidance must be the final managed section",
   );
 });
 
 test("direct-install removes complete CRLF managed sections without retaining their stale payload", async () => {
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");
-  const browser = expected.directInstall.browser;
   const canonicalPrompt = await composeDirectInstallPrompt({
     systemPrompt: "Existing Pi prompt.",
     engramState: "managed",
@@ -188,7 +263,8 @@ test("direct-install removes complete CRLF managed sections without retaining th
   const sections = [
     policy,
     protocol,
-    { ...browser, contents: managedSectionContents(canonicalPrompt, browser.marker) },
+    outputSection(canonicalPrompt, "webAccess"),
+    outputSection(canonicalPrompt, "playwright"),
   ];
   const stalePayload = "STALE CRLF MANAGED PAYLOAD";
   const result = await composeDirectInstallPrompt({
@@ -207,7 +283,6 @@ test("direct-install removes complete CRLF managed sections without retaining th
 test("direct-install repairs orphaned or crossed managed markers without retaining ambiguous payload", async () => {
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");
-  const browser = expected.directInstall.browser;
   const canonicalPrompt = await composeDirectInstallPrompt({
     systemPrompt: "Existing Pi prompt.",
     engramState: "managed",
@@ -216,7 +291,8 @@ test("direct-install repairs orphaned or crossed managed markers without retaini
   const sections = [
     policy,
     protocol,
-    { ...browser, contents: managedSectionContents(canonicalPrompt, browser.marker) },
+    outputSection(canonicalPrompt, "webAccess"),
+    outputSection(canonicalPrompt, "playwright"),
   ];
   const basePrompt = "Existing Pi and user prompt must survive malformed managed markers.";
   const malformedPrompts = [
@@ -233,12 +309,12 @@ test("direct-install repairs orphaned or crossed managed markers without retaini
         basePrompt,
         `<!-- ${policy.marker} -->`,
         "STALE CROSSED POLICY PAYLOAD",
-        `<!-- ${browser.marker} -->`,
-        "STALE CROSSED BROWSER PAYLOAD",
+        `<!-- ${sections[2].marker} -->`,
+        "STALE CROSSED WEB ACCESS PAYLOAD",
         `<!-- /${policy.marker} -->`,
-        `<!-- /${browser.marker} -->`,
+        `<!-- /${sections[2].marker} -->`,
       ].join("\n"),
-      stalePayloads: ["STALE CROSSED POLICY PAYLOAD", "STALE CROSSED BROWSER PAYLOAD"],
+      stalePayloads: ["STALE CROSSED POLICY PAYLOAD", "STALE CROSSED WEB ACCESS PAYLOAD"],
     },
   ];
 
@@ -254,11 +330,11 @@ test("direct-install repairs orphaned or crossed managed markers without retaini
       assert.equal(result.includes(stalePayload), false, "ambiguous managed payload must not survive marker repair");
     }
     for (const section of sections) assertCanonicalManagedSection(result, section);
-    assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, browser.marker]);
+    assert.deepEqual(managedSectionOrder(result), sections.map(({ marker }) => marker));
     assert.equal(
-      result.endsWith(canonicalManagedBlock(browser.marker, managedSectionContents(canonicalPrompt, browser.marker))),
+      result.endsWith(canonicalManagedBlock(sections.at(-1).marker, sections.at(-1).contents)),
       true,
-      "repaired managed sections must finish in policy, Engram, then browser order",
+      "repaired managed sections must finish in policy, Engram, Web Access, then Playwright order",
     );
 
     const repeated = await composeDirectInstallPrompt({
@@ -273,7 +349,6 @@ test("direct-install repairs orphaned or crossed managed markers without retaini
 test("direct-install preserves legitimate text before an inline orphan closing marker", async () => {
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");
-  const browser = expected.directInstall.browser;
   const canonicalPrompt = await composeDirectInstallPrompt({
     systemPrompt: "Existing Pi prompt.",
     engramState: "managed",
@@ -282,7 +357,8 @@ test("direct-install preserves legitimate text before an inline orphan closing m
   const sections = [
     policy,
     protocol,
-    { ...browser, contents: managedSectionContents(canonicalPrompt, browser.marker) },
+    outputSection(canonicalPrompt, "webAccess"),
+    outputSection(canonicalPrompt, "playwright"),
   ];
   const userText = "Legitimate user text must survive an inline orphan closing marker.";
   const result = await composeDirectInstallPrompt({
@@ -298,11 +374,11 @@ test("direct-install preserves legitimate text before an inline orphan closing m
     "the corrupt inline closing marker must be removed from the preserved prompt",
   );
   for (const section of sections) assertCanonicalManagedSection(result, section);
-  assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, browser.marker]);
+  assert.deepEqual(managedSectionOrder(result), sections.map(({ marker }) => marker));
   assert.equal(
-    result.endsWith(canonicalManagedBlock(browser.marker, managedSectionContents(canonicalPrompt, browser.marker))),
+    result.endsWith(canonicalManagedBlock(sections.at(-1).marker, sections.at(-1).contents)),
     true,
-    "canonical managed sections must remain final after recovering an inline orphan close",
+    "canonical modular sections must remain final after recovering an inline orphan close",
   );
 
   const repeated = await composeDirectInstallPrompt({
@@ -313,33 +389,38 @@ test("direct-install preserves legitimate text before an inline orphan closing m
   assert.equal(repeated, result, "recovering an inline orphan close must be idempotent");
 });
 
-test("direct-install normalizes managed sections to policy, Engram, then browser even when browser already precedes Engram", async () => {
+test("direct-install normalizes modular managed sections even when Playwright precedes Engram", async () => {
   const policy = directInstallAsset("policy");
   const protocol = directInstallAsset("engramProtocol");
-  const browser = expected.directInstall.browser;
   const canonicalPrompt = await composeDirectInstallPrompt({
     systemPrompt: "Existing Pi prompt.",
     engramState: "managed",
     browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
   });
-  const browserContents = managedSectionContents(canonicalPrompt, browser.marker);
+  const webAccess = outputSection(canonicalPrompt, "webAccess");
+  const playwright = outputSection(canonicalPrompt, "playwright");
   const result = await composeDirectInstallPrompt({
     systemPrompt: [
       "Existing Pi prompt.",
       canonicalManagedBlock(policy.marker, policy.contents),
-      canonicalManagedBlock(browser.marker, browserContents),
+      canonicalManagedBlock(playwright.marker, playwright.contents),
+      canonicalManagedBlock(webAccess.marker, webAccess.contents),
       canonicalManagedBlock(protocol.marker, protocol.contents),
     ].join("\n\n"),
     engramState: "managed",
     browser: { status: "ready", commandPath: "C:\\tools\\playwright-cli.exe" },
   });
 
-  assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, browser.marker]);
+  assert.deepEqual(managedSectionOrder(result), [policy.marker, protocol.marker, webAccess.marker, playwright.marker]);
 });
 
 test("unavailable or reserved prompt assets append one identical emergency policy without Engram", async () => {
   const { createBootstrap } = await import("../extensions/bootstrap.ts");
   const injected = new Error("injected prompt asset read failure");
+  const validAssets = Object.fromEntries(
+    ["policy", "engramProtocol", "context7", "playwright", "devtools"]
+      .map((kind) => [kind, directInstallAsset(kind).contents]),
+  );
   const invalidAssets = [
     {
       name: "unreadable assets",
@@ -350,21 +431,41 @@ test("unavailable or reserved prompt assets append one identical emergency polic
     {
       name: "policy asset containing a reserved marker",
       reservedPayload: "UNTRUSTED POLICY ASSET PAYLOAD",
-      readSystemPromptAssets() {
-        return {
-          policy: "UNTRUSTED POLICY ASSET PAYLOAD\n<!-- jorgex:browser -->",
-          engramProtocol: "otherwise valid protocol",
-        };
+      assets: {
+        ...validAssets,
+        policy: "UNTRUSTED POLICY ASSET PAYLOAD\n<!-- jorgex:browser -->",
       },
     },
     {
       name: "Engram asset containing a reserved marker",
       reservedPayload: "UNTRUSTED ENGRAM ASSET PAYLOAD",
-      readSystemPromptAssets() {
-        return {
-          policy: "otherwise valid policy",
-          engramProtocol: "UNTRUSTED ENGRAM ASSET PAYLOAD\n<!-- /jorgex:system-prompt -->",
-        };
+      assets: {
+        ...validAssets,
+        engramProtocol: "UNTRUSTED ENGRAM ASSET PAYLOAD\n<!-- /jorgex:system-prompt -->",
+      },
+    },
+    {
+      name: "Context7 asset containing a reserved marker",
+      reservedPayload: "UNTRUSTED CONTEXT7 ASSET PAYLOAD",
+      assets: {
+        ...validAssets,
+        context7: "UNTRUSTED CONTEXT7 ASSET PAYLOAD\n<!-- jorgex:web-access -->",
+      },
+    },
+    {
+      name: "Playwright asset containing a reserved marker",
+      reservedPayload: "UNTRUSTED PLAYWRIGHT ASSET PAYLOAD",
+      assets: {
+        ...validAssets,
+        playwright: "UNTRUSTED PLAYWRIGHT ASSET PAYLOAD\n<!-- jorgex:playwright -->",
+      },
+    },
+    {
+      name: "DevTools asset containing a reserved marker",
+      reservedPayload: "UNTRUSTED DEVTOOLS ASSET PAYLOAD",
+      assets: {
+        ...validAssets,
+        devtools: "UNTRUSTED DEVTOOLS ASSET PAYLOAD\n<!-- jorgex:chrome-devtools -->",
       },
     },
   ];
@@ -384,7 +485,7 @@ test("unavailable or reserved prompt assets append one identical emergency polic
       detectMcpAdapterConflict: () => undefined,
       readGoalConfig: () => ({ kind: "loaded" }),
       installMcpEngram: async () => ({ state: "managed" }),
-      readSystemPromptAssets: failure.readSystemPromptAssets,
+      readSystemPromptAssets: failure.readSystemPromptAssets ?? (() => failure.assets),
     })(pi.api);
 
     const notifications = [];
@@ -979,10 +1080,17 @@ function assertLockIntegrity(lock, dependency) {
 
 function directInstallAsset(kind) {
   const asset = expected.directInstall[kind];
-  return { ...asset, contents: readFileSync(join(root, asset.path), "utf8") };
+  return asset.path === undefined
+    ? { ...asset }
+    : { ...asset, contents: readFileSync(join(root, asset.path), "utf8") };
 }
 
-async function composeDirectInstallPrompt({ systemPrompt, engramState, browser }) {
+function outputSection(prompt, kind) {
+  const asset = directInstallAsset(kind);
+  return { ...asset, contents: managedSectionContents(prompt, asset.marker) };
+}
+
+async function composeDirectInstallPrompt({ systemPrompt, engramState, browser, mcpConfig }) {
   const { createBootstrap } = await import("../extensions/bootstrap.ts");
   const pi = createPiHarness();
   await createBootstrap({
@@ -992,7 +1100,10 @@ async function composeDirectInstallPrompt({ systemPrompt, engramState, browser }
     detectGoalConflict: () => undefined,
     detectMcpAdapterConflict: () => undefined,
     readGoalConfig: () => ({ kind: "loaded" }),
-    installMcpEngram: async () => ({ state: engramState }),
+    installMcpEngram: async () => ({
+      state: engramState,
+      ...(mcpConfig === undefined ? {} : { config: mcpConfig }),
+    }),
     resolvePlaywrightCapability: () => browser,
   })(pi.api);
   const result = await pi.emitLifecycle("before_agent_start", { systemPrompt }, { sessionId: "direct-install" });
@@ -1030,7 +1141,7 @@ function assertCanonicalManagedSection(prompt, section) {
 }
 
 function managedSectionOrder(prompt) {
-  return [...prompt.matchAll(/<!-- (jorgex:(?:system-prompt|engram-protocol|browser)) -->/g)].map(([, marker]) => marker);
+  return [...prompt.matchAll(/<!-- (jorgex:(?:system-prompt|engram-protocol|browser|context7|playwright|chrome-devtools|web-access)) -->/g)].map(([, marker]) => marker);
 }
 
 function escapeRegExp(value) {
