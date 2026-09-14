@@ -231,7 +231,8 @@
     "tui-branding-v1",
     "managed-primary-model-v1",
     "quality-receipt-contract-v1",
-    "quality-capabilities-contract-v1"
+    "quality-capabilities-contract-v1",
+    "initialization-diagnostics-v1"
   ],
   "runtimeAgents": {
     "contractPath": "contract/runtime-agents.v1.json"

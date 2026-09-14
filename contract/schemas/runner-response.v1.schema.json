@@ -134,13 +134,62 @@
     "statusResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["installation", "engram", "context7", "permissions"],
+      "required": ["installation", "engram", "context7", "permissions", "experience"],
       "properties": {
         "installation": { "$ref": "#/$defs/installation" },
         "engram": { "$ref": "#/$defs/engram" },
         "context7": { "$ref": "#/$defs/context7" },
-        "permissions": { "$ref": "#/$defs/permissions" }
+        "permissions": { "$ref": "#/$defs/permissions" },
+        "experience": { "$ref": "#/$defs/experience" }
       }
+    },
+    "experience": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "receiptPath", "initialized"],
+          "properties": {
+            "state": { "const": "pending" },
+            "receiptPath": { "type": "string" },
+            "initialized": { "const": false }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "receiptPath", "initialized"],
+          "properties": {
+            "state": { "const": "initialized" },
+            "receiptPath": { "type": "string" },
+            "initialized": { "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "receiptPath", "initialized", "code", "reason"],
+          "properties": {
+            "state": { "const": "invalid" },
+            "receiptPath": { "type": "string" },
+            "initialized": { "const": false },
+            "code": { "enum": ["INVALID_PATH", "INVALID_RECEIPT", "RECEIPT_TOO_LARGE"] },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "receiptPath", "initialized", "code", "reason"],
+          "properties": {
+            "state": { "const": "unreadable" },
+            "receiptPath": { "type": "string" },
+            "initialized": { "const": false },
+            "code": { "const": "READ_FAILED" },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
     },
     "permissions": {
       "type": "object",
@@ -163,17 +212,56 @@
         "healthy": { "type": "boolean" },
         "checks": {
           "type": "array",
-          "minItems": 4,
-          "maxItems": 4,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["id", "status"],
-            "properties": {
-              "id": { "enum": ["package", "engram", "context7", "permissions"] },
-              "status": { "enum": ["ok", "error"] }
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "package" },
+                "status": { "enum": ["ok", "error"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "engram" },
+                "status": { "enum": ["ok", "error"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "context7" },
+                "status": { "enum": ["ok", "error"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "permissions" },
+                "status": { "enum": ["ok", "error"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "experience" },
+                "status": { "enum": ["ok", "error"] }
+              }
             }
-          }
+          ],
+          "items": false
         }
       }
     },

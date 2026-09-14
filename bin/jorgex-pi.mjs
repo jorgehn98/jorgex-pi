@@ -4,6 +4,7 @@ import {
   accessSync,
   constants,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -106,7 +107,9 @@ try {
       const healthy = state.installation.state !== "invalid"
         && state.engram.state !== "invalid"
         && state.context7.state === "available"
-        && !["invalid", "unreadable"].includes(state.permissions.state);
+        && !["invalid", "unreadable"].includes(state.permissions.state)
+        && !["invalid", "unreadable"].includes(state.experience.state)
+        && !(state.installation.state === "registered" && (state.permissions.initialized === false || state.experience.state === "pending"));
       emit(command, healthy, state, healthy ? undefined : stateError(state), healthy ? exitCodes.success : exitCodes.unhealthy);
     } else {
       const checks = [
@@ -124,22 +127,68 @@ try {
         },
         {
           id: "permissions",
-          status: ["invalid", "unreadable"].includes(state.permissions.state) ? "error" : "ok",
+          status: ["invalid", "unreadable"].includes(state.permissions.state) || (state.installation.state === "registered" && state.permissions.initialized === false) ? "error" : "ok",
+        },
+        {
+          id: "experience",
+          status: ["invalid", "unreadable"].includes(state.experience.state) || (state.installation.state === "registered" && state.experience.state === "pending") ? "error" : "ok",
         },
       ];
       const healthy = checks.every(({ status }) => status === "ok");
-      emit(command, healthy, { healthy, checks }, healthy ? undefined : {
-        phase: "doctor",
-        code: "UNHEALTHY",
-        message: "One or more required runtime checks failed.",
-        remedy: state.installation.state !== "registered"
-          ? `Register exactly npm:${manifest.name}@${manifest.version} in Pi settings and retry.`
-          : state.engram.state === "missing"
-            ? "Set ENGRAM_BIN to the existing Engram executable and retry."
-            : state.context7.state !== "available"
-              ? "Preserve the existing MCP configuration, resolve the Context7 conflict, and reload Pi."
-              : undefined,
-      }, healthy ? exitCodes.success : exitCodes.unhealthy);
+      let error;
+      if (!healthy) {
+        if (state.installation.state !== "registered") {
+          error = {
+            phase: "doctor",
+            code: "UNHEALTHY",
+            message: "One or more required runtime checks failed.",
+            remedy: `Register exactly npm:${manifest.name}@${manifest.version} in Pi settings and retry.`,
+          };
+        } else if (state.engram.state === "invalid") {
+          error = {
+            phase: "engram",
+            code: "INVALID_ENGRAM_BIN",
+            message: state.engram.reason,
+            remedy: "Set ENGRAM_BIN to an absolute executable path or remove it to use PATH discovery.",
+          };
+        } else if (state.engram.state !== "ready") {
+          error = {
+            phase: "doctor",
+            code: "UNHEALTHY",
+            message: "One or more required runtime checks failed.",
+            remedy: "Set ENGRAM_BIN to the existing Engram executable and retry.",
+          };
+        } else if (state.context7.state !== "available") {
+          error = {
+            phase: "doctor",
+            code: "UNHEALTHY",
+            message: "One or more required runtime checks failed.",
+            remedy: "Preserve the existing MCP configuration, resolve the Context7 conflict, and reload Pi.",
+          };
+        } else if (["invalid", "unreadable"].includes(state.permissions.state)) {
+          error = {
+            phase: "permissions",
+            code: "INVALID_PERMISSIONS",
+            message: state.permissions.reason ?? "Pi permission configuration is invalid or unreadable.",
+            remedy: `Preserve the existing permission configuration at ${state.permissions.path} and the permission receipt at ${state.permissions.receiptPath}, correct them manually, and retry.`,
+          };
+        } else if (["invalid", "unreadable"].includes(state.experience.state)) {
+          error = {
+            phase: "experience",
+            code: state.experience.code,
+            message: state.experience.reason,
+            remedy: `Preserve the experience receipt at ${state.experience.receiptPath}, correct it manually, and retry.`,
+          };
+        } else {
+          error = {
+            phase: "initialization",
+            code: "INITIALIZATION_REQUIRED",
+            message: "Pi initialization is pending: run sync to complete first initialization.",
+            remedy: "Run jorgex-pi sync --json and retry.",
+          };
+        }
+      }
+      emit(command, healthy, { healthy, checks }, error, healthy ? exitCodes.success : exitCodes.unhealthy);
     }
   }
 } catch (error) {
@@ -164,7 +213,29 @@ function inspectState() {
     engram: inspectEngram(),
     context7: inspectContext7Config(),
     permissions: inspectPermissions({ agentDir, packageRoot: root }),
+    experience: inspectExperience(),
   };
+}
+
+function inspectExperience() {
+  const receiptPath = join(agentDir, "jorgex-pi", experienceReceiptName);
+  try {
+    const receipt = readExperienceReceipt(receiptPath);
+    if (!receipt.exists) {
+      return { state: "pending", receiptPath, initialized: false };
+    }
+    return { state: "initialized", receiptPath, initialized: true };
+  } catch (error) {
+    if (!(error instanceof LifecycleError) || !["INVALID_PATH", "INVALID_RECEIPT", "RECEIPT_TOO_LARGE", "READ_FAILED"].includes(error.code)) throw error;
+    const { code } = error;
+    const reason = error.message.length > 0
+      ? error.message
+      : "Pi experience lifecycle receipt is invalid or unreadable.";
+    if (code === "READ_FAILED") {
+      return { state: "unreadable", receiptPath, initialized: false, code, reason };
+    }
+    return { state: "invalid", receiptPath, initialized: false, code, reason };
+  }
 }
 
 function inspectInstallation() {
@@ -457,6 +528,21 @@ function readLifecycleReceipt(path) {
 }
 
 function readExperienceReceipt(path) {
+  let stats;
+  try {
+    stats = lstatSync(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      stats = undefined;
+    } else if (typeof error?.code === "string" && (typeof error?.errno === "number" || typeof error?.syscall === "string")) {
+      throw lifecycleFsError("READ_FAILED", "inspect", path, error);
+    } else {
+      throw error;
+    }
+  }
+  if (stats !== undefined && stats.isSymbolicLink()) {
+    throw new LifecycleError("INVALID_PATH", "Pi experience lifecycle receipt must be a regular file.");
+  }
   const document = readBoundedJsonObject(path, "Pi experience lifecycle receipt", "INVALID_RECEIPT", "RECEIPT_TOO_LARGE");
   if (!document.exists) {
     return { exists: false, path, value: emptyExperienceReceipt(), dirty: false, remove: false };
@@ -771,7 +857,19 @@ function stateError(state) {
     phase: "permissions",
     code: "INVALID_PERMISSIONS",
     message: state.permissions.reason ?? "Pi permission configuration is invalid or unreadable.",
-    remedy: `Preserve the existing permission configuration at ${state.permissions.path}, correct it manually, and retry.`,
+    remedy: `Preserve the existing permission configuration at ${state.permissions.path} and the permission receipt at ${state.permissions.receiptPath}, correct them manually, and retry.`,
+  };
+  if (["invalid", "unreadable"].includes(state.experience.state)) return {
+    phase: "experience",
+    code: state.experience.code,
+    message: state.experience.reason,
+    remedy: `Preserve the experience receipt at ${state.experience.receiptPath}, correct it manually, and retry.`,
+  };
+  if (state.installation.state === "registered" && (state.permissions.initialized === false || state.experience.state === "pending")) return {
+    phase: "initialization",
+    code: "INITIALIZATION_REQUIRED",
+    message: "Pi initialization is pending: run sync to complete first initialization.",
+    remedy: "Run jorgex-pi sync --json and retry.",
   };
   return { phase: "status", code: "INVALID_STATE", message: "Runtime state is invalid." };
 }
