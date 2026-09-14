@@ -4,6 +4,7 @@ import {
   accessSync,
   constants,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -136,18 +137,40 @@ try {
       const healthy = checks.every(({ status }) => status === "ok");
       let error;
       if (!healthy) {
-        if (state.installation.state !== "registered" || state.engram.state !== "ready" || state.context7.state !== "available" || ["invalid", "unreadable"].includes(state.permissions.state)) {
+        if (state.installation.state !== "registered") {
           error = {
             phase: "doctor",
             code: "UNHEALTHY",
             message: "One or more required runtime checks failed.",
-            remedy: state.installation.state !== "registered"
-              ? `Register exactly npm:${manifest.name}@${manifest.version} in Pi settings and retry.`
-              : state.engram.state === "missing"
-                ? "Set ENGRAM_BIN to the existing Engram executable and retry."
-                : state.context7.state !== "available"
-                  ? "Preserve the existing MCP configuration, resolve the Context7 conflict, and reload Pi."
-                  : undefined,
+            remedy: `Register exactly npm:${manifest.name}@${manifest.version} in Pi settings and retry.`,
+          };
+        } else if (state.engram.state === "invalid") {
+          error = {
+            phase: "engram",
+            code: "INVALID_ENGRAM_BIN",
+            message: state.engram.reason,
+            remedy: "Set ENGRAM_BIN to an absolute executable path or remove it to use PATH discovery.",
+          };
+        } else if (state.engram.state !== "ready") {
+          error = {
+            phase: "doctor",
+            code: "UNHEALTHY",
+            message: "One or more required runtime checks failed.",
+            remedy: "Set ENGRAM_BIN to the existing Engram executable and retry.",
+          };
+        } else if (state.context7.state !== "available") {
+          error = {
+            phase: "doctor",
+            code: "UNHEALTHY",
+            message: "One or more required runtime checks failed.",
+            remedy: "Preserve the existing MCP configuration, resolve the Context7 conflict, and reload Pi.",
+          };
+        } else if (["invalid", "unreadable"].includes(state.permissions.state)) {
+          error = {
+            phase: "permissions",
+            code: "INVALID_PERMISSIONS",
+            message: state.permissions.reason ?? "Pi permission configuration is invalid or unreadable.",
+            remedy: `Preserve the existing permission configuration at ${state.permissions.path} and the permission receipt at ${state.permissions.receiptPath}, correct them manually, and retry.`,
           };
         } else if (["invalid", "unreadable"].includes(state.experience.state)) {
           error = {
@@ -505,6 +528,16 @@ function readLifecycleReceipt(path) {
 }
 
 function readExperienceReceipt(path) {
+  try {
+    if (lstatSync(path).isSymbolicLink()) {
+      throw new LifecycleError("INVALID_PATH", "Pi experience lifecycle receipt must be a regular file.");
+    }
+  } catch (error) {
+    if (error instanceof LifecycleError) throw error;
+    if (error?.code !== "ENOENT") {
+      throw new LifecycleError("READ_FAILED", "Unable to read Pi experience lifecycle receipt.");
+    }
+  }
   const document = readBoundedJsonObject(path, "Pi experience lifecycle receipt", "INVALID_RECEIPT", "RECEIPT_TOO_LARGE");
   if (!document.exists) {
     return { exists: false, path, value: emptyExperienceReceipt(), dirty: false, remove: false };
@@ -819,7 +852,7 @@ function stateError(state) {
     phase: "permissions",
     code: "INVALID_PERMISSIONS",
     message: state.permissions.reason ?? "Pi permission configuration is invalid or unreadable.",
-    remedy: `Preserve the existing permission configuration at ${state.permissions.path}, correct it manually, and retry.`,
+    remedy: `Preserve the existing permission configuration at ${state.permissions.path} and the permission receipt at ${state.permissions.receiptPath}, correct them manually, and retry.`,
   };
   if (["invalid", "unreadable"].includes(state.experience.state)) return {
     phase: "experience",

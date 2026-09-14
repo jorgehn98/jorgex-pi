@@ -6,12 +6,14 @@ import {
   existsSync,
   copyFileSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1156,6 +1158,7 @@ test("initialization diagnostics require first sync and preserve valid customiza
   await t.test("experience receipt classifications expose exact codes and remedies", async (t) => {
     const cases = [
       ["corrupt", "INVALID_RECEIPT", "invalid"],
+      ["shape-invalid", "INVALID_RECEIPT", "invalid"],
       ["oversize", "RECEIPT_TOO_LARGE", "invalid"],
       ["directory", "INVALID_PATH", "invalid"],
       ["unreadable", "READ_FAILED", "unreadable"],
@@ -1172,6 +1175,7 @@ test("initialization diagnostics require first sync and preserve valid customiza
           assert.equal(sync.status, expected.exitCodes.success);
           const receiptPath = join(sandbox.agentDir, experienceRelative);
           if (label === "corrupt") writeFileSync(receiptPath, "{not-json\n");
+          if (label === "shape-invalid") writeFileSync(receiptPath, `${JSON.stringify({ schemaVersion: 2, initialized: true, fields: {} })}\n`);
           if (label === "oversize") writeFileSync(receiptPath, Buffer.alloc(1024 * 1024 + 1, "x"));
           if (label === "directory") {
             rmSync(receiptPath, { force: true });
@@ -1335,6 +1339,103 @@ test("initialization pending is isolated per component", async (t) => {
       assert.deepEqual(doctor.json.result.checks.map(({ status }) => status), ["ok", "ok", "ok", "error", "ok"]);
       assert.equal(doctor.json.error?.code, "INITIALIZATION_REQUIRED");
       assert.equal(doctor.json.error?.remedy, pendingRemedy);
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+});
+
+test("experience receipt symlinks are rejected as invalid without sync repair", async (t) => {
+  const symlinkExperienceRelative = join("jorgex-pi", "experience-lifecycle.v1.json");
+  const preserveRemedy = (receiptPath) => `Preserve the experience receipt at ${receiptPath}, correct it manually, and retry.`;
+  for (const label of ["broken", "valid"]) {
+    await t.test(label, (tt) => {
+      const sandbox = createSandbox(`init-symlink-${label}`);
+      writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+      createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
+      try {
+        const sync = runRunner("sync", sandbox.env, sandbox.project);
+        assert.equal(sync.status, expected.exitCodes.success);
+        const receiptPath = join(sandbox.agentDir, symlinkExperienceRelative);
+        const validTarget = join(sandbox.root, "external-experience.json");
+        const validBytes = `${JSON.stringify({ schemaVersion: 1, initialized: true, fields: {} })}\n`;
+        if (label === "valid") writeFileSync(validTarget, validBytes);
+        const target = label === "broken" ? join(sandbox.agentDir, "missing-target.json") : validTarget;
+        rmSync(receiptPath, { force: true });
+        try {
+          symlinkSync(target, receiptPath);
+        } catch (error) {
+          tt.skip(`symlinks unavailable: ${error?.code ?? "unknown"}`);
+          return;
+        }
+        assert.equal(lstatSync(receiptPath).isSymbolicLink(), true, "fixture must be a symlink");
+
+        const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+        assert.equal(status.status, expected.exitCodes.unhealthy, `${label} symlink status must exit unhealthy`);
+        assert.equal(status.json.error?.code, "INVALID_PATH", `${label} symlink must preserve INVALID_PATH`);
+        assert.equal(status.json.error?.remedy, preserveRemedy(receiptPath));
+        assert.doesNotMatch(status.json.error?.remedy ?? "", /sync/i, `${label} symlink must not suggest sync repair`);
+        assert.equal(status.json.result.experience.state, "invalid");
+        assert.equal(status.json.result.experience.code, "INVALID_PATH");
+
+        const doctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+        assert.equal(doctor.status, expected.exitCodes.unhealthy, `${label} symlink doctor must exit unhealthy`);
+        assert.equal(doctor.json.error?.code, "INVALID_PATH");
+        assert.equal(doctor.json.error?.remedy, preserveRemedy(receiptPath));
+        assert.doesNotMatch(doctor.json.error?.remedy ?? "", /sync/i, `${label} symlink doctor must not suggest sync repair`);
+        assert.equal(lstatSync(receiptPath).isSymbolicLink(), true, `${label} symlink must stay preserved`);
+        if (label === "valid") assert.equal(readFileSync(validTarget, "utf8"), validBytes, "valid symlink target must stay preserved");
+      } finally {
+        rmSync(sandbox.root, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test("doctor preserves Engram-before-Context7 and permissions-specific causes", async (t) => {
+  await t.test("relative ENGRAM_BIN outranks Context7 conflict", () => {
+    const sandbox = createSandbox("doctor-engram-before-context7");
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
+    try {
+      const sync = runRunner("sync", sandbox.env, sandbox.project);
+      assert.equal(sync.status, expected.exitCodes.success);
+      writeFileSync(join(sandbox.agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { context7: { url: "https://example.invalid/user-context7" } } }, null, 2)}\n`);
+      const doctor = runRunner("doctor", { ...sandbox.env, ENGRAM_BIN: "relative-engram" }, sandbox.project, ["--json"]);
+      assert.equal(doctor.status, expected.exitCodes.unhealthy);
+      assert.equal(doctor.json.result.healthy, false);
+      assert.deepEqual(doctor.json.result.checks.map(({ id }) => id), ["package", "engram", "context7", "permissions", "experience"]);
+      assert.equal(doctor.json.result.checks.find(({ id }) => id === "engram")?.status, "error");
+      assert.equal(doctor.json.result.checks.find(({ id }) => id === "context7")?.status, "error");
+      assert.equal(doctor.json.error?.code, "INVALID_ENGRAM_BIN", "relative ENGRAM_BIN must outrank Context7 conflict");
+      assert.match(doctor.json.error?.message ?? "", /ENGRAM_BIN.*absolute/i);
+      assert.match(doctor.json.error?.remedy ?? "", /absolute executable path/i);
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test("invalid permission config returns permissions-specific remedy", () => {
+    const sandbox = createSandbox("doctor-permissions-cause");
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
+    try {
+      const sync = runRunner("sync", sandbox.env, sandbox.project);
+      assert.equal(sync.status, expected.exitCodes.success);
+      const configPath = join(sandbox.agentDir, permissionConfigRelativePath);
+      const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+      writeFileSync(configPath, "{invalid json\n");
+      const doctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+      assert.equal(doctor.status, expected.exitCodes.unhealthy);
+      assert.equal(doctor.json.result.healthy, false);
+      assert.deepEqual(doctor.json.result.checks.map(({ id }) => id), ["package", "engram", "context7", "permissions", "experience"]);
+      assert.equal(doctor.json.result.checks.find(({ id }) => id === "permissions")?.status, "error");
+      assert.equal(doctor.json.result.checks.find(({ id }) => id === "experience")?.status, "ok");
+      assert.equal(doctor.json.error?.phase, "permissions");
+      assert.equal(doctor.json.error?.code, "INVALID_PERMISSIONS");
+      assert.ok((doctor.json.error?.remedy ?? "").includes(configPath), "permissions remedy must reference the config path");
+      assert.ok((doctor.json.error?.remedy ?? "").includes(receiptPath), "permissions remedy must reference the receipt path");
+      assert.doesNotMatch(doctor.json.error?.code ?? "", /INITIALIZATION_REQUIRED|UNHEALTHY/);
     } finally {
       rmSync(sandbox.root, { recursive: true, force: true });
     }
