@@ -70,6 +70,16 @@ test("the package exposes one versioned JSON-only runner contract", () => {
   assert.deepEqual(schema.$defs?.lifecycleResult?.required, ["changed", "actions"]);
   assert.equal(schema.$defs?.lifecycleResult?.additionalProperties, false);
   assert.equal(schema.$defs?.lifecycleResult?.properties?.actions?.maxItems, expected.maxLifecycleActions);
+  const doctorChecks = schema.$defs?.doctorResult?.properties?.checks;
+  assert.equal(doctorChecks?.minItems, 5, "doctor checks must require exactly five entries");
+  assert.equal(doctorChecks?.maxItems, 5, "doctor checks must allow at most five entries");
+  assert.ok(Array.isArray(doctorChecks?.prefixItems), "doctor checks must declare exact ordered prefixItems");
+  assert.deepEqual(
+    doctorChecks.prefixItems.map((entry) => entry.properties?.id?.const),
+    ["package", "engram", "context7", "permissions", "experience"],
+    "doctor checks must enforce the exact ordered five IDs",
+  );
+  assert.equal(doctorChecks?.items, false, "doctor checks must forbid additional items beyond the ordered five");
 });
 
 test("status, models, doctor, and usage use the bounded machine envelope and stable exits", () => {
@@ -1255,6 +1265,76 @@ test("initialization diagnostics require first sync and preserve valid customiza
       assert.equal(doctor.json.error?.remedy, preserveRemedy(receiptPath));
       assert.deepEqual(repeatedDoctor.json, doctor.json, "doctor precedence must be stable");
       assert.equal(digestRoots([sandbox.agentDir]), before, "precedence diagnosis must not mutate state");
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+});
+
+test("initialization pending is isolated per component", async (t) => {
+  const isolatedExperienceRelative = join("jorgex-pi", "experience-lifecycle.v1.json");
+  const pendingRemedy = "Run jorgex-pi sync --json and retry.";
+
+  function makeIsolatedSandbox(label) {
+    const sandbox = createSandbox(label);
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
+    return sandbox;
+  }
+
+  await t.test("permissions initialized while experience pending", () => {
+    const sandbox = makeIsolatedSandbox("init-isolated-experience-pending");
+    try {
+      const sync = runRunner("sync", sandbox.env, sandbox.project);
+      assert.equal(sync.status, expected.exitCodes.success);
+      rmSync(join(sandbox.agentDir, isolatedExperienceRelative), { force: true });
+
+      const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+      assert.equal(status.status, expected.exitCodes.unhealthy);
+      assertEnvelope(status, "status");
+      assert.equal(status.json.ok, false);
+      assert.equal(status.json.error?.code, "INITIALIZATION_REQUIRED");
+      assert.equal(status.json.error?.remedy, pendingRemedy);
+      assert.equal(status.json.result.installation.state, "registered");
+      assert.equal(status.json.result.permissions.initialized, true);
+      assert.equal(status.json.result.experience.state, "pending");
+
+      const doctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+      assert.equal(doctor.status, expected.exitCodes.unhealthy);
+      assert.equal(doctor.json.result.healthy, false);
+      assert.deepEqual(doctor.json.result.checks.map(({ id }) => id), ["package", "engram", "context7", "permissions", "experience"]);
+      assert.deepEqual(doctor.json.result.checks.map(({ status }) => status), ["ok", "ok", "ok", "ok", "error"]);
+      assert.equal(doctor.json.error?.code, "INITIALIZATION_REQUIRED");
+      assert.equal(doctor.json.error?.remedy, pendingRemedy);
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test("experience initialized while permissions pending", () => {
+    const sandbox = makeIsolatedSandbox("init-isolated-permissions-pending");
+    try {
+      const sync = runRunner("sync", sandbox.env, sandbox.project);
+      assert.equal(sync.status, expected.exitCodes.success);
+      rmSync(join(sandbox.agentDir, permissionReceiptRelativePath), { force: true });
+
+      const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+      assert.equal(status.status, expected.exitCodes.unhealthy);
+      assertEnvelope(status, "status");
+      assert.equal(status.json.ok, false);
+      assert.equal(status.json.error?.code, "INITIALIZATION_REQUIRED");
+      assert.equal(status.json.error?.remedy, pendingRemedy);
+      assert.equal(status.json.result.installation.state, "registered");
+      assert.equal(status.json.result.permissions.initialized, false);
+      assert.equal(status.json.result.experience.state, "initialized");
+
+      const doctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+      assert.equal(doctor.status, expected.exitCodes.unhealthy);
+      assert.equal(doctor.json.result.healthy, false);
+      assert.deepEqual(doctor.json.result.checks.map(({ id }) => id), ["package", "engram", "context7", "permissions", "experience"]);
+      assert.deepEqual(doctor.json.result.checks.map(({ status }) => status), ["ok", "ok", "ok", "error", "ok"]);
+      assert.equal(doctor.json.error?.code, "INITIALIZATION_REQUIRED");
+      assert.equal(doctor.json.error?.remedy, pendingRemedy);
     } finally {
       rmSync(sandbox.root, { recursive: true, force: true });
     }

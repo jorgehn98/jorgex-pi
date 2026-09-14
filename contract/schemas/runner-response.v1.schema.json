@@ -214,15 +214,54 @@
           "type": "array",
           "minItems": 5,
           "maxItems": 5,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["id", "status"],
-            "properties": {
-              "id": { "enum": ["package", "engram", "context7", "permissions", "experience"] },
-              "status": { "enum": ["ok", "error"] }
+          "prefixItems": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "package" },
+                "status": { "enum": ["ok", "error"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "engram" },
+                "status": { "enum": ["ok", "error"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "context7" },
+                "status": { "enum": ["ok", "error"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "permissions" },
+                "status": { "enum": ["ok", "error"] }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "status"],
+              "properties": {
+                "id": { "const": "experience" },
+                "status": { "enum": ["ok", "error"] }
+              }
             }
-          }
+          ],
+          "items": false
         }
       }
     },
