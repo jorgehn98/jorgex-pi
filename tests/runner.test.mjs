@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   copyFileSync,
   linkSync,
@@ -148,9 +149,13 @@ test("runner expands a tilde Pi agent directory consistently across status, sync
   const env = { ...sandbox.env, PI_CODING_AGENT_DIR: tildeAgentDir };
   try {
     const status = runRunner("status", env, sandbox.project, ["--json"]);
-    assert.equal(status.status, expected.exitCodes.success);
+    assert.equal(status.status, expected.exitCodes.unhealthy, "registered tilde status must report pending initialization");
     assertEnvelope(status, "status");
+    assert.equal(status.json.ok, false);
+    assert.equal(status.json.error?.code, "INITIALIZATION_REQUIRED");
+    assert.equal(status.json.error?.remedy, "Run jorgex-pi sync --json and retry.");
     assert.equal(status.json.result.installation.state, "registered");
+    assert.equal(status.json.result.experience.state, "pending");
 
     const sync = runRunner("sync", env, sandbox.project, ["--json"]);
     assert.equal(sync.status, expected.exitCodes.success);
@@ -455,10 +460,14 @@ test("status recognizes one exact Pi registration without mutating foreign setti
   writeFileSync(settingsPath, bytes);
   try {
     const status = runRunner("status", sandbox.env, sandbox.project);
-    assert.equal(status.status, expected.exitCodes.success);
+    assert.equal(status.status, expected.exitCodes.unhealthy, "registered status must report pending initialization before first sync");
     assertEnvelope(status, "status");
+    assert.equal(status.json.ok, false);
+    assert.equal(status.json.error?.code, "INITIALIZATION_REQUIRED");
+    assert.equal(status.json.error?.remedy, "Run jorgex-pi sync --json and retry.");
     assert.equal(status.json.result.installation.state, "registered");
     assert.equal(status.json.result.installation.matches, 1);
+    assert.equal(status.json.result.experience.state, "pending");
     assert.equal(readFileSync(settingsPath, "utf8"), bytes);
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
@@ -972,6 +981,286 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
   });
 });
 
+test("initialization diagnostics require first sync and preserve valid customizations without mutation", async (t) => {
+  const experienceRelative = join("jorgex-pi", "experience-lifecycle.v1.json");
+  const pendingCode = "INITIALIZATION_REQUIRED";
+  const pendingRemedy = "Run jorgex-pi sync --json and retry.";
+  const preserveRemedy = (receiptPath) => `Preserve the experience receipt at ${receiptPath}, correct it manually, and retry.`;
+
+  function makeRegisteredSandbox(label) {
+    const sandbox = createSandbox(label);
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
+    return sandbox;
+  }
+
+  function assertStatusShape(result, command) {
+    assertSingleJsonRecord(result);
+    const json = result.json;
+    assert.equal(json.schemaVersion, expected.schemaVersion);
+    assert.equal(json.command, command);
+    assert.equal(typeof json.ok, "boolean");
+    assert.equal(json.package?.name, "jorgex-pi");
+    assert.equal(json.package?.version, packageVersion);
+  }
+
+  await t.test("registered pending is unhealthy with INITIALIZATION_REQUIRED", () => {
+    const sandbox = makeRegisteredSandbox("init-pending");
+    const receiptPath = join(sandbox.agentDir, experienceRelative);
+    try {
+      const before = digestRoots([sandbox.agentDir]);
+      const firstStatus = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+      const secondStatus = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+      const firstDoctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+      const secondDoctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+
+      for (const status of [firstStatus, secondStatus]) {
+        assert.equal(status.status, expected.exitCodes.unhealthy, "registered pending status must exit unhealthy");
+        assertStatusShape(status, "status");
+        assert.equal(status.json.ok, false);
+        assert.equal(status.json.error?.code, pendingCode);
+        assert.equal(status.json.error?.remedy, pendingRemedy);
+        assert.equal(typeof status.json.error?.message, "string");
+        assert.deepEqual(Object.keys(status.json.result).sort(), ["context7", "engram", "experience", "installation", "permissions"]);
+        assert.equal(status.json.result.installation.state, "registered");
+        assert.equal(status.json.result.engram.state, "ready");
+        assert.equal(status.json.result.context7.state, "available");
+        assert.equal(status.json.result.permissions.initialized, false);
+        assert.equal("code" in status.json.result.permissions, false, "pending permissions must not include code");
+        assert.equal("reason" in status.json.result.permissions, false, "pending permissions must not include reason");
+        assert.equal(status.json.result.experience.state, "pending");
+        assert.equal(status.json.result.experience.receiptPath, receiptPath);
+        assert.equal(status.json.result.experience.initialized, false);
+        assert.equal("code" in status.json.result.experience, false, "pending experience must not include code");
+        assert.equal("reason" in status.json.result.experience, false, "pending experience must not include reason");
+      }
+      assert.deepEqual(secondStatus.json, firstStatus.json, "pending status diagnosis must be stable across repeated reads");
+
+      for (const doctor of [firstDoctor, secondDoctor]) {
+        assert.equal(doctor.status, expected.exitCodes.unhealthy, "registered pending doctor must exit unhealthy");
+        assertStatusShape(doctor, "doctor");
+        assert.equal(doctor.json.ok, false);
+        assert.equal(doctor.json.result.healthy, false);
+        assert.deepEqual(doctor.json.result.checks.map(({ id }) => id), ["package", "engram", "context7", "permissions", "experience"]);
+        assert.equal(doctor.json.result.checks.find(({ id }) => id === "package")?.status, "ok");
+        assert.equal(doctor.json.result.checks.find(({ id }) => id === "engram")?.status, "ok");
+        assert.equal(doctor.json.result.checks.find(({ id }) => id === "context7")?.status, "ok");
+        assert.equal(doctor.json.result.checks.find(({ id }) => id === "permissions")?.status, "error");
+        assert.equal(doctor.json.result.checks.find(({ id }) => id === "experience")?.status, "error");
+        assert.equal(doctor.json.error?.code, pendingCode);
+        assert.equal(doctor.json.error?.remedy, pendingRemedy);
+      }
+      assert.deepEqual(secondDoctor.json, firstDoctor.json, "pending doctor diagnosis must be stable across repeated reads");
+      assert.equal(digestRoots([sandbox.agentDir]), before, "diagnosis must not mutate pending state");
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test("unregistered pending preserves informative status", () => {
+    const sandbox = createSandbox("init-unregistered-pending");
+    createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
+    const receiptPath = join(sandbox.agentDir, experienceRelative);
+    try {
+      const before = digestRoots([sandbox.agentDir]);
+      const first = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+      const second = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+      for (const status of [first, second]) {
+        assert.equal(status.status, expected.exitCodes.success, "unregistered status must stay informative and not block on pending");
+        assertStatusShape(status, "status");
+        assert.equal(status.json.ok, true);
+        assert.equal(status.json.result.installation.state, "unregistered");
+        assert.equal(status.json.result.engram.state, "ready");
+        assert.equal(status.json.result.context7.state, "available");
+        assert.ok(status.json.result.experience, "status must expose experience diagnostics even when unregistered");
+        assert.equal(status.json.result.experience.state, "pending");
+        assert.equal(status.json.result.experience.receiptPath, receiptPath);
+        assert.equal("code" in status.json.result.experience, false);
+        assert.equal("reason" in status.json.result.experience, false);
+      }
+      assert.deepEqual(second.json, first.json, "unregistered diagnosis must be stable");
+      assert.equal(digestRoots([sandbox.agentDir]), before, "informative status must not mutate state");
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test("initialized preexisting, modified, and deleted experience stay healthy", () => {
+    const sandbox = makeRegisteredSandbox("init-healthy-custom");
+    const settingsPath = join(sandbox.agentDir, "settings.json");
+    writeJson(settingsPath, {
+      packages: [`npm:jorgex-pi@${packageVersion}`],
+      theme: "preexisting-theme",
+      quietStartup: false,
+      hideThinkingBlock: false,
+      foreign: { keep: true },
+    });
+    try {
+      const sync = runRunner("sync", sandbox.env, sandbox.project);
+      assert.equal(sync.status, expected.exitCodes.success);
+      const receiptPath = join(sandbox.agentDir, experienceRelative);
+      assert.equal(existsSync(receiptPath), true, "first sync must record experience initialization");
+
+      const checkHealthy = (label) => {
+        const firstStatus = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+        const secondStatus = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+        const firstDoctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+        const secondDoctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+        for (const status of [firstStatus, secondStatus]) {
+          assert.equal(status.status, expected.exitCodes.success, `${label} status must stay healthy`);
+          assertStatusShape(status, "status");
+          assert.equal(status.json.ok, true);
+          assert.ok(status.json.result.experience, `${label} status must expose experience diagnostics`);
+          assert.equal(status.json.result.experience.state, "initialized");
+          assert.equal(status.json.result.experience.initialized, true);
+          assert.equal("code" in status.json.result.experience, false, `${label} initialized must not include code`);
+          assert.equal("reason" in status.json.result.experience, false, `${label} initialized must not include reason`);
+        }
+        assert.deepEqual(secondStatus.json, firstStatus.json, `${label} status must be stable`);
+        for (const doctor of [firstDoctor, secondDoctor]) {
+          assert.equal(doctor.status, expected.exitCodes.success, `${label} doctor must stay healthy`);
+          assert.equal(doctor.json.result.healthy, true);
+          assert.deepEqual(doctor.json.result.checks.map(({ id }) => id), ["package", "engram", "context7", "permissions", "experience"]);
+          for (const check of doctor.json.result.checks) assert.equal(check.status, "ok", `${label} ${check.id} must stay ok`);
+        }
+        assert.deepEqual(secondDoctor.json, firstDoctor.json, `${label} doctor must be stable`);
+      };
+
+      checkHealthy("preexisting");
+      const modified = readJson(settingsPath);
+      modified.theme = "modified-theme";
+      modified.quietStartup = true;
+      writeJson(settingsPath, modified);
+      checkHealthy("modified");
+      const deleted = readJson(settingsPath);
+      delete deleted.theme;
+      delete deleted.quietStartup;
+      delete deleted.hideThinkingBlock;
+      writeJson(settingsPath, deleted);
+      checkHealthy("deleted");
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test("experience receipt classifications expose exact codes and remedies", async (t) => {
+    const cases = [
+      ["corrupt", "INVALID_RECEIPT", "invalid"],
+      ["oversize", "RECEIPT_TOO_LARGE", "invalid"],
+      ["directory", "INVALID_PATH", "invalid"],
+      ["unreadable", "READ_FAILED", "unreadable"],
+    ];
+    for (const [label, code, state] of cases) {
+      await t.test(label, (tt) => {
+        if (label === "unreadable" && typeof process.geteuid === "function" && process.geteuid() === 0) {
+          tt.skip("unreadable receipt requires a non-root owner");
+          return;
+        }
+        const sandbox = makeRegisteredSandbox(`init-experience-${label}`);
+        try {
+          const sync = runRunner("sync", sandbox.env, sandbox.project);
+          assert.equal(sync.status, expected.exitCodes.success);
+          const receiptPath = join(sandbox.agentDir, experienceRelative);
+          if (label === "corrupt") writeFileSync(receiptPath, "{not-json\n");
+          if (label === "oversize") writeFileSync(receiptPath, Buffer.alloc(1024 * 1024 + 1, "x"));
+          if (label === "directory") {
+            rmSync(receiptPath, { force: true });
+            mkdirSync(receiptPath, { recursive: true });
+          }
+          if (label === "unreadable") chmodSync(receiptPath, 0o000);
+          // On some filesystems chmod may still allow root reads; guard narrowly without hiding product behavior.
+          if (label === "unreadable") {
+            try {
+              readFileSync(receiptPath);
+              tt.skip("filesystem still permits reads after chmod 000");
+              return;
+            } catch {
+              // Expected: the fixture is actually unreadable, continue to runner assertions.
+            }
+          }
+          const before = label === "unreadable" ? statSync(receiptPath).mode : digestRoots([sandbox.agentDir]);
+          try {
+            const firstStatus = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+            const secondStatus = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+            const firstDoctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+            const secondDoctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+            for (const status of [firstStatus, secondStatus]) {
+              assert.equal(status.status, expected.exitCodes.unhealthy, `${label} status must exit unhealthy`);
+              assertStatusShape(status, "status");
+              assert.equal(status.json.ok, false);
+              assert.equal(status.json.error?.code, code, `${label} must preserve its receipt code`);
+              assert.equal(status.json.error?.remedy, preserveRemedy(receiptPath), `${label} must recommend preserving the receipt`);
+              assert.equal(status.json.result.experience.state, state, `${label} experience state must be ${state}`);
+              assert.equal(status.json.result.experience.receiptPath, receiptPath);
+              assert.equal(status.json.result.experience.code, code);
+              assert.equal(typeof status.json.result.experience.reason, "string");
+              assert.ok(status.json.result.experience.reason.length > 0);
+            }
+            assert.deepEqual(secondStatus.json, firstStatus.json, `${label} status must be stable`);
+            for (const doctor of [firstDoctor, secondDoctor]) {
+              assert.equal(doctor.status, expected.exitCodes.unhealthy, `${label} doctor must exit unhealthy`);
+              assert.equal(doctor.json.result.healthy, false);
+              assert.deepEqual(doctor.json.result.checks.map(({ id }) => id), ["package", "engram", "context7", "permissions", "experience"]);
+              assert.equal(doctor.json.result.checks.find(({ id }) => id === "experience")?.status, "error");
+              assert.equal(doctor.json.error?.code, code);
+              assert.equal(doctor.json.error?.remedy, preserveRemedy(receiptPath));
+            }
+            assert.deepEqual(secondDoctor.json, firstDoctor.json, `${label} doctor must be stable`);
+            if (label === "unreadable") {
+              assert.equal(statSync(receiptPath).mode, before, `${label} diagnosis must not mutate receipt mode`);
+            } else {
+              assert.equal(digestRoots([sandbox.agentDir]), before, `${label} diagnosis must not mutate receipts`);
+            }
+          } finally {
+            if (label === "unreadable") {
+              try {
+                chmodSync(receiptPath, 0o644);
+              } catch {}
+            }
+          }
+        } finally {
+          rmSync(sandbox.root, { recursive: true, force: true });
+        }
+      });
+    }
+  });
+
+  await t.test("experience corruption outranks permission pending", () => {
+    const sandbox = makeRegisteredSandbox("init-precedence");
+    const receiptPath = join(sandbox.agentDir, experienceRelative);
+    try {
+      mkdirSync(dirname(receiptPath), { recursive: true });
+      writeFileSync(receiptPath, "{not-json\n");
+      const before = digestRoots([sandbox.agentDir]);
+      const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+      const repeatedStatus = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
+      const doctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+      const repeatedDoctor = runRunner("doctor", sandbox.env, sandbox.project, ["--json"]);
+
+      assert.equal(status.status, expected.exitCodes.unhealthy);
+      assertStatusShape(status, "status");
+      assert.equal(status.json.error?.code, "INVALID_RECEIPT", "corruption must outrank pending");
+      assert.equal(status.json.error?.remedy, preserveRemedy(receiptPath));
+      assert.equal(status.json.result.permissions.initialized, false, "permissions must remain pending");
+      assert.equal(status.json.result.experience.state, "invalid");
+      assert.equal(status.json.result.experience.code, "INVALID_RECEIPT");
+      assert.deepEqual(repeatedStatus.json, status.json, "precedence diagnosis must be stable");
+
+      assert.equal(doctor.status, expected.exitCodes.unhealthy);
+      assert.equal(doctor.json.result.healthy, false);
+      assert.deepEqual(doctor.json.result.checks.map(({ id }) => id), ["package", "engram", "context7", "permissions", "experience"]);
+      assert.equal(doctor.json.result.checks.find(({ id }) => id === "permissions")?.status, "error", "pending permissions must still surface as a failed check");
+      assert.equal(doctor.json.result.checks.find(({ id }) => id === "experience")?.status, "error", "invalid experience must surface as a failed check");
+      assert.equal(doctor.json.error?.code, "INVALID_RECEIPT");
+      assert.equal(doctor.json.error?.remedy, preserveRemedy(receiptPath));
+      assert.deepEqual(repeatedDoctor.json, doctor.json, "doctor precedence must be stable");
+      assert.equal(digestRoots([sandbox.agentDir]), before, "precedence diagnosis must not mutate state");
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+});
+
 function runRunner(command, env, cwd, args = []) {
   const result = spawnSync(process.execPath, [runnerEntry, command, ...args], {
     cwd,
@@ -1011,7 +1300,7 @@ function assertEnvelope(result, command) {
       assert.ok(json.error[field].length > 0, `schema-required error.${field} must not be empty`);
     }
   }
-  if (command === "status") assert.deepEqual(Object.keys(json.result).sort(), ["context7", "engram", "installation", "permissions"]);
+  if (command === "status") assert.deepEqual(Object.keys(json.result).sort(), ["context7", "engram", "experience", "installation", "permissions"]);
   if (command === "doctor") {
     assert.equal(typeof json.result.healthy, "boolean");
     assert.ok(Array.isArray(json.result.checks));

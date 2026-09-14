@@ -32,7 +32,8 @@
       "hideThinkingBlock": true
     },
     "initialization": "first sync only",
-    "ownership": "missing fields only; cleanup removes exact package-owned values and preserves replacements"
+    "ownership": "missing fields only; cleanup removes exact package-owned values and preserves replacements",
+    "diagnostic": "status reports pending, initialized, invalid, or unreadable from the receipt only; pending means the receipt is absent and requires a registered package; invalid preserves INVALID_PATH, INVALID_RECEIPT, or RECEIPT_TOO_LARGE and unreadable preserves READ_FAILED; status and doctor are read-only and never lock, write, or delete state"
   },
   "context7": {
     "transport": "http",
@@ -46,6 +47,6 @@
     "receipt": "PI_CODING_AGENT_DIR/jorgex-pi/permissions-lifecycle.v1.json",
     "defaults": "assets/permissions/defaults.json",
     "semantics": "sync seeds only an absent config through exclusive publication; existing, invalid, and concurrent user state is preserved; cleanup keeps an exact owned copy in a retained backup",
-    "diagnostic": "permission state reports invalid or unreadable files without exposing their contents"
+    "diagnostic": "permission state reports invalid or unreadable files without exposing their contents; a registered package also reports pending when the receipt is not initialized"
   }
 }
