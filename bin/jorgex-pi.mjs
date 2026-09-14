@@ -528,15 +528,20 @@ function readLifecycleReceipt(path) {
 }
 
 function readExperienceReceipt(path) {
+  let stats;
   try {
-    if (lstatSync(path).isSymbolicLink()) {
-      throw new LifecycleError("INVALID_PATH", "Pi experience lifecycle receipt must be a regular file.");
-    }
+    stats = lstatSync(path);
   } catch (error) {
-    if (error instanceof LifecycleError) throw error;
-    if (error?.code !== "ENOENT") {
-      throw new LifecycleError("READ_FAILED", "Unable to read Pi experience lifecycle receipt.");
+    if (error?.code === "ENOENT") {
+      stats = undefined;
+    } else if (typeof error?.code === "string" && (typeof error?.errno === "number" || typeof error?.syscall === "string")) {
+      throw lifecycleFsError("READ_FAILED", "inspect", path, error);
+    } else {
+      throw error;
     }
+  }
+  if (stats !== undefined && stats.isSymbolicLink()) {
+    throw new LifecycleError("INVALID_PATH", "Pi experience lifecycle receipt must be a regular file.");
   }
   const document = readBoundedJsonObject(path, "Pi experience lifecycle receipt", "INVALID_RECEIPT", "RECEIPT_TOO_LARGE");
   if (!document.exists) {

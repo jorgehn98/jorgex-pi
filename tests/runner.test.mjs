@@ -1385,6 +1385,18 @@ test("experience receipt symlinks are rejected as invalid without sync repair", 
         assert.doesNotMatch(doctor.json.error?.remedy ?? "", /sync/i, `${label} symlink doctor must not suggest sync repair`);
         assert.equal(lstatSync(receiptPath).isSymbolicLink(), true, `${label} symlink must stay preserved`);
         if (label === "valid") assert.equal(readFileSync(validTarget, "utf8"), validBytes, "valid symlink target must stay preserved");
+
+        const syncRepair = runRunner("sync", sandbox.env, sandbox.project, ["--json"]);
+        assert.equal(syncRepair.status, expected.exitCodes.unhealthy, `${label} symlink sync must exit unhealthy`);
+        assert.equal(syncRepair.json.error?.code, "INVALID_PATH", `${label} symlink sync must preserve INVALID_PATH`);
+        assert.equal(lstatSync(receiptPath).isSymbolicLink(), true, `${label} symlink sync must preserve the symlink`);
+        if (label === "valid") assert.equal(readFileSync(validTarget, "utf8"), validBytes, "valid symlink sync must preserve the target");
+
+        const cleanupRepair = runRunner("cleanup", sandbox.env, sandbox.project, ["--json"]);
+        assert.equal(cleanupRepair.status, expected.exitCodes.unhealthy, `${label} symlink cleanup must exit unhealthy`);
+        assert.equal(cleanupRepair.json.error?.code, "INVALID_PATH", `${label} symlink cleanup must preserve INVALID_PATH`);
+        assert.equal(lstatSync(receiptPath).isSymbolicLink(), true, `${label} symlink cleanup must preserve the symlink`);
+        if (label === "valid") assert.equal(readFileSync(validTarget, "utf8"), validBytes, "valid symlink cleanup must preserve the target");
       } finally {
         rmSync(sandbox.root, { recursive: true, force: true });
       }
