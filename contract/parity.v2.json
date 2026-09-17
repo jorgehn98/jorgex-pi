@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "64f15d9f4c7ce737fbf9f317c1080ee159142eb9"
+    "commit": "715a935a52242103487464c610bd8f35cb8dd1e1"
   },
   "agents": [
     {
@@ -51,8 +51,8 @@
       "name": "implementer",
       "sourcePath": "stack/agents/implementer.md",
       "targetPath": "snapshot/agents/implementer.md",
-      "sourceSha256": "2dfb20721c56d1a41fabcca0141267cdd6c35aa3ca8262d9cf59af2c2288515b",
-      "outputSha256": "2dfb20721c56d1a41fabcca0141267cdd6c35aa3ca8262d9cf59af2c2288515b"
+      "sourceSha256": "c28693d2e11ee451c0ba6d3430e63dcc0dc7a0e7837db1be64fe036ebcd11a24",
+      "outputSha256": "c28693d2e11ee451c0ba6d3430e63dcc0dc7a0e7837db1be64fe036ebcd11a24"
     },
     {
       "name": "orchestrator",
@@ -86,15 +86,15 @@
       "name": "tester",
       "sourcePath": "stack/agents/tester.md",
       "targetPath": "snapshot/agents/tester.md",
-      "sourceSha256": "bb1d6e5919d2e9a00e24d5bb1032ef335e9782a06b6da0bc56f6dd6a9cd20689",
-      "outputSha256": "bb1d6e5919d2e9a00e24d5bb1032ef335e9782a06b6da0bc56f6dd6a9cd20689"
+      "sourceSha256": "062ef65f7e87d12f0f7c68bba7a2bf3beac85966dedbb2a59d2314751557494d",
+      "outputSha256": "062ef65f7e87d12f0f7c68bba7a2bf3beac85966dedbb2a59d2314751557494d"
     },
     {
       "name": "translator",
       "sourcePath": "stack/agents/translator.md",
       "targetPath": "snapshot/agents/translator.md",
-      "sourceSha256": "4178b4dfaca91872c1f145fd87d1b5d0936335330b90ae25fefd079050c671cc",
-      "outputSha256": "4178b4dfaca91872c1f145fd87d1b5d0936335330b90ae25fefd079050c671cc"
+      "sourceSha256": "6ec7d35e1d58e28277dc38df71bf6228bc9d8f2347d1fdb3a8c947f388b551b4",
+      "outputSha256": "6ec7d35e1d58e28277dc38df71bf6228bc9d8f2347d1fdb3a8c947f388b551b4"
     },
     {
       "name": "type-design-analyzer",
@@ -619,8 +619,8 @@
   "permissions": {
     "sourcePath": "stack/config/defaults.json",
     "targetPath": "assets/permissions/defaults.json",
-    "sourceSha256": "fb35404cc65c886985897803bf1b594bde47c25ed4a9df40ed508618751ca524",
-    "outputSha256": "2b960dd4cb0363395c94b48aeacc19c5faeda98af652875d989cbdbe50347748"
+    "sourceSha256": "f50be33a6ef3ed98d1cd3438379db6495de0272cf25fa7d619d5fdbc437254d0",
+    "outputSha256": "c04c484d217c70ce04d596cbf62ace4429932abd5074f5fa15adaafcc099ee74"
   },
   "qualityReceipt": {
     "namespace": "jorgex.quality.receipt",
