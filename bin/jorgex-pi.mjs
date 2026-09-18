@@ -19,13 +19,14 @@ let cleanupPermissions;
 let inspectPermissions;
 let PermissionsLifecycleError;
 let syncPermissions;
+let upgradePermissions;
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let manifest;
 let inspectContext7Config;
 let agentDir;
 let packageInfo = { name: "jorgex-pi", version: "unknown", root };
-const commands = new Set(["status", "doctor", "models", "sync", "cleanup"]);
+const commands = new Set(["status", "doctor", "models", "sync", "upgrade", "cleanup"]);
 const exitCodes = { success: 0, unhealthy: 1, usage: 2, internal: 3 };
 const maxStdoutBytes = 65536;
 const maxLifecycleJsonBytes = 1024 * 1024;
@@ -79,7 +80,7 @@ class LifecycleError extends Error {
 try {
   manifest = readJson(join(root, "package.json"));
   packageInfo = { name: manifest.name, version: manifest.version, root };
-  ({ cleanupPermissions, inspectPermissions, PermissionsLifecycleError, syncPermissions } = await import("../extensions/permissions-lifecycle.mjs"));
+  ({ cleanupPermissions, inspectPermissions, PermissionsLifecycleError, syncPermissions, upgradePermissions } = await import("../extensions/permissions-lifecycle.mjs"));
   const context7Module = await import("../extensions/context7-config.mjs");
   inspectContext7Config = context7Module.inspectContext7Config;
   agentDir = context7Module.resolvePiAgentDir();
@@ -91,7 +92,7 @@ try {
     emit("unknown", false, {}, {
       phase: "arguments",
       code: "USAGE",
-      message: "Expected one command: status, doctor, models, sync, or cleanup.",
+      message: "Expected one command: status, doctor, models, sync, upgrade, or cleanup.",
     }, exitCodes.usage);
   } else if (command === "models") {
     emit(command, true, {
@@ -99,8 +100,8 @@ try {
       primary: { provider: "openai-codex", model: "gpt-5.6-sol", contextWindow: 872000 },
       tiers: ["strong", "standard", "cheap"],
     });
-  } else if (command === "sync" || command === "cleanup") {
-    emit(command, true, command === "sync" ? syncLifecycle() : cleanupLifecycle());
+  } else if (command === "sync" || command === "upgrade" || command === "cleanup") {
+    emit(command, true, command === "sync" ? syncLifecycle() : command === "upgrade" ? upgradeLifecycle() : cleanupLifecycle());
   } else {
     const state = inspectState();
     if (command === "status") {
@@ -331,6 +332,14 @@ function syncLifecycleUnlocked() {
 
 function cleanupLifecycle() {
   return withLifecycleLocks(cleanupLifecycleUnlocked, false);
+}
+
+function upgradeLifecycle() {
+  return withLifecycleLocks(upgradeLifecycleUnlocked, true);
+}
+
+function upgradeLifecycleUnlocked() {
+  return upgradePermissions({ agentDir, packageRoot: root, packageVersion: manifest.version });
 }
 
 function cleanupLifecycleUnlocked() {

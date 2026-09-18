@@ -6,7 +6,7 @@
   "required": ["schemaVersion", "command", "ok", "package", "result"],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "command": { "enum": ["status", "doctor", "models", "sync", "cleanup", "unknown"] },
+    "command": { "enum": ["status", "doctor", "models", "sync", "upgrade", "cleanup", "unknown"] },
     "ok": { "type": "boolean" },
     "package": { "$ref": "#/$defs/package" },
     "result": { "type": "object" },
@@ -47,6 +47,14 @@
     },
     {
       "properties": { "command": { "const": "cleanup" }, "ok": { "const": false }, "result": { "$ref": "#/$defs/lifecycleResult" } },
+      "required": ["error"]
+    },
+    {
+      "properties": { "command": { "const": "upgrade" }, "ok": { "const": true }, "result": { "$ref": "#/$defs/lifecycleResult" } },
+      "not": { "required": ["error"] }
+    },
+    {
+      "properties": { "command": { "const": "upgrade" }, "ok": { "const": false }, "result": { "$ref": "#/$defs/lifecycleResult" } },
       "required": ["error"]
     },
     {
@@ -295,7 +303,8 @@
           "type": "array",
           "maxItems": 32,
           "items": { "$ref": "#/$defs/lifecycleAction" }
-        }
+        },
+        "policySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       }
     },
     "lifecycleAction": {
@@ -325,6 +334,7 @@
         "initialized:permissions",
         "preserved:permissions.config",
         "released:permissions.config",
+        "upgraded:permissions.config",
         "backup:permissions.config",
         "removed:permissions.config",
         "created:theme",

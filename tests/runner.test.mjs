@@ -71,6 +71,7 @@ test("the package exposes one versioned JSON-only runner contract", () => {
   assert.equal(schema.$defs?.primaryModel?.additionalProperties, false);
   assert.deepEqual(schema.$defs?.lifecycleResult?.required, ["changed", "actions"]);
   assert.equal(schema.$defs?.lifecycleResult?.additionalProperties, false);
+  assert.deepEqual(schema.$defs?.lifecycleResult?.properties?.policySha256, { type: "string", pattern: "^[a-f0-9]{64}$" }, "upgrade may only prove the published bytes with an optional 64-hex policy hash");
   assert.equal(schema.$defs?.lifecycleResult?.properties?.actions?.maxItems, expected.maxLifecycleActions);
   const doctorChecks = schema.$defs?.doctorResult?.properties?.checks;
   assert.equal(doctorChecks?.minItems, 5, "doctor checks must require exactly five entries");
@@ -1499,8 +1500,12 @@ function assertEnvelope(result, command) {
     assert.ok(Array.isArray(json.result.checks));
   }
   if (command === "models") assert.deepEqual(Object.keys(json.result).sort(), ["mode", "primary", "tiers"]);
-  if (["sync", "cleanup"].includes(command)) {
-    assert.deepEqual(Object.keys(json.result).sort(), ["actions", "changed"]);
+  if (["sync", "upgrade", "cleanup"].includes(command)) {
+    const extra = command === "upgrade" && "policySha256" in json.result ? ["policySha256"] : [];
+    assert.deepEqual(Object.keys(json.result).sort(), ["actions", "changed", ...extra].sort(), "lifecycle envelopes carry exactly changed+actions plus the upgrade proof hash when present");
+    if ("policySha256" in json.result) {
+      assert.match(json.result.policySha256, /^[a-f0-9]{64}$/, "upgrade may only prove the published bytes with a 64-hex policy hash");
+    }
     assertLifecycleActionsUseSchemaEnum(json.result.actions);
   }
 }

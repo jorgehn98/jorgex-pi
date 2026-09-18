@@ -7,6 +7,7 @@
     "doctor",
     "models",
     "sync",
+    "upgrade",
     "cleanup"
   ],
   "errorCommand": "unknown",
