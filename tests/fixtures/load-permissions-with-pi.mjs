@@ -195,11 +195,29 @@ if (process.env.JORGEX_PERMISSION_FIXTURE_CANONICAL === "1") {
       toolCallId: "canonical-bash-force-push",
       input: { command: "git push --force origin main" },
     }),
+    bashCommit: await runner.emitToolCall({
+      type: "tool_call",
+      toolName: "bash",
+      toolCallId: "canonical-bash-commit",
+      input: { command: "git commit -m canonical" },
+    }),
     bashSudo: await runner.emitToolCall({
       type: "tool_call",
       toolName: "bash",
       toolCallId: "canonical-bash-sudo",
       input: { command: "sudo echo canonical" },
+    }),
+    bashRebase: await runner.emitToolCall({
+      type: "tool_call",
+      toolName: "bash",
+      toolCallId: "canonical-bash-rebase",
+      input: { command: "git rebase main" },
+    }),
+    bashSsh: await runner.emitToolCall({
+      type: "tool_call",
+      toolName: "bash",
+      toolCallId: "canonical-bash-ssh",
+      input: { command: "ssh example.com" },
     }),
     bashSecret: await runner.emitToolCall({
       type: "tool_call",
@@ -236,6 +254,18 @@ if (process.env.JORGEX_PERMISSION_FIXTURE_CANONICAL === "1") {
       toolName: "edit",
       toolCallId: "canonical-edit-inside",
       input: { path: "docs/guide.md" },
+    }),
+    readSecret: await runner.emitToolCall({
+      type: "tool_call",
+      toolName: "read",
+      toolCallId: "canonical-read-secret",
+      input: { path: ".env" },
+    }),
+    editSecret: await runner.emitToolCall({
+      type: "tool_call",
+      toolName: "edit",
+      toolCallId: "canonical-edit-secret",
+      input: { path: ".env" },
     }),
     mcpEngram: await runner.emitToolCall({
       type: "tool_call",

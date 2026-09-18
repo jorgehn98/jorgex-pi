@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const DEFAULT_SOURCE_COMMIT = "715a935a52242103487464c610bd8f35cb8dd1e1";
+const DEFAULT_SOURCE_COMMIT = "09947922e6aafee5b75286b56e8f88dd22b8fba0";
 const SOURCE_COMMIT = process.env.JORGEX_STACK_COMMIT?.trim() || DEFAULT_SOURCE_COMMIT;
 const QUALITY_RECEIPT_SOURCE_PATH = "stack/contracts/quality-receipt.v1.schema.json";
 const QUALITY_RECEIPT_TARGET_PATH = "contract/schemas/quality-receipt.v1.schema.json";
@@ -113,7 +113,6 @@ function generatePermissionsProjection() {
   }
   const pathRules = structuredClone(opencode.read);
   const policy = {
-    "*": "ask",
     path: pathRules,
     read: "allow",
     write: "allow",
@@ -122,10 +121,7 @@ function generatePermissionsProjection() {
     find: "allow",
     ls: "allow",
     bash: structuredClone(opencode.bash),
-    mcp: {
-      "*": "ask",
-      ...knownMcpTools("allow"),
-    },
+    mcp: "allow",
     skill: "allow",
     external_directory: "allow",
     git_read: "allow",
@@ -143,20 +139,6 @@ function generatePermissionsProjection() {
     sourceSha256: sha256(sourceBytes),
     outputSha256: sha256(outputBytes),
   };
-}
-
-function knownMcpTools(action) {
-  return Object.fromEntries([
-    "mcp_status",
-    "mcp_list",
-    "mcp_search",
-    "mcp_describe",
-    "mcp_connect",
-    "engram_*",
-    "context7_*",
-    "context7:*",
-    "engram:*",
-  ].map((name) => [name, action]));
 }
 
 function knownCompanionTools(action) {

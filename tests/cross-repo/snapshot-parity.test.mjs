@@ -242,11 +242,10 @@ function assertPermissionsProjection(stackDir, modes, projection, projectionExpe
   const output = readFileSync(outputPath);
   assert.equal(projection.outputSha256, sha256(output), projection.targetPath + " output hash must match packaged bytes");
   const generated = JSON.parse(output);
-  assert.equal(generated.permission?.["*"], "ask", "generated permissions must retain the conservative fallback");
+  assert.equal(generated.permission?.["*"], undefined, "generated permissions must not restore a global fallback: unlisted tools fall through to native allow");
   assert.equal(generated.permission?.path?.["*.env"], "deny", "generated permissions must retain the transversal secret guard");
   assert.equal(generated.permission?.git_read, "allow", "generated permissions must allow the validated Git reader");
-  assert.equal(generated.permission?.mcp?.["*"], "ask", "unknown MCP targets must retain the ask fallback");
-  assert.equal(generated.permission?.mcp?.["context7:*"], "allow", "registered Context7 targets must be allowed");
+  assert.equal(generated.permission?.mcp, "allow", "every MCP target must be allowed without an allowlist");
   assert.doesNotMatch(output.toString("utf8"), /(?:sk-[A-Za-z0-9]|ghp_[A-Za-z0-9]|BEGIN (?:RSA|OPENSSH) PRIVATE KEY)/, "generated permissions must not contain credentials");
 }
 
