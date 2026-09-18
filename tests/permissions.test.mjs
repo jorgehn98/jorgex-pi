@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -7,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -20,6 +22,8 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const runnerEntry = join(root, "bin", "jorgex-pi.mjs");
+const packageVersion = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+const permissionDefaultsBytes = readFileSync(join(root, "assets", "permissions", "defaults.json"));
 const permissionConfigRelativePath = join("extensions", "pi-permission-system", "config.json");
 const permissionReceiptRelativePath = join("jorgex-pi", "permissions-lifecycle.v1.json");
 
@@ -62,6 +66,320 @@ test("permission lifecycle seeds only an absent config and never reseeds after u
     const afterUserDelete = runRunner("sync", sandbox);
     assert.equal(afterUserDelete.status, 0, afterUserDelete.stderr);
     assert.equal(existsSync(permissionPath), false, "a receipt must prevent reseeding after the user deletes a previously managed policy");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("upgrade seeds an absent policy with a versioned receipt", () => {
+  const sandbox = createSandbox("permission-upgrade-absent");
+  const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+  const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+  try {
+    const result = runRunner("upgrade", sandbox);
+    assert.equal(result.status, 0, result.stderr);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.command, "upgrade");
+    assert.equal(output.ok, true);
+    assert.equal(output.result.changed, true);
+    assert.deepEqual(Object.keys(output.result).sort(), ["actions", "changed", "policySha256"], "a publishing upgrade must prove the new bytes with exactly the policy hash");
+    assert.equal(output.result.policySha256, sha256(permissionDefaultsBytes), "the proof hash must cover the published defaults bytes");
+    assert.ok(output.result.actions.includes("created:permissions.config"));
+    assert.equal(readFileSync(permissionPath).equals(permissionDefaultsBytes), true, "upgrade must seed the current defaults when the policy is absent");
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    assert.equal(receipt.schemaVersion, 1);
+    assert.equal(receipt.initialized, true);
+    assert.equal(receipt.owned.configSha256, sha256(permissionDefaultsBytes), "the receipt must own the seeded bytes");
+    assert.equal(receipt.owned.policyVersion, packageVersion, "the receipt must record which package version owns the policy");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("upgrade rewrites a stale owned policy with a prior byte-exact backup and stays idempotent", () => {
+  const sandbox = createSandbox("permission-upgrade-stale-owned");
+  const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+  const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+  const staleBytes = Buffer.from(`${JSON.stringify({ permission: { "*": "ask" } }, null, 2)}\n`);
+  assert.notEqual(sha256(staleBytes), sha256(permissionDefaultsBytes), "the stale fixture must differ from the current defaults");
+  mkdirSync(dirname(permissionPath), { recursive: true });
+  writeFileSync(permissionPath, staleBytes);
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  writeJson(receiptPath, { schemaVersion: 1, initialized: true, owned: { configSha256: sha256(staleBytes) } });
+  try {
+    const result = runRunner("upgrade", sandbox);    assert.equal(result.status, 0, result.stderr);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.ok, true);
+    assert.equal(output.result.changed, true);
+    assert.deepEqual(Object.keys(output.result).sort(), ["actions", "changed", "policySha256"], "a publishing upgrade must prove the new bytes with exactly the policy hash");
+    assert.equal(output.result.policySha256, sha256(permissionDefaultsBytes), "the proof hash must cover the published defaults bytes");
+    assert.equal(output.result.policySha256, sha256(readFileSync(permissionPath)), "the proof hash must match the bytes on disk");
+    assert.equal("policy" in output.result, false, "upgrade must prove by hash without dumping policy content");
+    assert.equal("config" in output.result, false, "upgrade must prove by hash without dumping config content");
+    assert.ok(output.result.actions.includes("backup:permissions.config"), "the rewrite must back up first");
+    assert.ok(output.result.actions.includes("upgraded:permissions.config"));
+    assert.equal(readFileSync(permissionPath).equals(permissionDefaultsBytes), true, "upgrade must publish the current defaults");
+    const backupRoot = join(sandbox.agentDir, "jorgex-pi", "permissions-backups");
+    const backups = readDirNames(backupRoot);
+    assert.equal(backups.length, 1, "upgrade must retain one backup of the superseded owned bytes");
+    assert.equal(readFileSync(join(backupRoot, backups[0], "config.json")).equals(staleBytes), true, "the backup must preserve the exact superseded bytes");
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    assert.equal(receipt.owned.configSha256, sha256(permissionDefaultsBytes), "the receipt must own the new bytes, not the old ones");
+    assert.equal(receipt.owned.policyVersion, packageVersion, "the receipt must distinguish the new ownership from the old one");
+
+    const status = runRunner("status", sandbox);
+    const statusJson = JSON.parse(status.stdout);
+    assert.equal(statusJson.result.permissions.state, "managed");
+    assert.equal(statusJson.result.permissions.owned, true);
+    assert.deepEqual(Object.keys(statusJson.result.permissions).sort(), ["initialized", "owned", "path", "receiptPath", "state"], "status must not expose policy content");
+
+    const configAfter = readFileSync(permissionPath);
+    const receiptAfter = readFileSync(receiptPath, "utf8");
+    const second = runRunner("upgrade", sandbox);
+    assert.equal(second.status, 0, second.stderr);
+    const secondOutput = JSON.parse(second.stdout);
+    assert.equal(secondOutput.result.changed, false, "a fresh owned policy must not be rewritten again");
+    assert.deepEqual(Object.keys(secondOutput.result).sort(), ["actions", "changed"], "an unchanged upgrade carries no proof hash");
+    assert.equal(readFileSync(permissionPath).equals(configAfter), true, "repeated upgrade must be byte-idempotent");
+    assert.equal(readFileSync(receiptPath, "utf8"), receiptAfter, "repeated upgrade must not rewrite ownership state");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("sync without an upgrade order leaves a stale owned policy untouched", () => {
+  const sandbox = createSandbox("permission-stale-owned-no-upgrade");
+  const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+  const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+  const staleBytes = Buffer.from(`${JSON.stringify({ permission: { "*": "ask" } }, null, 2)}\n`);
+  mkdirSync(dirname(permissionPath), { recursive: true });
+  writeFileSync(permissionPath, staleBytes);
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  const receiptBytes = `${JSON.stringify({ schemaVersion: 1, initialized: true, owned: { configSha256: sha256(staleBytes) } }, null, 2)}\n`;
+  writeFileSync(receiptPath, receiptBytes);
+  try {
+    const result = runRunner("sync", sandbox);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(permissionPath).equals(staleBytes), true, "sync must never rewrite a stale owned policy without an explicit upgrade");
+    assert.equal(readFileSync(receiptPath, "utf8"), receiptBytes, "sync must not touch stale ownership state");
+
+    const userBytes = Buffer.from(`${JSON.stringify({ permission: { "*": "deny" } }, null, 2)}\n`);
+    writeFileSync(permissionPath, userBytes);
+    const afterUserChange = runRunner("upgrade", sandbox);
+    assert.equal(afterUserChange.status, 0, afterUserChange.stderr);
+    const afterUserChangeOutput = JSON.parse(afterUserChange.stdout);
+    assert.ok(afterUserChangeOutput.result.actions.includes("released:permissions.config"), "upgrade must release ownership instead of rewriting a user-modified policy");
+    assert.deepEqual(Object.keys(afterUserChangeOutput.result).sort(), ["actions", "changed"], "a release publishes nothing and carries no proof hash");
+    assert.equal(readFileSync(permissionPath).equals(userBytes), true, "upgrade must release ownership instead of rewriting a user-modified policy");
+    assert.equal(JSON.parse(readFileSync(receiptPath, "utf8")).owned, undefined, "a user edit must release the ownership claim");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("upgrade preserves preexisting and invalid policies without claiming them", () => {
+  const preexisting = createSandbox("permission-upgrade-preexisting");
+  const preexistingPath = join(preexisting.agentDir, permissionConfigRelativePath);
+  const preexistingBytes = `${JSON.stringify({ permission: { "*": "deny" } }, null, 2)}\n`;
+  mkdirSync(dirname(preexistingPath), { recursive: true });
+  writeFileSync(preexistingPath, preexistingBytes);
+  try {
+    const result = runRunner("upgrade", preexisting);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(preexistingPath, "utf8"), preexistingBytes, "upgrade must not rewrite a preexisting policy");
+    const receipt = JSON.parse(readFileSync(join(preexisting.agentDir, permissionReceiptRelativePath), "utf8"));
+    assert.equal(receipt.owned, undefined, "a preexisting policy must never be claimed");
+  } finally {
+    rmSync(preexisting.root, { recursive: true, force: true });
+  }
+
+  const invalid = createSandbox("permission-upgrade-invalid");
+  const invalidPath = join(invalid.agentDir, permissionConfigRelativePath);
+  const invalidBytes = "{invalid json\n";
+  mkdirSync(dirname(invalidPath), { recursive: true });
+  writeFileSync(invalidPath, invalidBytes);
+  try {
+    const result = runRunner("upgrade", invalid);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(invalidPath, "utf8"), invalidBytes, "upgrade must leave an invalid policy byte-identical");
+    assert.equal(JSON.parse(readFileSync(join(invalid.agentDir, permissionReceiptRelativePath), "utf8")).owned, undefined, "an invalid policy must never be claimed");
+    const status = runRunner("status", invalid);
+    assert.notEqual(status.status, 0, "status must still diagnose the invalid policy");
+    assert.equal(JSON.parse(status.stdout).error?.phase, "permissions");
+  } finally {
+    rmSync(invalid.root, { recursive: true, force: true });
+  }
+});
+
+test("upgrade releases a missing owned policy without reseeding and reports missing-owned", () => {
+  const sandbox = createSandbox("permission-upgrade-missing-owned");
+  const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+  const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+  const staleBytes = Buffer.from(`${JSON.stringify({ permission: { "*": "ask" } }, null, 2)}\n`);
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  writeJson(receiptPath, { schemaVersion: 1, initialized: true, owned: { configSha256: sha256(staleBytes) } });
+  try {
+    assert.equal(existsSync(permissionPath), false, "the fixture must start with the owned file missing");
+    const before = runRunner("status", sandbox);
+    assert.equal(before.status, 0, before.stderr);
+    const beforeJson = JSON.parse(before.stdout);
+    assert.equal(beforeJson.result.permissions.state, "missing-owned", "status must report the owned-but-missing state");
+    assert.equal(beforeJson.result.permissions.owned, true);
+    assert.equal(beforeJson.result.permissions.initialized, true);
+
+    const result = runRunner("upgrade", sandbox);
+    assert.equal(result.status, 0, result.stderr);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.ok, true);
+    assert.ok(output.result.actions.includes("released:permissions.config"), "a missing owned file must release ownership");
+    assert.deepEqual(Object.keys(output.result).sort(), ["actions", "changed"], "a release publishes nothing and carries no proof hash");
+    assert.equal(existsSync(permissionPath), false, "upgrade must not reseed after the owned file went missing");
+    assert.equal(existsSync(join(sandbox.agentDir, "jorgex-pi", "permissions-backups")), false, "a release without a backup must not leave an orphan backup directory");
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    assert.equal(receipt.owned, undefined, "the missing file must release the ownership claim");
+    assert.equal(receipt.initialized, true);
+
+    const after = runRunner("status", sandbox);
+    assert.equal(after.status, 0, after.stderr);
+    const afterJson = JSON.parse(after.stdout);
+    assert.equal(afterJson.result.permissions.state, "absent");
+    assert.equal(afterJson.result.permissions.owned, false);
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("concurrent upgrades preserve exactly one byte-exact config without corruption", async () => {
+  for (const fixture of ["absent", "stale-owned"]) {
+    const sandbox = createSandbox(`permission-upgrade-race-${fixture}`);
+    const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+    const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+    const backupRoot = join(sandbox.agentDir, "jorgex-pi", "permissions-backups");
+    let staleBytes;
+    if (fixture === "stale-owned") {
+      staleBytes = Buffer.from(`${JSON.stringify({ permission: { "*": "ask" } }, null, 2)}\n`);
+      assert.notEqual(sha256(staleBytes), sha256(permissionDefaultsBytes), "the stale fixture must differ from the current defaults");
+      mkdirSync(dirname(permissionPath), { recursive: true });
+      writeFileSync(permissionPath, staleBytes);
+      mkdirSync(dirname(receiptPath), { recursive: true });
+      writeJson(receiptPath, { schemaVersion: 1, initialized: true, owned: { configSha256: sha256(staleBytes) } });
+    }
+    try {
+      const results = await Promise.all([
+        runRunnerConcurrent("upgrade", sandbox),
+        runRunnerConcurrent("upgrade", sandbox),
+        runRunnerConcurrent("upgrade", sandbox),
+      ]);
+      let successes = 0;
+      for (const result of results) {
+        const output = JSON.parse(result.stdout);
+        assert.equal(output.command, "upgrade");
+        if (result.status === 0) {
+          successes += 1;
+          assert.equal(result.stderr, "", "machine commands must not leak logs to stderr");
+          assert.equal(output.ok, true);
+        } else {
+          assert.equal(output.ok, false);
+          assert.equal(output.error?.code, "CONFIG_LOCKED", "a contended upgrade must fail closed with a retryable lock error, never by losing ownership");
+        }
+      }
+      assert.ok(successes >= 1, "at least one contended upgrade must win the runner lock");
+      const converged = runRunner("upgrade", sandbox);
+      assert.equal(converged.status, 0, converged.stderr);
+      assert.equal(JSON.parse(converged.stdout).ok, true, "a sequential retry after contention must converge");
+      assert.equal(existsSync(permissionPath), true, "concurrent upgrades must leave exactly one config");
+      assert.equal(readFileSync(permissionPath).equals(permissionDefaultsBytes), true, "concurrent upgrades must never corrupt the published bytes");
+      const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+      assert.equal(receipt.schemaVersion, 1);
+      assert.equal(receipt.initialized, true);
+      assert.equal(receipt.owned?.configSha256, sha256(permissionDefaultsBytes), "concurrent upgrades must retain ownership of the published bytes");
+      assert.equal(receipt.owned?.policyVersion, packageVersion);
+      if (fixture === "absent") {
+        assert.equal(existsSync(backupRoot), false, "concurrent upgrades on an absent config must never create a backup directory");
+      } else {
+        const backups = readDirNames(backupRoot);
+        assert.equal(backups.length, 1, "concurrent upgrades must retain exactly one backup of the superseded owned bytes");
+        assert.equal(readFileSync(join(backupRoot, backups[0], "config.json")).equals(staleBytes), true, "the backup must preserve the exact superseded bytes");
+      }
+      assert.deepEqual(
+        existsSync(backupRoot) ? readDirNames(backupRoot).filter((name) => !existsSync(join(backupRoot, name, "config.json"))) : [],
+        [],
+        "concurrent upgrades must not leave orphan empty backup directories",
+      );
+      for (const dir of [dirname(permissionPath), dirname(receiptPath)]) {
+        const leftovers = readdirSync(dir).filter((name) => name.includes(".tmp") || name.endsWith(".tmp"));
+        assert.deepEqual(leftovers, [], "concurrent upgrades must not leave temporary files behind");
+      }
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a byte-exact backup restores the superseded policy and upgrade then releases", () => {
+  const sandbox = createSandbox("permission-upgrade-restore");
+  const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+  const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+  const staleBytes = Buffer.from(`${JSON.stringify({ permission: { "*": "ask" } }, null, 2)}\n`);
+  assert.notEqual(sha256(staleBytes), sha256(permissionDefaultsBytes), "the stale fixture must differ from the current defaults");
+  mkdirSync(dirname(permissionPath), { recursive: true });
+  writeFileSync(permissionPath, staleBytes);
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  writeJson(receiptPath, { schemaVersion: 1, initialized: true, owned: { configSha256: sha256(staleBytes) } });
+  try {
+    const first = runRunner("upgrade", sandbox);
+    assert.equal(first.status, 0, first.stderr);
+    assert.ok(JSON.parse(first.stdout).result.actions.includes("backup:permissions.config"));
+    const backupRoot = join(sandbox.agentDir, "jorgex-pi", "permissions-backups");
+    const backups = readDirNames(backupRoot);
+    assert.equal(backups.length, 1, "upgrade must retain one backup of the superseded owned bytes");
+    const backupBytes = readFileSync(join(backupRoot, backups[0], "config.json"));
+    assert.equal(backupBytes.equals(staleBytes), true, "the backup must preserve the exact superseded bytes");
+
+    writeFileSync(permissionPath, backupBytes);
+    assert.equal(readFileSync(permissionPath).equals(staleBytes), true, "the backup must be restorable byte-exact over the upgraded policy");
+    const second = runRunner("upgrade", sandbox);
+    assert.equal(second.status, 0, second.stderr);
+    const secondOutput = JSON.parse(second.stdout);
+    assert.ok(secondOutput.result.actions.includes("released:permissions.config"), "a restored backup must release ownership instead of rewriting again");
+    assert.equal(readFileSync(permissionPath).equals(staleBytes), true, "upgrade must preserve the restored bytes instead of reimposing defaults");
+    assert.equal(JSON.parse(readFileSync(receiptPath, "utf8")).owned, undefined, "the restored bytes must release the ownership claim");
+
+    const status = runRunner("status", sandbox);
+    assert.equal(JSON.parse(status.stdout).result.permissions.state, "preexisting", "a restored policy counts as user state");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("status and doctor stay content-free while reporting managed post-upgrade", () => {
+  const sandbox = createSandbox("permission-upgrade-content-free");
+  const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
+  const receiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
+  const staleBytes = Buffer.from(`${JSON.stringify({ permission: { "*": "ask" } }, null, 2)}\n`);
+  mkdirSync(dirname(permissionPath), { recursive: true });
+  writeFileSync(permissionPath, staleBytes);
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  writeJson(receiptPath, { schemaVersion: 1, initialized: true, owned: { configSha256: sha256(staleBytes) } });
+  try {
+    const upgraded = runRunner("upgrade", sandbox);
+    assert.equal(upgraded.status, 0, upgraded.stderr);
+
+    const status = runRunner("status", sandbox);
+    assert.equal(status.status, 0, status.stderr);
+    const statusJson = JSON.parse(status.stdout);
+    assert.equal(statusJson.result.permissions.state, "managed");
+    assert.equal(statusJson.result.permissions.owned, true);
+    assert.equal(statusJson.result.permissions.initialized, true);
+    assert.deepEqual(Object.keys(statusJson.result.permissions).sort(), ["initialized", "owned", "path", "receiptPath", "state"], "status must not expose policy content");
+    assert.doesNotMatch(status.stdout, /\*\.env/, "status must not dump policy content");
+    assert.doesNotMatch(status.stdout, /configSha256/, "status must prove ownership by boolean, not hash dump");
+
+    const doctor = runRunner("doctor", sandbox);
+    const doctorJson = JSON.parse(doctor.stdout);
+    assert.equal(doctorJson.result.checks.find(({ id }) => id === "permissions")?.status, "ok", "doctor must report the managed policy as ok");
+    assert.doesNotMatch(doctor.stdout, /\*\.env/, "doctor must not dump policy content");
+    assert.doesNotMatch(doctor.stdout, /configSha256/, "doctor must not dump ownership hashes");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
   }
@@ -452,6 +770,24 @@ function runRunner(command, sandbox) {
   });
 }
 
+function runRunnerConcurrent(command, sandbox) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [runnerEntry, command, "--json"], {
+      cwd: sandbox.cwd,
+      env: sandbox.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", (status) => { resolve({ status, stdout, stderr }); });
+  });
+}
+
 function runPermissionFixture(sandbox, sdkRoot, { canonical = false } = {}) {
   const result = spawnSync(process.execPath, [join(testDir, "fixtures", "load-permissions-with-pi.mjs"), root], {
     cwd: sandbox.cwd,
@@ -478,6 +814,14 @@ function allowedHostEnv() {
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function readDirNames(path) {
+  return readdirSync(path).sort();
 }
 
 function readJson(path) {
