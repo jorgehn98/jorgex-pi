@@ -2,7 +2,7 @@
   "parityPath": "contract/parity.v2.json",
   "schemaVersion": 2,
   "sourceRepository": "https://github.com/jorgehn98/jorgex-stack",
-  "sourceCommit": "715a935a52242103487464c610bd8f35cb8dd1e1",
+  "sourceCommit": "09947922e6aafee5b75286b56e8f88dd22b8fba0",
   "agentCount": 14,
   "agentNames": [
     "code-reviewer",
@@ -52,8 +52,8 @@
   "permissions": {
     "sourcePath": "stack/config/defaults.json",
     "targetPath": "assets/permissions/defaults.json",
-    "sourceSha256": "fb35404cc65c886985897803bf1b594bde47c25ed4a9df40ed508618751ca524",
-    "outputSha256": "2b960dd4cb0363395c94b48aeacc19c5faeda98af652875d989cbdbe50347748"
+    "sourceSha256": "e6c3fa0715872c188a7d60a2b548056281f6ee338712d27eccde7d33e24a8717",
+    "outputSha256": "c6b27c9a373f54ced1c2c8efaf56b2e9f82e4890cb034ae17a2656267fca8dc6"
   },
   "systemPromptModules": [
     {

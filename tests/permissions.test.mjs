@@ -38,7 +38,9 @@ test("permission lifecycle seeds only an absent config and never reseeds after u
     const firstPolicy = JSON.parse(firstConfig);
     assert.equal(firstReceipt.schemaVersion, 1);
     assert.equal(firstReceipt.initialized, true);
-    assert.equal(firstPolicy.permission["*"], "ask", "the generated Pi policy must retain the conservative fallback");
+    assert.equal("*" in firstPolicy.permission, false, "the generated Pi policy must not retain a global fallback; ordinary work is allow-gated per tool");
+    assert.equal(firstPolicy.permission.mcp, "allow", "every MCP server must be allowed without an allowlist");
+    assert.equal(firstPolicy.permission.bash["*"], "allow", "ordinary shell work must be allowed by default");
     assert.equal(firstPolicy.permission.path["*.env"], "deny", "the generated Pi policy must protect env files through the transversal path gate");
     assert.equal(firstPolicy.permission.git_read, "allow", "the dedicated validated Git reader must be allowed at its tool gate");
     assert.doesNotMatch(firstConfig, /(?:sk-[A-Za-z0-9]|ghp_[A-Za-z0-9]|BEGIN (?:RSA|OPENSSH) PRIVATE KEY)/, "permission config must not contain credentials");
@@ -315,24 +317,40 @@ test("sync-seeded permission asset is enforced by the same native pipeline", () 
     assert.equal(sync.status, 0, sync.stderr);
     assert.equal(existsSync(permissionPath), true, "sync must materialize the permission asset before the native pipeline loads it");
     const seededPolicy = readJson(permissionPath);
+    assert.equal("*" in seededPolicy.permission, false, "the seeded policy must not carry a global fallback");
+    assert.equal(seededPolicy.permission.mcp, "allow", "the seeded policy must allow every MCP server without an allowlist");
     assert.equal(seededPolicy.permission.bash["*"], "allow");
-    assert.equal(seededPolicy.permission.mcp["engram_*"], "allow");
+    assert.equal(seededPolicy.permission.bash["git rebase"], "ask");
+    assert.equal(seededPolicy.permission.bash["git rebase *"], "ask");
+    assert.equal(seededPolicy.permission.bash["git reset --hard"], "ask");
+    assert.equal(seededPolicy.permission.bash["git reset --hard *"], "ask");
+    assert.equal(seededPolicy.permission.bash["ssh"], "ask");
+    assert.equal(seededPolicy.permission.bash["ssh *"], "ask");
+    assert.equal(seededPolicy.permission.bash["mkfs.*"], "deny");
+    assert.equal(seededPolicy.permission.bash["dd *"], "deny");
+    assert.equal(seededPolicy.permission.path["*.env"], "deny");
 
     const output = runPermissionFixture(sandbox, undefined, { canonical: true });
     assert.deepEqual(output.toolNames, ["bash", "edit", "git_read", "known_tool", "mcp", "read", "unclassified_tool"]);
     assert.equal(output.canonicalCalls.bashOrdinary?.block, undefined, "the seeded policy must allow ordinary Bash");
-    for (const name of ["bashRemove", "bashReset", "bashForcePush", "bashSudo"]) {
-      assert.equal(output.canonicalCalls[name]?.block, true, `${name} must remain ask-gated by the seeded policy`);
-    }
+    assert.equal(output.canonicalCalls.bashRemove?.block, undefined, "the seeded policy must allow ordinary file removal");
+    assert.equal(output.canonicalCalls.bashCommit?.block, undefined, "the seeded policy must allow git commit");
+    assert.equal(output.canonicalCalls.bashForcePush?.block, undefined, "the seeded policy must allow git push");
+    assert.equal(output.canonicalCalls.bashReset?.block, true, "reset --hard must remain ask-gated by the seeded policy");
+    assert.equal(output.canonicalCalls.bashRebase?.block, true, "rebase must remain ask-gated by the seeded policy");
+    assert.equal(output.canonicalCalls.bashSsh?.block, true, "ssh must remain ask-gated by the seeded policy");
+    assert.equal(output.canonicalCalls.bashSudo?.block, true, "sudo must remain ask-gated by the native indirection wrapper");
     for (const name of ["bashSecret", "bashMkfs", "bashDd"]) {
       assert.equal(output.canonicalCalls[name]?.block, true, `${name} must be denied by the seeded policy`);
     }
     assert.equal(output.canonicalCalls.readInside?.block, undefined, "the seeded policy must allow ordinary reads");
     assert.equal(output.canonicalCalls.readOutside?.block, undefined, "the seeded policy must allow ordinary external reads");
     assert.equal(output.canonicalCalls.editInside?.block, undefined, "the seeded policy must allow ordinary edits");
+    assert.equal(output.canonicalCalls.readSecret?.block, true, "the seeded policy must deny secret reads through the path gate");
+    assert.equal(output.canonicalCalls.editSecret?.block, true, "the seeded policy must deny secret edits through the path gate");
     assert.equal(output.canonicalCalls.mcpEngram?.block, undefined, "the seeded policy must allow known Engram MCP targets");
     assert.equal(output.canonicalCalls.mcpContext7?.block, undefined, "the seeded policy must allow known Context7 MCP targets");
-    assert.equal(output.canonicalCalls.mcpUnknown?.block, true, "the seeded policy must ask for unknown MCP targets");
+    assert.equal(output.canonicalCalls.mcpUnknown?.block, undefined, "the seeded policy must allow unknown MCP targets");
 
     const denyDecisions = output.decisions.filter((event) => event.result === "deny");
     assert.ok(denyDecisions.some((event) => event.surface === "bash" && event.resolution === "confirmation_unavailable"), "seeded ask rules must retain the native approval path");
