@@ -8,6 +8,7 @@
     "doctor",
     "models",
     "sync",
+    "upgrade",
     "cleanup"
   ],
   "exitCodes": {
@@ -46,7 +47,7 @@
     "config": "PI_CODING_AGENT_DIR/extensions/pi-permission-system/config.json",
     "receipt": "PI_CODING_AGENT_DIR/jorgex-pi/permissions-lifecycle.v1.json",
     "defaults": "assets/permissions/defaults.json",
-    "semantics": "sync seeds only an absent config through exclusive publication; existing, invalid, and concurrent user state is preserved; cleanup keeps an exact owned copy in a retained backup",
+    "semantics": "sync seeds only an absent config through exclusive publication; an explicit upgrade rewrites an absent or owned-stale config with a prior byte-exact backup, exclusive publication, and a versioned receipt; existing, invalid, and concurrent user state is preserved; cleanup keeps an exact owned copy in a retained backup",
     "diagnostic": "permission state reports invalid or unreadable files without exposing their contents; a registered package also reports pending when the receipt is not initialized"
   }
 }

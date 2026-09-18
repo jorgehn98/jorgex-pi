@@ -73,6 +73,73 @@ export function syncPermissions({ agentDir, packageRoot }) {
   return { changed, actions };
 }
 
+export function upgradePermissions({ agentDir, packageRoot, packageVersion }) {
+  if (typeof packageVersion !== "string" || packageVersion.length === 0) {
+    throw new PermissionsLifecycleError("INVALID_VERSION", "Pi permission upgrade requires a package version.");
+  }
+  const paths = permissionPaths(agentDir, packageRoot);
+  const defaults = readDefaults(paths.defaults);
+  const current = readPermissionFile(paths.config);
+  if (current.exists && (!current.regular || !current.readable)) {
+    throw new PermissionsLifecycleError("INVALID_CONFIG", current.error ?? "Pi permission config is not a readable regular file.");
+  }
+  const receipt = readReceipt(paths.receipt);
+  const actions = [];
+  let changed = false;
+  const defaultsHash = sha256(defaults.bytes);
+  const currentHash = current.readable ? sha256(current.bytes) : undefined;
+  let publishedPolicySha256;
+
+  if (receipt.owned !== undefined) {
+    if (!current.exists || currentHash !== receipt.owned.configSha256) {
+      delete receipt.owned;
+      actions.push("released:permissions.config");
+      changed = true;
+    } else if (current.valid === true && currentHash !== defaultsHash) {
+      const backupOutcome = removeOwnedConfigWithBackup(paths.config, paths.receipt, receipt.owned.configSha256, actions, paths.agentDir);
+      delete receipt.owned;
+      changed = true;
+      if (backupOutcome === "removed") {
+        const publication = publishExclusive(paths.config, defaults.bytes, paths.agentDir);
+        if (publication.created) {
+          receipt.owned = { configSha256: defaultsHash, policyVersion: packageVersion };
+          publishedPolicySha256 = defaultsHash;
+          actions.push("upgraded:permissions.config");
+        } else {
+          actions.push("released:permissions.config");
+        }
+      }
+    }
+  } else if (!current.exists && !receipt.exists) {
+    const publication = publishExclusive(paths.config, defaults.bytes, paths.agentDir);
+    if (publication.created) {
+      receipt.owned = { configSha256: defaultsHash, policyVersion: packageVersion };
+      publishedPolicySha256 = defaultsHash;
+      actions.push("created:permissions.config");
+      changed = true;
+    } else {
+      actions.push("preserved:permissions.config");
+    }
+  } else if (current.exists && receipt.initialized !== true) {
+    actions.push("preserved:permissions.config");
+  }
+
+  if (receipt.initialized !== true) {
+    receipt.initialized = true;
+    actions.push("initialized:permissions");
+    changed = true;
+  }
+
+  if (changed || !receipt.exists) {
+    writeReceipt(paths.receipt, receipt, paths.agentDir);
+    changed = true;
+  }
+
+  return publishedPolicySha256 === undefined
+    ? { changed, actions }
+    : { changed, actions, policySha256: publishedPolicySha256 };
+}
+
 export function cleanupPermissions({ agentDir }) {
   const paths = permissionPaths(agentDir);
   for (const path of [paths.config, paths.receipt]) {
@@ -254,7 +321,9 @@ function validateReceipt(value) {
   if (value.owned !== undefined
     && (!isRecord(value.owned)
       || typeof value.owned.configSha256 !== "string"
-      || !/^[a-f0-9]{64}$/.test(value.owned.configSha256))) {
+      || !/^[a-f0-9]{64}$/.test(value.owned.configSha256)
+      || (value.owned.policyVersion !== undefined
+        && (typeof value.owned.policyVersion !== "string" || value.owned.policyVersion.length === 0)))) {
     throw new PermissionsLifecycleError("INVALID_RECEIPT", "Pi permission lifecycle receipt contains unsupported ownership.");
   }
 }
@@ -303,7 +372,12 @@ function removeOwnedConfigWithBackup(path, receiptPath, expectedHash, actions, a
   } catch (error) {
     if (error?.code === "ENOENT") {
       actions.push("released:permissions.config");
-      return;
+      try {
+        rmdirSync(backupRoot);
+      } catch (cleanupError) {
+        if (cleanupError?.code !== "ENOENT") throw fsError("REMOVE_FAILED", "remove orphan permission config backup directory", backupRoot, cleanupError);
+      }
+      return "released";
     }
     throw fsError("REMOVE_FAILED", "move owned permission config to backup", path, error);
   }
@@ -317,9 +391,10 @@ function removeOwnedConfigWithBackup(path, receiptPath, expectedHash, actions, a
   if (sha256(backupBytes) !== expectedHash) {
     restoreExclusive(backupPath, path);
     actions.push("released:permissions.config");
-    return;
+    return "released";
   }
   actions.push("backup:permissions.config", "removed:permissions.config");
+  return "removed";
 }
 
 function restoreExclusive(source, target) {
