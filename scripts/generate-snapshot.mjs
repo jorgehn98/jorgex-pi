@@ -113,7 +113,6 @@ function generatePermissionsProjection() {
   }
   const pathRules = structuredClone(opencode.read);
   const policy = {
-    "*": "ask",
     path: pathRules,
     read: "allow",
     write: "allow",
@@ -122,10 +121,7 @@ function generatePermissionsProjection() {
     find: "allow",
     ls: "allow",
     bash: structuredClone(opencode.bash),
-    mcp: {
-      "*": "ask",
-      ...knownMcpTools("allow"),
-    },
+    mcp: "allow",
     skill: "allow",
     external_directory: "allow",
     git_read: "allow",
@@ -143,20 +139,6 @@ function generatePermissionsProjection() {
     sourceSha256: sha256(sourceBytes),
     outputSha256: sha256(outputBytes),
   };
-}
-
-function knownMcpTools(action) {
-  return Object.fromEntries([
-    "mcp_status",
-    "mcp_list",
-    "mcp_search",
-    "mcp_describe",
-    "mcp_connect",
-    "engram_*",
-    "context7_*",
-    "context7:*",
-    "engram:*",
-  ].map((name) => [name, action]));
 }
 
 function knownCompanionTools(action) {
