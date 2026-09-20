@@ -262,6 +262,16 @@ async function runChildRuntime(preflight) {
   const negativeDefinitions = ["mem_save", "mem_session_summary", "bash", "subagent"]
     .map((name) => ({ name, registered: allTools.includes(name) }));
 
+  // Fail-closed gate at the real dispatch seam: the shim tool_call handler
+  // must block the mcp gateway before any backend execution. Recorded while
+  // the runtime is still live, before shutdown restore.
+  const gateMcp = await runner.emitToolCall({
+    type: "tool_call",
+    toolName: "mcp",
+    toolCallId: "probe-gate-mcp",
+    input: { tool: "mem_save", server: "engram", args: {} },
+  });
+
   await runner.emit({ type: "session_shutdown" });
   return {
     extensionArgs,
@@ -278,6 +288,7 @@ async function runChildRuntime(preflight) {
       mcpScriptActive: activeAfterStart.includes("mcpScript"),
     },
     gatewayAttempt,
+    toolCallGate: { mcp: gateMcp ?? null },
     memTools: allTools.filter((name) => name.startsWith("mem_")),
     diagnostic,
     executed,
@@ -366,6 +377,45 @@ async function checkShimRestore() {
   }
 }
 
+async function checkShimToolCall() {
+  // Closest seam for the fail-closed tool_call barrier: invoke the real
+  // production module directly with a fake pi, no network and no model.
+  const savedAgent = process.env.PI_SUBAGENT_CHILD_AGENT;
+  const savedDirect = process.env.MCP_DIRECT_TOOLS;
+  try {
+    const { default: engramChildMcpSelection } = await jiti.import(join(root, "extensions", "engram-child.ts"));
+    const collect = async (agent) => {
+      process.env.PI_SUBAGENT_CHILD_AGENT = agent;
+      const handlers = {};
+      const pi = { handlers, on(event, fn) { (handlers[event] ??= []).push(fn); } };
+      await engramChildMcpSelection(pi);
+      return handlers.tool_call ?? [];
+    };
+    const SIX = ["mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor"];
+    const DENIED = ["mcp", "mcpScript", "mem_save", "bash", "subagent", "mem_future_tool"];
+    const invoke = (handlers, toolName) => {
+      if (handlers.length === 0) return { noHandler: true };
+      const result = handlers[0]({ type: "tool_call", toolName, toolCallId: "probe-gate", input: {} });
+      if (result === undefined) return { pass: true };
+      return { pass: false, block: result?.block, terminate: result?.terminate, reason: result?.reason };
+    };
+    const engramHandlers = await collect("engram");
+    const otherHandlers = await collect("other-agent");
+    return {
+      engramHandlerCount: engramHandlers.length,
+      otherHandlerCount: otherHandlers.length,
+      six: Object.fromEntries(SIX.map((name) => [name, invoke(engramHandlers, name)])),
+      denied: Object.fromEntries(DENIED.map((name) => [name, invoke(engramHandlers, name)])),
+      empty: invoke(engramHandlers, undefined),
+    };
+  } finally {
+    if (savedAgent === undefined) delete process.env.PI_SUBAGENT_CHILD_AGENT;
+    else process.env.PI_SUBAGENT_CHILD_AGENT = savedAgent;
+    if (savedDirect === undefined) delete process.env.MCP_DIRECT_TOOLS;
+    else process.env.MCP_DIRECT_TOOLS = savedDirect;
+  }
+}
+
 async function waitFor(predicate, { timeoutMs, intervalMs }) {
   const deadline = Date.now() + timeoutMs;
   while (!predicate()) {
@@ -379,6 +429,7 @@ async function waitFor(predicate, { timeoutMs, intervalMs }) {
 try {
   const preflight = await resolvePreflight();
   const shimRestore = await checkShimRestore();
+  const shimToolCall = await checkShimToolCall();
   const child = await runChildRuntime(preflight);
   writeFileSync(1, `${JSON.stringify({
     positive: POSITIVE,
@@ -386,6 +437,7 @@ try {
     fetchCount,
     preflight,
     shimRestore,
+    shimToolCall,
     child,
   })}\n`);
 } catch (error) {

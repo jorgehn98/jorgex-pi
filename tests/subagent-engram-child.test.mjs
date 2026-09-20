@@ -170,6 +170,53 @@ test("shim restore paths leave no leaked MCP selection behind", () => {
   }
 });
 
+test("shim tool_call gate passes six reads and blocks everything else", () => {
+  const sandbox = setupSandbox({ backend: "valid" });
+  try {
+    const probed = runProbe(sandbox);
+    assert.equal(probed.shimToolCall.engramHandlerCount, 1, "engram child must register exactly one tool_call handler");
+    assert.equal(probed.shimToolCall.otherHandlerCount, 0, "other agents must register no tool_call handler");
+    for (const name of POSITIVE) {
+      assert.deepEqual(probed.shimToolCall.six[name], { pass: true }, `${name} must pass through the gate`);
+    }
+    for (const name of ["mcp", "mcpScript", "mem_save", "bash", "subagent", "mem_future_tool"]) {
+      const result = probed.shimToolCall.denied[name];
+      assert.equal(result?.pass, false, `${name} must not pass the gate`);
+      assert.equal(result?.block, true, `${name} must block`);
+      assert.equal(result?.terminate, true, `${name} must terminate the batch`);
+      assert.match(result?.reason ?? "", /Engram child allows only/, `${name} must carry the specific gate reason`);
+      assert.ok((result?.reason ?? "").includes(name), `${name} must be named in the gate reason`);
+    }
+    assert.equal(probed.shimToolCall.empty?.block, true, "empty tool call must block");
+    assert.equal(probed.shimToolCall.empty?.terminate, true, "empty tool call must terminate the batch");
+    assert.match(probed.shimToolCall.empty?.reason ?? "", /unknown/, "empty tool call must be reported as unknown");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("mutants-only backend keeps proxy fallback but shim blocks the gateway before backend execution", () => {
+  const sandbox = setupSandbox({ backend: "mutants-only" });
+  try {
+    const probed = runProbe(sandbox);
+    assert.equal(probed.preflight.ok, true, "preflight must resolve before the child runtime starts");
+    assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
+    // Adapter fallback reproduced: with zero direct specs the proxy stays, so
+    // proxy inactivity is NOT claimed here; the barrier below is the proof.
+    assert.equal(probed.child.proxy.mcpActive, true, "adapter fallback must keep the proxy while directSpecs is zero");
+    assert.equal(probed.child.memTools.length, 0, "mutants-only backend must register zero direct reads");
+    assert.equal(probed.child.diagnostic.fileAppearedFirstEmit, true, "pre-turn diagnostic file must really appear");
+    assert.deepEqual([...(probed.child.diagnostic.missing ?? [])].sort(), [...POSITIVE].sort(), "diagnostic must report all six missing");
+    assert.equal(probed.child.executed.ok, false, "no direct read may execute with a mutants-only backend");
+    assert.equal(probed.child.toolCallGate?.mcp?.block, true, "shim must block the mcp gateway attempt");
+    assert.equal(probed.child.toolCallGate?.mcp?.terminate, true, "gateway block must terminate the batch");
+    assert.match(probed.child.toolCallGate?.mcp?.reason ?? "", /Engram child allows only/, "gateway block must come from the shim barrier");
+    assert.equal(probed.fetchCount, 0, "mutants-only backend must stay local without network");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
 test("invalid Engram backend fails closed without network or real HOME", () => {
   const sandbox = setupSandbox({ backend: "missing" });
   try {
@@ -205,6 +252,7 @@ function setupSandbox({ backend }) {
   if (backend === "valid") writeFakeEngram(fakeBin);
   else if (backend === "partial") writeFakeEngram(fakeBin, { omit: [PARTIAL_OMITTED] });
   else if (backend === "hostile") writeFakeEngram(fakeBin, { extra: HOSTILE_EXTRA });
+  else if (backend === "mutants-only") writeFakeEngram(fakeBin, { omit: [...POSITIVE], extra: HOSTILE_EXTRA });
 
   const env = {
     ...allowedHostEnv(),
