@@ -19,6 +19,8 @@ const POSITIVE = [
   "mem_doctor",
 ];
 const NEGATIVES = ["mem_save", "mem_session_summary", "bash", "subagent"];
+const PARTIAL_OMITTED = "mem_doctor";
+const PARTIAL_AVAILABLE = POSITIVE.filter((name) => name !== PARTIAL_OMITTED);
 
 test("engram child preflight exposes exactly six read-only tools without provider/model", () => {
   const sandbox = setupSandbox({ backend: "valid" });
@@ -64,6 +66,26 @@ test("engram child runtime registers and executes its six read-only tools before
   }
 });
 
+test("valid partial backend registers available tools and diagnostic identifies exactly the missing required tool", () => {
+  const sandbox = setupSandbox({ backend: "partial" });
+  try {
+    const probed = runProbe(sandbox);
+    assert.equal(probed.preflight.ok, true, "preflight must resolve before the child runtime starts");
+    assert.equal(probed.preflight.model, undefined, "partial-backend child still selects no model without a provider");
+    assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
+    assert.deepEqual([...probed.child.memTools].sort(), [...PARTIAL_AVAILABLE].sort(), "partial backend must register exactly the five advertised tools");
+    assert.deepEqual(probed.child.diagnostic.missing ?? [], [PARTIAL_OMITTED], "diagnostic must identify exactly the omitted required tool");
+    assert.equal(probed.child.executed.ok, false, "omitted mem_doctor must not be invocable through the child registry");
+    assert.match(probed.child.executed.error ?? "", /not registered/i, "partial toolset must fail as unregistered, without permissive fallback");
+    for (const denied of NEGATIVES) {
+      assert.equal(probed.child.allTools.includes(denied), false, `child runtime must not register ${denied}`);
+    }
+    assert.equal(probed.fetchCount, 0, "partial toolset must stay local without network");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
 test("invalid Engram backend fails closed without network or real HOME", () => {
   const sandbox = setupSandbox({ backend: "missing" });
   try {
@@ -96,6 +118,7 @@ function setupSandbox({ backend }) {
 
   const fakeBin = join(sandboxRoot, "fake-engram");
   if (backend === "valid") writeFakeEngram(fakeBin);
+  else if (backend === "partial") writeFakeEngram(fakeBin, { omit: [PARTIAL_OMITTED] });
 
   const env = {
     ...allowedHostEnv(),
@@ -114,8 +137,8 @@ function setupSandbox({ backend }) {
   for (const path of [env.HOME, env.XDG_CACHE_HOME, env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.TEMP]) {
     mkdirSync(path, { recursive: true });
   }
-  if (backend === "valid") env.ENGRAM_BIN = fakeBin;
-  else env.ENGRAM_BIN = join(sandboxRoot, "missing-engram");
+  if (backend === "missing") env.ENGRAM_BIN = join(sandboxRoot, "missing-engram");
+  else env.ENGRAM_BIN = fakeBin;
 
   return { root: sandboxRoot, agentDir, emptyBin, fakeBin, env };
 }
@@ -132,8 +155,9 @@ function runProbe(sandbox) {
   return probed;
 }
 
-function writeFakeEngram(binary) {
-  const server = `const toolNames = ${JSON.stringify(POSITIVE)};
+function writeFakeEngram(binary, { omit = [] } = {}) {
+  const advertised = POSITIVE.filter((name) => !omit.includes(name));
+  const server = `const toolNames = ${JSON.stringify(advertised)};
 let buffer = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
