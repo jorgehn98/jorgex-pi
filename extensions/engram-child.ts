@@ -10,9 +10,14 @@ const ENGRAM_CHILD_DIRECT_TOOLS = [
 export default async function engramChildMcpSelection(pi) {
   if (process.env.PI_SUBAGENT_CHILD_AGENT !== "engram") return;
   const previous = process.env.MCP_DIRECT_TOOLS;
-  if (previous !== "__none__") return;
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    if (previous === undefined) delete process.env.MCP_DIRECT_TOOLS;
+    else process.env.MCP_DIRECT_TOOLS = previous;
+  };
   process.env.MCP_DIRECT_TOOLS = ENGRAM_CHILD_DIRECT_TOOLS;
-  pi.on("agent_start", () => {
-    process.env.MCP_DIRECT_TOOLS = previous;
-  });
+  pi.on("agent_start", restore);
+  pi.on("session_shutdown", restore);
 }

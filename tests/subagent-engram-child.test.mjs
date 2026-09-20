@@ -21,6 +21,7 @@ const POSITIVE = [
 const NEGATIVES = ["mem_save", "mem_session_summary", "bash", "subagent"];
 const PARTIAL_OMITTED = "mem_doctor";
 const PARTIAL_AVAILABLE = POSITIVE.filter((name) => name !== PARTIAL_OMITTED);
+const HOSTILE_EXTRA = ["mem_save", "mem_session_summary", "bash", "subagent"];
 
 test("engram child preflight exposes exactly six read-only tools without provider/model", () => {
   const sandbox = setupSandbox({ backend: "valid" });
@@ -39,6 +40,18 @@ test("engram child preflight exposes exactly six read-only tools without provide
     assert.ok(probed.isolation.home.startsWith(sandbox.root), "probe must run under isolated HOME");
     assert.ok(probed.isolation.agentDir.startsWith(sandbox.root), "probe must run under isolated PI_CODING_AGENT_DIR");
     assert.equal(probed.isolation.path, sandbox.emptyBin, "probe must run with an isolated empty PATH");
+    for (const [label, value] of [
+      ["XDG_CACHE_HOME", probed.isolation.xdgCache],
+      ["XDG_CONFIG_HOME", probed.isolation.xdgConfig],
+      ["XDG_DATA_HOME", probed.isolation.xdgData],
+      ["TEMP", probed.isolation.temp],
+      ["TMP", probed.isolation.tmp],
+      ["TMPDIR", probed.isolation.tmpdir],
+      ["PI_SUBAGENTS_TEMP_ROOT", probed.isolation.subagentsTemp],
+    ]) {
+      assert.ok(value.startsWith(sandbox.root), `${label} must stay under the isolated sandbox`);
+    }
+    assert.equal(probed.isolation.engramBin, sandbox.fakeBin, "ENGRAM_BIN must resolve to the isolated fake binary");
     assert.equal(probed.fetchCount, 0, "probe must not use the network");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
@@ -52,15 +65,46 @@ test("engram child runtime registers and executes its six read-only tools before
     assert.equal(probed.preflight.ok, true, "preflight must resolve before the child runtime starts");
     assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
     assert.equal(probed.child.mcpDirectToolsEnv, "__none__", "child env must carry the contract MCP selection into the runtime");
+    const expectedSelectors = probed.preflight.effectiveAllowlist.map((name) => `engram/${name}`).join(",");
+    assert.equal(probed.child.envAfterLoad, expectedSelectors, "shim selectors must match exactly the contract tools");
     for (const denied of NEGATIVES) {
       assert.equal(probed.child.allTools.includes(denied), false, `child runtime must not register ${denied}`);
     }
     assert.deepEqual([...probed.child.memTools].sort(), [...POSITIVE].sort(), "child runtime must register all six tools before the first LLM turn");
+    assert.equal(probed.child.diagnostic.timedOut, undefined, "pre-turn diagnostic file must really appear");
+    for (const name of POSITIVE) {
+      assert.ok((probed.child.diagnostic.available ?? []).includes(name), `diagnostic available must include ${name}`);
+    }
     assert.deepEqual(probed.child.diagnostic.missing ?? [], [], "child diagnostic must report no missing tools before the first turn");
     assert.equal(probed.child.executed.ok, true, `child must execute mem_doctor through its registered definition: ${probed.child.executed.error ?? ""}`);
     assert.equal(probed.child.executed.payload?.tool, "mem_doctor", "deterministic read must answer for mem_doctor");
     assert.equal(probed.child.executed.payload?.backend, "probe-isolated", "deterministic read must come from the isolated fake");
     assert.equal(probed.fetchCount, 0, "child tool execution must stay local without network");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+test("hostile backend cannot smuggle mutants into the child registry", () => {
+  // Registry (allTools, infra included) is distinguished from the effective
+  // set: the mcp proxy may remain by architecture, but only the six selected
+  // direct tools may register or execute.
+  const sandbox = setupSandbox({ backend: "hostile" });
+  try {
+    const probed = runProbe(sandbox);
+    assert.equal(probed.preflight.ok, true, "preflight must resolve before the child runtime starts");
+    assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
+    assert.deepEqual([...probed.child.memTools].sort(), [...POSITIVE].sort(), "only the six selected tools may register despite hostile extras");
+    for (const denied of HOSTILE_EXTRA) {
+      assert.equal(probed.child.allTools.includes(denied), false, `hostile ${denied} must not register as a direct tool`);
+    }
+    assert.equal(probed.child.diagnostic.timedOut, undefined, "pre-turn diagnostic file must really appear");
+    assert.deepEqual(probed.child.diagnostic.missing ?? [], [], "diagnostic must report no missing tools with a hostile backend");
+    assert.equal(probed.child.executed.ok, true, "mem_doctor must still execute through its registered definition");
+    assert.equal(probed.child.executed.payload?.tool, "mem_doctor", "deterministic read must answer for mem_doctor");
+    assert.equal(probed.child.executedMutant?.ok, false, "advertised mem_save must not be invocable through the child registry");
+    assert.match(probed.child.executedMutant?.error ?? "", /not registered/i, "mutant must fail as unregistered");
+    assert.equal(probed.fetchCount, 0, "hostile toolset must stay local without network");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
   }
@@ -74,6 +118,7 @@ test("valid partial backend registers available tools and diagnostic identifies 
     assert.equal(probed.preflight.model, undefined, "partial-backend child still selects no model without a provider");
     assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
     assert.deepEqual([...probed.child.memTools].sort(), [...PARTIAL_AVAILABLE].sort(), "partial backend must register exactly the five advertised tools");
+    assert.equal(probed.child.diagnostic.timedOut, undefined, "pre-turn diagnostic file must really appear");
     assert.deepEqual(probed.child.diagnostic.missing ?? [], [PARTIAL_OMITTED], "diagnostic must identify exactly the omitted required tool");
     assert.equal(probed.child.executed.ok, false, "omitted mem_doctor must not be invocable through the child registry");
     assert.match(probed.child.executed.error ?? "", /not registered/i, "partial toolset must fail as unregistered, without permissive fallback");
@@ -86,12 +131,34 @@ test("valid partial backend registers available tools and diagnostic identifies 
   }
 });
 
+test("shim restore paths leave no leaked MCP selection behind", () => {
+  const sandbox = setupSandbox({ backend: "valid" });
+  try {
+    const probed = runProbe(sandbox);
+    const expectedSix = probed.preflight.effectiveAllowlist.map((name) => `engram/${name}`).join(",");
+    assert.equal(probed.shimRestore.undefDuringLoad, expectedSix, "shim must apply the six selectors when previous is undefined");
+    assert.equal(probed.shimRestore.undefAfterAgentStart, null, "undefined previous must be deleted on agent_start");
+    assert.equal(probed.shimRestore.undefAfterSecondAgentStart, null, "double agent_start must stay deleted");
+    assert.equal(probed.shimRestore.undefAfterShutdown, null, "shutdown after restore must stay deleted");
+    assert.equal(probed.shimRestore.foreignDuringLoad, expectedSix, "foreign previous must be replaced by six during load");
+    assert.equal(probed.shimRestore.foreignAfterAgentStart, "foreign,keep-me", "foreign previous must be restored exactly");
+    assert.equal(probed.shimRestore.foreignAfterSecond, "foreign,keep-me", "double agent_start must keep the exact foreign value");
+    assert.equal(probed.shimRestore.shutdownUndefAfter, null, "shutdown without agent_start must delete undefined previous");
+    assert.equal(probed.shimRestore.shutdownForeignAfter, "foreign,keep-me", "shutdown without agent_start must restore foreign previous");
+    assert.equal(probed.shimRestore.nonEngramAfter, "untouched", "other agents must leave the env untouched");
+    assert.deepEqual(probed.shimRestore.nonEngramHandlers, { agent_start: 0, session_shutdown: 0 }, "other agents must register no restore handlers");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
 test("invalid Engram backend fails closed without network or real HOME", () => {
   const sandbox = setupSandbox({ backend: "missing" });
   try {
     const probed = runProbe(sandbox);
     assert.deepEqual(probed.child.loaderErrors, [], "even the invalid-backend child must load its contract extensions");
     assert.equal(probed.child.memTools.length, 0, "missing backend must leave zero mem_* tools registered in the child runtime");
+    assert.equal(probed.child.diagnostic.timedOut, undefined, "pre-turn diagnostic file must really appear");
     assert.deepEqual([...(probed.child.diagnostic.missing ?? [])].sort(), [...POSITIVE].sort(), "missing backend must leave all six tools unregistered in the runtime diagnostic");
     assert.equal(probed.child.executed.ok, false, "missing backend must leave mem_doctor non-invocable through the child registry");
     assert.match(probed.child.executed.error ?? "", /not registered/i, "invalid backend must fail as unregistered, not as a backend handshake");
@@ -119,6 +186,7 @@ function setupSandbox({ backend }) {
   const fakeBin = join(sandboxRoot, "fake-engram");
   if (backend === "valid") writeFakeEngram(fakeBin);
   else if (backend === "partial") writeFakeEngram(fakeBin, { omit: [PARTIAL_OMITTED] });
+  else if (backend === "hostile") writeFakeEngram(fakeBin, { extra: HOSTILE_EXTRA });
 
   const env = {
     ...allowedHostEnv(),
@@ -155,8 +223,8 @@ function runProbe(sandbox) {
   return probed;
 }
 
-function writeFakeEngram(binary, { omit = [] } = {}) {
-  const advertised = POSITIVE.filter((name) => !omit.includes(name));
+function writeFakeEngram(binary, { omit = [], extra = [] } = {}) {
+  const advertised = [...POSITIVE.filter((name) => !omit.includes(name)), ...extra];
   const server = `const toolNames = ${JSON.stringify(advertised)};
 let buffer = "";
 process.stdin.setEncoding("utf8");
