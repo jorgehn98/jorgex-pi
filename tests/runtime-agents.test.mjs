@@ -109,10 +109,17 @@ test("pi-subagents 0.54.0 discovers all thirteen runnable package agents without
     );
     for (const result of results) {
       const policy = expectedBashPolicy(result.requestedName);
+      const expectedAgent = expected.agents.find(({ name }) => name === result.requestedName);
+      const expectedChildExtensions = (expectedAgent?.subagentOnlyExtensions ?? [])
+        .map((relativePath) => join(installedPackage, relativePath.replace(/^\.\.\//, "")));
       if (policy === "git-read") {
         assert.equal(result.configuredExtensions?.length, 1);
         assert.equal(resolve(result.configuredExtensions[0]), join(installedPackage, "extensions", "git-read.ts"));
         assert.equal(existsSync(result.configuredExtensions[0]), true, `${result.requestedName} child-only extension must exist in the installed package`);
+      } else if (result.requestedName === "engram") {
+        assert.deepEqual(result.configuredExtensions, expectedChildExtensions, "engram must preserve its child-only MCP selection boundary");
+        assert.equal(result.configuredExtensions?.length, 1);
+        assert.equal(existsSync(result.configuredExtensions[0]), true, "engram child-only extension must exist in the installed package");
       } else assert.deepEqual(result.configuredExtensions, []);
     }
   } finally {
@@ -150,9 +157,11 @@ test("pi-subagents preflight resolves private defaults and a no-skills override 
           missing: [],
         }, `${profile} ${selection.name} must resolve only its private default skills`);
         assert.deepEqual(result.effectiveAllowlist, agent.tools, `${profile} ${selection.name} must preserve its reviewed tool allowlist`);
+        const expectedChildExtensions = (agent.subagentOnlyExtensions ?? [])
+          .map((relativePath) => join(installedPackage, relativePath.replace(/^\.\.\//, "")));
         const extensions = expectedBashPolicy(selection.name) === "git-read"
           ? [join(installedPackage, "extensions", "git-read.ts")]
-          : [];
+          : expectedChildExtensions;
         assert.deepEqual(result.configuredExtensions, extensions, `${profile} ${selection.name} must preserve its child extension boundary`);
       }
 
@@ -284,6 +293,7 @@ test("the real tarball contains the closed runtime assets and audited dependency
       assert.ok(archive.has(`package/skills/${skill}/SKILL.md`), `tarball must retain the private skill entry selected by a runtime agent: ${skill}`);
     }
     assert.ok(archive.has("package/extensions/git-read.ts"), "tarball must contain the child-only provider referenced by git-read agents");
+    assert.ok(archive.has("package/extensions/engram-child.ts"), "tarball must contain the child-only provider referenced by the engram agent");
     assertAllBashPolicies(new Map(packedRuntimeFiles.map((path) => {
       const name = path.slice(path.lastIndexOf("/") + 1, -".md".length);
       return [name, { path, frontmatter: parseAgentDocument(archive.get(path).toString("utf8")).frontmatter }];
@@ -455,6 +465,10 @@ function assertBashPolicy(frontmatter, name, path) {
     assert.equal(tools.includes("bash"), false, `${path} must not expose the bash tool`);
     assert.equal(tools.includes("git_read"), false, `${path} must not expose git_read`);
     assert.equal(bashPermission, undefined, `${path} must not add a bash permission map`);
+    if (name === "engram") {
+      assert.deepEqual(childExtensions, ["../extensions/engram-child.ts"], `${path} must load only the reviewed child-only engram extension`);
+      return;
+    }
     assert.deepEqual(childExtensions, [], `${path} must not load a child-only git extension`);
     return;
   }

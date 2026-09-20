@@ -101,6 +101,7 @@ function translateAgent(name) {
       requiredCapability: "engram-runtime-tools-v1",
       tools: engramTools,
       selectedSkills,
+      subagentOnlyExtensions: ["../extensions/engram-child.ts"],
     };
   }
   const tools = ["read", "grep", "find", "ls"];
@@ -147,6 +148,7 @@ function writeRuntimeAgent(agent) {
     lines.push(`skills: ${agent.selectedSkills.join(", ")}`, "skillPath: ../skills");
   }
   if (agent.source.bash === "git-read") lines.push("subagentOnlyExtensions: ../extensions/git-read.ts");
+  if (Array.isArray(agent.subagentOnlyExtensions) && agent.subagentOnlyExtensions.length > 0) lines.push(`subagentOnlyExtensions: ${agent.subagentOnlyExtensions.join(", ")}`);
   if (agent.source.spawn === "false") lines.push("maxSubagentDepth: 0");
   lines.push("---", agent.source.body);
   writeText(join(stage, agent.targetPath), `${lines.join("\n").replace(/\n*$/, "")}\n`);
@@ -162,6 +164,7 @@ function contractEntry(agent) {
     ...(agent.requiredCapability ? { requiredCapability: agent.requiredCapability } : {}),
     ...(agent.source.spawn === "false" ? { maxSubagentDepth: 0 } : {}),
     ...(agent.source.bash === "git-read" ? { subagentOnlyExtensions: ["../extensions/git-read.ts"] } : {}),
+    ...(Array.isArray(agent.subagentOnlyExtensions) && agent.subagentOnlyExtensions.length > 0 ? { subagentOnlyExtensions: [...agent.subagentOnlyExtensions] } : {}),
     tools: agent.tools,
   };
 }

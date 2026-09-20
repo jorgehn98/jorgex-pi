@@ -152,6 +152,9 @@
       "status": "runnable",
       "requiredCapability": "engram-runtime-tools-v1",
       "maxSubagentDepth": 0,
+      "subagentOnlyExtensions": [
+        "../extensions/engram-child.ts"
+      ],
       "tools": [
         "mem_search",
         "mem_context",

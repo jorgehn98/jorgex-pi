@@ -5,6 +5,7 @@ tools: mem_search, mem_context, mem_get_observation, mem_suggest_topic_key, mem_
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
+subagentOnlyExtensions: ../extensions/engram-child.ts
 maxSubagentDepth: 0
 ---
 
