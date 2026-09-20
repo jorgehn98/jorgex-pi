@@ -164,6 +164,33 @@ async function runChildRuntime(preflight) {
   );
   const allTools = runner.getAllRegisteredTools().map(({ definition }) => definition.name).sort();
   const envAfterSessionStart = process.env.MCP_DIRECT_TOOLS;
+  // Security: the child config disables the proxy gateway and script tool.
+  // The proxy may exist transiently before the adapter syncs direct tools, so
+  // wait boundedly for its deactivation and fail if it persists. Active tools
+  // are only observed here, never preset to a favorable set.
+  const proxyDeactivated = await waitFor(
+    () => !activeTools.includes("mcp") && !activeTools.includes("mcpScript"),
+    { timeoutMs: 8_000, intervalMs: 50 },
+  );
+  const activeAfterStart = [...activeTools];
+  // Gateway attempt through the live active set: with the proxy deactivated
+  // there must be no active mcp definition to invoke. Registry presence alone
+  // (inactive) is recorded as evidence, not as invocation surface.
+  const gatewayActive = runner.getAllRegisteredTools()
+    .filter(({ definition }) => activeAfterStart.includes(definition.name))
+    .find(({ definition }) => definition.name === "mcp");
+  const gatewayAttempt = { active: gatewayActive !== undefined, invokable: false };
+  if (gatewayActive?.definition && typeof gatewayActive.definition.execute === "function") {
+    try {
+      const result = await gatewayActive.definition.execute("probe-gateway", { action: "status" }, undefined);
+      gatewayAttempt.invokable = true;
+      gatewayAttempt.result = result;
+    } catch (error) {
+      gatewayAttempt.error = error instanceof Error ? error.message : String(error);
+    }
+  } else {
+    gatewayAttempt.error = "mcp has no active definition in the child runtime";
+  }
   // Real pre-turn diagnostic: prompt-runtime writes it on agent_start from
   // pi.getAllTools() observed above, never from a hardcoded list. The file
   // must really be written: wait boundedly for it.
@@ -242,6 +269,15 @@ async function runChildRuntime(preflight) {
     loadOrder,
     loaderErrors: loaded.errors,
     allTools,
+    activeAfterStart,
+    proxy: {
+      deactivatedInTime: proxyDeactivated,
+      mcpRegistered: allTools.includes("mcp"),
+      mcpScriptRegistered: allTools.includes("mcpScript"),
+      mcpActive: activeAfterStart.includes("mcp"),
+      mcpScriptActive: activeAfterStart.includes("mcpScript"),
+    },
+    gatewayAttempt,
     memTools: allTools.filter((name) => name.startsWith("mem_")),
     diagnostic,
     executed,

@@ -67,6 +67,16 @@ test("engram child runtime registers and executes its six read-only tools before
     assert.equal(probed.child.mcpDirectToolsEnv, "__none__", "child env must carry the contract MCP selection into the runtime");
     const expectedSelectors = probed.preflight.effectiveAllowlist.map((name) => `engram/${name}`).join(",");
     assert.equal(probed.child.envAfterLoad, expectedSelectors, "shim selectors must match exactly the contract tools");
+    // Proxy gateway off (config shape covered by the mcp-engram unit test
+    // "engram child config hides proxy and script tools"): here only live
+    // runtime state after session_start, before the turn. subagent_wait is
+    // independent infra and stays out of this claim.
+    assert.equal(probed.child.proxy.deactivatedInTime, true, "transient proxy must deactivate within the bound");
+    assert.equal(probed.child.proxy.mcpScriptRegistered, false, "mcpScript must never register in the child");
+    assert.equal(probed.child.proxy.mcpScriptActive, false, "mcpScript must not be active in the child");
+    assert.equal(probed.child.proxy.mcpActive, false, "mcp gateway must not stay active once the six directs are available");
+    assert.equal(probed.child.gatewayAttempt.active, false, "gateway attempt must find no active mcp definition");
+    assert.equal(probed.child.gatewayAttempt.invokable, false, "gateway must not be invokable in the child");
     for (const denied of NEGATIVES) {
       assert.equal(probed.child.allTools.includes(denied), false, `child runtime must not register ${denied}`);
     }
@@ -94,6 +104,14 @@ test("hostile backend cannot smuggle mutants into the child registry", () => {
     const probed = runProbe(sandbox);
     assert.equal(probed.preflight.ok, true, "preflight must resolve before the child runtime starts");
     assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
+    // Gateway off under attack too; config shape stays covered by the
+    // mcp-engram unit test, not duplicated here.
+    assert.equal(probed.child.proxy.deactivatedInTime, true, "transient proxy must deactivate within the bound");
+    assert.equal(probed.child.proxy.mcpScriptRegistered, false, "mcpScript must never register in the child");
+    assert.equal(probed.child.proxy.mcpScriptActive, false, "mcpScript must not be active in the child");
+    assert.equal(probed.child.proxy.mcpActive, false, "mcp gateway must not stay active once the six directs are available");
+    assert.equal(probed.child.gatewayAttempt.active, false, "gateway attempt must find no active mcp definition");
+    assert.equal(probed.child.gatewayAttempt.invokable, false, "gateway must not be invokable in the child");
     assert.deepEqual([...probed.child.memTools].sort(), [...POSITIVE].sort(), "only the six selected tools may register despite hostile extras");
     for (const denied of HOSTILE_EXTRA) {
       assert.equal(probed.child.allTools.includes(denied), false, `hostile ${denied} must not register as a direct tool`);

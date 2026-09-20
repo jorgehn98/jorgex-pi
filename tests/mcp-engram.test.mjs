@@ -351,6 +351,39 @@ test("managed Engram gives the adapter an isolated programmatic config containin
   }
 });
 
+test("engram child config hides proxy and script tools while the parent shape is unchanged", async () => {
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-engram-child-"));
+  const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
+  const nodePath = resolve(process.execPath);
+  const wrapperPath = join(root, "extensions", "engram-mcp-wrapper.mjs");
+  writeFileSync(fakeBin, "fake binary; never execute\n");
+  chmodSync(fakeBin, 0o755);
+  try {
+    const parent = await resolveMcpEngramConfig({
+      resolveEngramBinary: () => fakeBin,
+      nodePath,
+      wrapperPath,
+      env: { HOME: join(sandbox, "home") },
+    });
+    assert.equal(parent.state, "managed");
+    assert.equal("settings" in parent.config, false, "parent config must not carry child-only adapter settings");
+
+    const child = await resolveMcpEngramConfig({
+      resolveEngramBinary: () => fakeBin,
+      nodePath,
+      wrapperPath,
+      env: { HOME: join(sandbox, "home"), PI_SUBAGENT_CHILD_AGENT: "engram" },
+    });
+    assert.equal(child.state, "managed");
+    assert.deepEqual(child.config.settings, { disableProxyTool: true, scriptMode: false });
+    assert.equal(child.config.mcpServers.engram.directTools, expected.server.directTools, "child must keep Engram direct tools");
+    assert.equal(child.config.mcpServers.engram.toolPrefix, expected.server.toolPrefix, "child must keep the Engram tool prefix");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("managed Engram leaves the optional Pi Chrome DevTools server absent without a handoff", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-devtools-absent-"));

@@ -63,6 +63,9 @@ export async function resolveMcpEngramConfig({
         directTools: false,
       };
     }
+    if (env.PI_SUBAGENT_CHILD_AGENT === "engram") {
+      config.settings = { disableProxyTool: true, scriptMode: false };
+    }
     return { state: "managed", config, binary, context7 };
   } catch (error) {
     return {
