@@ -194,7 +194,7 @@ async function runChildRuntime(preflight) {
     }
   }
 
-  // Negative through the same registry: mutating tools must have no definition.
+  // Negative through the same registry: mutating tools must not be registered.
   const negativeDefinitions = ["mem_save", "mem_session_summary", "bash", "subagent"]
     .map((name) => ({ name, registered: allTools.includes(name) }));
 
