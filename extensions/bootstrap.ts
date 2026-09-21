@@ -123,7 +123,7 @@ export function createBootstrap({
       });
     }
 
-    pi.on("session_start", (_event, ctx) => {
+    pi.on("session_start", async (_event, ctx) => {
       const sessionId = readSessionId(ctx);
       currentSessionId = sessionId;
       if (sessionId) {
@@ -167,7 +167,7 @@ export function createBootstrap({
         systemPromptAssetsFailureNotified = notifyError(ctx, formatSystemPromptAssetsFailure(systemPromptAssetsFailure));
       }
       if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
-      registerRuntimeServers(pi, readSessionId(ctx));
+      await registerRuntimeServers(pi, readSessionId(ctx));
     });
 
     pi.events.on("permissions:ready", (event) => {
@@ -305,9 +305,9 @@ export function createBootstrap({
       };
     });
 
-    function registerRuntimeServers(piApi, sessionId) {
+    async function registerRuntimeServers(piApi, sessionId) {
       if (!sessionId || bootstrapFailure || !companionsHealthy || bridgeResolution?.state !== "managed") return;
-      void disposeRuntimeHandles(sessionId);
+      await disposeRuntimeHandles(sessionId);
       const outcomes = {};
       const definitions = bridgeResolution?.config?.mcpServers ?? {};
       for (const name of ["context7", "chrome-devtools"]) {
@@ -324,10 +324,19 @@ export function createBootstrap({
         } catch (error) {
           result = { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
+        // Real pi-mcp-adapter 2.36.0 contract: success is
+        // { ok: true, registration: { dispose } } with no top-level dispose
+        // or snapshot. Snapshots require a separate runtime-snapshot:v1
+        // request after registration; never read fictional result fields.
         if (result?.ok === true) {
-          const dispose = typeof result.dispose === "function" ? result.dispose : undefined;
-          outcomes[name] = { status: "ok" };
-          if (dispose) runtimeHandles.set(`${sessionId}::${name}`, { dispose, disposed: false });
+          const registration = result?.registration;
+          const dispose = typeof registration?.dispose === "function" ? registration.dispose : undefined;
+          if (!dispose) {
+            outcomes[name] = { status: "failed", reason: "registration handle absent" };
+          } else {
+            outcomes[name] = { status: "ok" };
+            runtimeHandles.set(`${sessionId}::${name}`, { dispose, disposed: false, registration });
+          }
         } else {
           outcomes[name] = {
             status: "failed",

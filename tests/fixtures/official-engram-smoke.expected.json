@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "bridge": {
+    "capability": "engram-official-bridge-v1",
+    "runtimeToolsCapability": "engram-runtime-tools-v1",
+    "event": "pi-mcp-adapter:runtime-register:v1",
+    "snapshotEvent": "pi-mcp-adapter:runtime-snapshot:v1",
+    "version": 1
+  },
+  "engramServer": {
+    "args": ["mcp", "--tools=agent"],
+    "lifecycle": "lazy",
+    "directTools": false,
+    "toolPrefix": "none",
+    "excludedTools": ["mem_capture_passive"]
+  },
+  "context7": {
+    "url": "https://mcp.context7.com/mcp",
+    "auth": false,
+    "lifecycle": "lazy",
+    "directTools": false
+  },
+  "devtools": {
+    "args": [
+      "dlx",
+      "chrome-devtools-mcp@1.6.0",
+      "--isolated",
+      "--redact-network-headers",
+      "--no-performance-crux",
+      "--no-usage-statistics"
+    ],
+    "lifecycle": "lazy",
+    "directTools": false
+  },
+  "gentleProfile": {
+    "tools": [
+      "mem_search",
+      "mem_context",
+      "mem_get_observation",
+      "mem_suggest_topic_key",
+      "mem_current_project",
+      "mem_doctor"
+    ],
+    "blocked": ["mem_save", "mem_session_summary", "mem_update", "bash", "subagent", "mcp", "mcpScript"]
+  },
+  "orders": ["adapter-first", "jorgex-first"],
+  "observed": {
+    "_comment": "Dated observation only (2026-09-21): real `engram setup pi` with a temp stable binary downloaded from GitHub releases/latest and verified by exact asset size/digest, under env -i isolated HOME/PI dir. Evidence, never a version requirement: assertions check shapes and singleton ownership, not these values.",
+    "date": "2026-09-21",
+    "engramRelease": "v2.0.0",
+    "engramAsset": "engram_2.0.0_linux_amd64.tar.gz",
+    "engramAssetSize": 7544949,
+    "engramAssetSha256": "23be1c2ce9739c455097ff864736213717b925b3e8821a988dfc619685a5abd5",
+    "engramBinSha256": "a9f9eb1cd8fdc375b40bdb3641befb2ce0374e8864019de877f74661bc5d3849",
+    "engramVersion": "2.0.0",
+    "gentleEngram": "0.1.13",
+    "piMcpAdapter": "2.36.0",
+    "piTested": ["0.84.2", "0.85.1"],
+    "piContractMax": "0.85.1",
+    "setupSettings": ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter"],
+    "setupNpm": { "gentle-engram": "^0.1.13", "pi-mcp-adapter": "^2.36.0" },
+    "nativeMemTools": 19,
+    "resultShape": "{ ok: true, registration: { dispose } } with no top-level dispose or snapshot; snapshots flow through runtime-snapshot:v1",
+    "secondSession": "BLOCKER observed 2026-09-21 on both Pi loaders and both orders: re-registration after shutdown fails with already-registered and the managed prompt hides Context7, because bootstrap reads result.dispose instead of result.registration.dispose and never releases the first session."
+  }
+}

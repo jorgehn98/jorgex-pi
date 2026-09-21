@@ -18,7 +18,6 @@ import test from "node:test";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
-const engramExpected = readJson(join(testDir, "fixtures", "mcp-engram.expected.json"));
 const configuredPi = process.env.JORGEX_PI_BIN?.trim();
 const configuredPackage = process.env.JORGEX_PI_PACKAGE_DIR?.trim() || root;
 const skipReason = configuredPi && configuredPackage
@@ -191,9 +190,16 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
       const commands = commandsResponse.data.commands;
       const commandNames = commands.map((command) => command.name);
       assert.equal(new Set(commandNames).size, commandNames.length, "Pi must not duplicate slash commands across loaded companions");
-      assert.ok(commandNames.length >= 45, "the current JorgeX package must expose at least the reviewed 45-command surface");
+      // External-bridge contract: the retired bundled adapter contributes no
+      // commands. This env loads jorgex-pi alone (no provider packages), so the
+      // bundled-era names must be absent; the official bridge capability below
+      // replaces them instead of a bundled tool surface.
+      for (const retired of ["mcp", "pi-mcp", "mcp-auth"]) {
+        assert.equal(commandNames.includes(retired), false, `Pi 0.85.1 must not expose retired bundled command ${retired}`);
+      }
+      assert.ok(commandNames.length >= 42, "the current JorgeX package must expose at least the reviewed 42-command surface (45 minus 3 retired bundled commands)");
       for (const name of [
-        "jx-compat-probe", "permission-system", "subagents", "goal", "mcp", "pi-mcp", "mcp-auth",
+        "jx-compat-probe", "permission-system", "subagents", "goal",
         "jorgex:header", "websearch", "curator", "google-account", "search", "lean-audit",
       ]) {
         assert.ok(commandNames.includes(name), `Pi 0.85.1 must expose command ${name}`);
@@ -211,8 +217,16 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
         assert.ok(probeRecord.allTools.includes(name), `Pi 0.85.1 must load companion tool ${name}`);
       }
       const actualEngramTools = probeRecord.allTools.filter((name) => name.startsWith("mem_")).sort();
-      assert.deepEqual(actualEngramTools, engramExpected.engramProfile.tools.slice().sort(), "Pi must register the complete reviewed Engram tool set");
+      // External-bridge contract: Engram tools arrive only through the
+      // provider-owned packages, never from the jorgex-pi bundle. This env
+      // loads jorgex-pi alone, so no mem_* tool may appear here; the official
+      // capability below is what replaces the retired bundled tool set.
+      assert.deepEqual(actualEngramTools, [], "jorgex-pi alone must not provide Engram tools without the official provider packages");
       assert.equal(actualEngramTools.includes("mem_capture_passive"), false, "Pi must keep the passive Engram capture tool excluded");
+      const bridgeContract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
+      assert.ok(bridgeContract.capabilities.includes("engram-official-bridge-v1"), "official bridge capability replaces the bundled adapter");
+      assert.ok(bridgeContract.capabilities.includes("engram-runtime-tools-v1"), "official runtime-tools capability replaces the bundled tool set");
+      assert.equal(bridgeContract.capabilities.includes("mcp-adapter-v1"), false, "owned mcp-adapter-v1 stays retired");
       assert.deepEqual(probeRecord.commands.sort(), commandNames.slice().sort(), "get_commands and the extension API must agree");
 
       const exit = await stopProcess(child);

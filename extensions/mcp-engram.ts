@@ -5,9 +5,14 @@ import { inspectContext7Config, resolvePiAgentDir } from "./context7-config.mjs"
 
 // Synchronous runtime registration event published by the external
 // pi-mcp-adapter contract (version 1): { version: 1, name, definition }.
-// The adapter answers inline on request.result ({ ok, snapshot?, error?, dispose? }).
+// The adapter answers inline on request.result as
+// { ok: true, registration: { dispose } } with no top-level dispose or
+// snapshot; snapshots flow through the separate runtime-snapshot:v1 event
+// ({ version: 1, name } -> { ok, snapshot?, error? }).
 export const RUNTIME_REGISTER_EVENT = "pi-mcp-adapter:runtime-register:v1";
 export const RUNTIME_REGISTER_VERSION = 1;
+export const RUNTIME_SNAPSHOT_EVENT = "pi-mcp-adapter:runtime-snapshot:v1";
+export const RUNTIME_SNAPSHOT_VERSION = 1;
 export const CONTEXT7_URL = "https://mcp.context7.com/mcp";
 const OFFICIAL_ENGRAM_ARGS = ["mcp", "--tools=agent"];
 const DEVTOOLS_HANDOFF_RELATIVE_PATH = ["jorgex-pi", "devtools.v1.json"];

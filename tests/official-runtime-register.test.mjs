@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const RUNTIME_REGISTER_EVENT = "pi-mcp-adapter:runtime-register:v1";
+const RUNTIME_SNAPSHOT_EVENT = "pi-mcp-adapter:runtime-snapshot:v1";
 
 // Managed bridge fixture: what the real official resolver provides when the
 // external setup verifies (canonical Context7 definition, exact DevTools
@@ -88,12 +89,15 @@ function createPiHarness() {
   };
 }
 
-// Fake external adapter implementing the published v1 contract:
-// synchronous event, version:1 + name + definition, result fail-closed,
-// directTools forced false, duplicate throws, dispose idempotent.
+// Fake external adapter implementing the real pi-mcp-adapter 2.36.0 contract:
+// synchronous register event version:1 + name + definition, success as
+// { ok: true, registration: { dispose } } with no top-level dispose or
+// snapshot; snapshots flow through the separate runtime-snapshot:v1 event
+// ({ version: 1, name } -> { ok, snapshot?, error? }); directTools forced
+// false, duplicate fails closed, dispose idempotent, re-register after
+// dispose succeeds.
 function installFakeRuntimeAdapter(pi, { failWith } = {}) {
   const registered = new Map();
-  const snapshots = [];
   pi.api.events.on(RUNTIME_REGISTER_EVENT, (request) => {
     if (request?.version !== 1 || typeof request?.name !== "string" || typeof request?.definition !== "object" || request.definition === null) {
       request.result = { ok: false, error: "invalid runtime-register request" };
@@ -109,20 +113,43 @@ function installFakeRuntimeAdapter(pi, { failWith } = {}) {
     }
     const entry = { ...request.definition, directTools: false };
     registered.set(request.name, entry);
-    snapshots.push({ name: request.name, directTools: entry.directTools, lifecycle: entry.lifecycle });
     let disposed = false;
+    const dispose = async () => {
+      if (disposed) return;
+      disposed = true;
+      registered.delete(request.name);
+    };
     request.result = {
       ok: true,
-      snapshot: { name: request.name, directTools: false },
-      dispose: async () => {
-        if (disposed) return;
-        disposed = true;
-        registered.delete(request.name);
-      },
-      get disposed() { return disposed; },
+      registration: { dispose },
     };
   });
-  return { registered, snapshots };
+  pi.api.events.on(RUNTIME_SNAPSHOT_EVENT, (request) => {
+    if (request?.version !== 1 || typeof request?.name !== "string") {
+      request.result = { ok: false, error: "invalid runtime-snapshot request" };
+      return;
+    }
+    const entry = registered.get(request.name);
+    if (!entry) {
+      request.result = { ok: false, error: `snapshot unavailable for "${request.name}"` };
+      return;
+    }
+    request.result = {
+      ok: true,
+      snapshot: {
+        name: request.name,
+        definition: { ...entry, directTools: false },
+        runtime: true,
+        persisted: false,
+      },
+    };
+  });
+  const snapshot = (name) => {
+    const request = { version: 1, name };
+    pi.api.events.emit(RUNTIME_SNAPSHOT_EVENT, request);
+    return request.result;
+  };
+  return { registered, snapshot };
 }
 
 function companionFactory(id) {
@@ -167,9 +194,19 @@ test("Context7 and DevTools register via runtime-register:v1 on session_start in
       assert.equal(typeof payload?.definition, "object", `${order}: request must carry a definition`);
       assert.equal(payload?.definition?.directTools, false, `${order}: runtime definitions must request directTools:false`);
       assert.ok(payload?.result?.ok, `${order}: adapter result must be ok, got ${payload?.result?.error ?? "absent"}`);
+      assert.equal(typeof payload?.result?.registration?.dispose, "function", `${order}: real result must carry registration.dispose`);
+      assert.equal(payload?.result?.dispose, undefined, `${order}: real result carries no top-level dispose`);
+      assert.equal(payload?.result?.snapshot, undefined, `${order}: snapshots flow through runtime-snapshot:v1, not the register result`);
     }
     assert.ok(fake.registered.has("context7"), `${order}: fake adapter must hold Context7`);
     assert.ok(fake.registered.has("chrome-devtools"), `${order}: fake adapter must hold DevTools`);
+    for (const name of ["context7", "chrome-devtools"]) {
+      const snapshot = fake.snapshot(name);
+      assert.equal(snapshot?.ok, true, `${order}: real ${name} snapshot must resolve`);
+      assert.equal(snapshot?.snapshot?.definition?.directTools, false, `${order}: real ${name} snapshot must keep directTools:false`);
+      assert.equal(snapshot?.snapshot?.runtime, true, `${order}: real ${name} snapshot must be runtime-scoped`);
+      assert.equal(snapshot?.snapshot?.persisted, false, `${order}: real ${name} snapshot must never persist`);
+    }
 
     await pi.emitLifecycle("session_shutdown", {}, context);
     // Handles freed on shutdown tested separately; here at least no throw and no mcp.json write.
@@ -217,7 +254,10 @@ test("runtime-register result absent/error/duplicate fails closed with snapshots
   pi.api.events.emit(RUNTIME_REGISTER_EVENT, duplicate);
   assert.equal(duplicate.result?.ok, false, "duplicate runtime name must fail closed");
   assert.match(duplicate.result?.error ?? "", /already registered/i);
-  assert.equal(fake.registered.get("context7")?.directTools, false, "stored snapshot must keep directTools:false");
+  assert.equal(fake.registered.get("context7")?.directTools, false, "stored entry must keep directTools:false");
+  const duplicateSnapshot = fake.snapshot("context7");
+  assert.equal(duplicateSnapshot?.ok, true, "first registration must survive the duplicate attempt");
+  assert.equal(duplicateSnapshot?.snapshot?.definition?.directTools, false, "snapshot evidence must keep directTools:false");
 });
 
 test("runtime handles dispose idempotently on session_shutdown and never write mcp.json", async () => {
@@ -236,16 +276,26 @@ test("runtime handles dispose idempotently on session_shutdown and never write m
   await pi.emitLifecycle("session_start", {}, context);
   const registrations = pi.emitted().filter(({ name }) => name === RUNTIME_REGISTER_EVENT);
   assert.ok(registrations.length >= 2, "session_start must register Context7 and DevTools before shutdown");
+  for (const { payload } of registrations) {
+    assert.equal(typeof payload?.result?.registration?.dispose, "function", "bootstrap must store the real registration handle");
+    assert.equal(payload?.result?.dispose, undefined, "bootstrap must not rely on a fictional top-level dispose");
+  }
   await pi.emitLifecycle("session_shutdown", {}, context);
   assert.equal(fake.registered.size, 0, "session_shutdown must dispose runtime registrations");
   // Idempotent: second shutdown must not throw.
   await pi.emitLifecycle("session_shutdown", {}, context);
   assert.equal(fake.registered.size, 0, "double shutdown must stay disposed");
   for (const { payload } of registrations) {
-    await payload?.result?.dispose?.();
-    await payload?.result?.dispose?.();
+    await payload?.result?.registration?.dispose?.();
+    await payload?.result?.registration?.dispose?.();
     assert.equal(fake.registered.size, 0, "dispose must be idempotent");
   }
+  // Next session registration must succeed after shutdown disposal.
+  const nextContext = { sessionId: "runtime-dispose-next", ui: { notify() {} } };
+  await pi.emitLifecycle("session_start", {}, nextContext);
+  assert.equal(fake.registered.size, 2, "next session must re-register Context7 and DevTools after shutdown");
+  await pi.emitLifecycle("session_shutdown", {}, nextContext);
+  assert.equal(fake.registered.size, 0, "second shutdown must release the next session");
 });
 
 test("no fallback factory: JorgeX never calls createMcpAdapter nor resolves its own adapter", async () => {
