@@ -200,7 +200,7 @@
         "relativePath": "pi-goal-state.json"
       },
       {
-        "owner": "pi-mcp-adapter",
+        "owner": "official-engram-setup",
         "root": "PI_CODING_AGENT_DIR",
         "relativePath": "mcp-cache.json"
       },
@@ -208,6 +208,26 @@
         "owner": "user",
         "root": "PI_CODING_AGENT_DIR",
         "relativePath": "mcp.json"
+      },
+      {
+        "owner": "official-engram-setup",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "npm/node_modules/gentle-engram"
+      },
+      {
+        "owner": "official-engram-setup",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "npm/node_modules/pi-mcp-adapter"
+      },
+      {
+        "owner": "engram",
+        "root": "HOME",
+        "relativePath": ".local/bin/engram"
+      },
+      {
+        "owner": "engram",
+        "root": "HOME",
+        "relativePath": ".engram"
       }
     ]
   },
@@ -220,7 +240,7 @@
     "structured-questions-v1",
     "web-access-v1",
     "goal-continuation-v1",
-    "mcp-adapter-v1",
+    "engram-official-bridge-v1",
     "engram-runtime-tools-v1",
     "context7-http-v1",
     "permissions-policy-v1",
@@ -256,12 +276,10 @@
     "@juicesharp/rpiv-ask-user-question",
     "@gotgenes/pi-permission-system",
     "pi-web-access",
-    "@narumitw/pi-goal",
-    "pi-mcp-adapter"
+    "@narumitw/pi-goal"
   ],
   "requiredComponents": [
     "pi-subagents",
-    "pi-mcp-adapter",
     "@juicesharp/rpiv-ask-user-question",
     "@gotgenes/pi-permission-system",
     "pi-web-access",

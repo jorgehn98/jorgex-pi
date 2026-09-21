@@ -26,6 +26,10 @@ const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "runner.expected.json"));
 const runnerEntry = join(root, expected.entrypoint);
 const packageVersion = readJson(join(root, "package.json")).version;
+// Post-setup package evidence: the official setup owns exactly one global
+// gentle-engram@semver plus one global pi-mcp-adapter. Registered
+// installations simulate that pair; versions are smoke evidence, not pins.
+const officialPair = ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"];
 const permissionConfigRelativePath = join("extensions", "pi-permission-system", "config.json");
 const permissionReceiptRelativePath = join("jorgex-pi", "permissions-lifecycle.v1.json");
 
@@ -158,7 +162,7 @@ test("runner expands a tilde Pi agent directory consistently across status, sync
   const settingsPath = join(resolvedAgentDir, "settings.json");
   const registration = `npm:jorgex-pi@${packageVersion}`;
   mkdirSync(resolvedAgentDir, { recursive: true });
-  writeJson(settingsPath, { packages: [registration], foreign: { keep: true } });
+  writeJson(settingsPath, { packages: [registration, ...officialPair], foreign: { keep: true } });
   const env = { ...sandbox.env, PI_CODING_AGENT_DIR: tildeAgentDir };
   try {
     const status = runRunner("status", env, sandbox.project, ["--json"]);
@@ -180,7 +184,7 @@ test("runner expands a tilde Pi agent directory consistently across status, sync
     const cleanup = runRunner("cleanup", env, sandbox.project, ["--json"]);
     assert.equal(cleanup.status, expected.exitCodes.success);
     assertEnvelope(cleanup, "cleanup");
-    assert.deepEqual(readJson(settingsPath), { packages: [registration], foreign: { keep: true } });
+    assert.deepEqual(readJson(settingsPath), { packages: [registration, ...officialPair], foreign: { keep: true } });
     assert.equal(existsSync(join(resolvedAgentDir, "models.json")), false);
     assert.equal(existsSync(join(sandbox.project, "~")), false, "tilde expansion must not create a literal relative directory");
   } finally {
@@ -418,18 +422,20 @@ test("experience sync seeds global defaults without overriding project settings"
   }
 });
 
-test("status diagnoses an external Pi MCP adapter before advertising Context7", () => {
-  const sandbox = createSandbox("context7-external-adapter");
+test("status diagnoses an incomplete official setup before advertising Context7", () => {
+  const sandbox = createSandbox("context7-incomplete-official-setup");
   const settingsPath = join(sandbox.agentDir, "settings.json");
+  // A lone adapter without its gentle-engram pair is incomplete official
+  // setup evidence; only the complete global pair owns the channel.
   const settingsBytes = `${JSON.stringify({ packages: ["npm:pi-mcp-adapter@2.27.0"], foreign: true }, null, 2)}\n`;
   writeFileSync(settingsPath, settingsBytes);
   try {
     const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
     assert.equal(status.status, expected.exitCodes.unhealthy);
     assertEnvelope(status, "status");
-    assert.equal(status.json.result.context7.state, "conflict");
+    assert.equal(status.json.result.context7.state, "missing");
     assert.equal(status.json.result.context7.source, "pi-global-settings");
-    assert.equal(status.json.result.context7.code, "external-mcp-adapter");
+    assert.equal(status.json.result.context7.code, "missing-official-packages");
     assert.equal(readFileSync(settingsPath, "utf8"), settingsBytes);
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
@@ -469,7 +475,7 @@ test("status recognizes one exact Pi registration without mutating foreign setti
   const sandbox = createSandbox("registration");
   const settingsPath = join(sandbox.agentDir, "settings.json");
   const source = `npm:jorgex-pi@${packageVersion}`;
-  const bytes = `${JSON.stringify({ packages: ["npm:foreign@1.0.0", source], foreign: { keep: true } }, null, 2)}\n`;
+  const bytes = `${JSON.stringify({ packages: ["npm:foreign@1.0.0", source, ...officialPair], foreign: { keep: true } }, null, 2)}\n`;
   writeFileSync(settingsPath, bytes);
   try {
     const status = runRunner("status", sandbox.env, sandbox.project);
@@ -1002,7 +1008,7 @@ test("initialization diagnostics require first sync and preserve valid customiza
 
   function makeRegisteredSandbox(label) {
     const sandbox = createSandbox(label);
-    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
     return sandbox;
   }
@@ -1102,7 +1108,7 @@ test("initialization diagnostics require first sync and preserve valid customiza
     const sandbox = makeRegisteredSandbox("init-healthy-custom");
     const settingsPath = join(sandbox.agentDir, "settings.json");
     writeJson(settingsPath, {
-      packages: [`npm:jorgex-pi@${packageVersion}`],
+      packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair],
       theme: "preexisting-theme",
       quietStartup: false,
       hideThinkingBlock: false,
@@ -1282,7 +1288,7 @@ test("initialization pending is isolated per component", async (t) => {
 
   function makeIsolatedSandbox(label) {
     const sandbox = createSandbox(label);
-    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
     return sandbox;
   }
@@ -1352,7 +1358,7 @@ test("experience receipt symlinks are rejected as invalid without sync repair", 
   for (const label of ["broken", "valid"]) {
     await t.test(label, (tt) => {
       const sandbox = createSandbox(`init-symlink-${label}`);
-      writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+      writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
       createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
       try {
         const sync = runRunner("sync", sandbox.env, sandbox.project);
@@ -1408,7 +1414,7 @@ test("experience receipt symlinks are rejected as invalid without sync repair", 
 test("doctor preserves Engram-before-Context7 and permissions-specific causes", async (t) => {
   await t.test("relative ENGRAM_BIN outranks Context7 conflict", () => {
     const sandbox = createSandbox("doctor-engram-before-context7");
-    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
     try {
       const sync = runRunner("sync", sandbox.env, sandbox.project);
@@ -1430,7 +1436,7 @@ test("doctor preserves Engram-before-Context7 and permissions-specific causes", 
 
   await t.test("invalid permission config returns permissions-specific remedy", () => {
     const sandbox = createSandbox("doctor-permissions-cause");
-    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
     try {
       const sync = runRunner("sync", sandbox.env, sandbox.project);

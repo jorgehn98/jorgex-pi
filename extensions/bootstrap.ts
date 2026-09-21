@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { installMcpEngram } from "./mcp-engram.ts";
+import { RUNTIME_REGISTER_EVENT, RUNTIME_REGISTER_VERSION, resolveMcpEngramConfig } from "./mcp-engram.ts";
 import { resolvePlaywrightCapability as resolveDefaultPlaywrightCapability } from "./playwright.ts";
 import { PI_QUALITY_CAPABILITIES_EVENT, reportPiQualityCapabilities } from "./quality-capabilities.ts";
 
@@ -37,13 +37,14 @@ export function createBootstrap({
   resolvePlaywrightCapability = resolveDefaultPlaywrightCapability,
   detectWebAccessConflict: conflictDetector = detectWebAccessConflict,
   detectGoalConflict: goalConflictDetector = detectGoalConflict,
-  detectMcpAdapterConflict: mcpAdapterConflictDetector = detectMcpAdapterConflict,
   readGoalConfig = readDefaultGoalConfig,
-  installMcpEngram: injectedMcpInstaller,
+  resolveMcpEngram: injectedBridgeResolver,
   readSystemPromptAssets = readDefaultSystemPromptAssets,
 } = {}) {
-  const mcpInstaller = injectedMcpInstaller
-    ?? (loadCompanion === loadDefaultCompanion ? installMcpEngram : async () => ({ state: "managed" }));
+  const bridgeResolver = injectedBridgeResolver
+    ?? (loadCompanion === loadDefaultCompanion
+      ? () => resolveMcpEngramConfig({ env: process.env, platform: process.platform, cwd: process.cwd() })
+      : async () => ({ state: "managed" }));
   return async function bootstrap(pi) {
     let locateService = injectedLocator;
     const readySessions = new Set();
@@ -61,11 +62,14 @@ export function createBootstrap({
     let mcpEngramFailure;
     let mcpEngramFailureNotified = false;
     let mcpEngramState;
+    let bridgeResolution;
     let context7State;
-    let context7FailureNotified = false;
+    let context7Registered = false;
     let devtoolsRegistered = false;
-    let mcpAdapterConflict;
-    let mcpAdapterConflictNotified = false;
+    let runtimeNotifiedContext7 = false;
+    let runtimeNotifiedDevtools = false;
+    const runtimeOutcomes = new Map();
+    const runtimeHandles = new Map();
     let systemPromptAssets;
     let systemPromptAssetsFailure;
     let systemPromptAssetsFailureNotified = false;
@@ -76,17 +80,6 @@ export function createBootstrap({
       systemPromptAssets = validateSystemPromptAssets(await readSystemPromptAssets());
     } catch (error) {
       systemPromptAssetsFailure = error;
-    }
-
-    try {
-      mcpAdapterConflict = mcpAdapterConflictDetector?.();
-    } catch (error) {
-      mcpAdapterConflict = {
-        packageName: "pi-mcp-adapter",
-        scope: "settings",
-        source: "unknown",
-        error,
-      };
     }
 
     try {
@@ -170,16 +163,11 @@ export function createBootstrap({
       if (mcpEngramFailure && !mcpEngramFailureNotified) {
         mcpEngramFailureNotified = notifyError(ctx, `JorgeX Engram bridge is unavailable: ${mcpEngramFailure}`);
       }
-      if (context7State && context7State.state !== "registered" && !context7FailureNotified) {
-        context7FailureNotified = notifyError(ctx, `JorgeX Context7 is unavailable: ${context7State.code ?? "registration-incomplete"} (${context7State.source ?? "managed bridge"}). Preserve the existing configuration, resolve the conflict, and reload Pi.`);
-      }
-      if (mcpAdapterConflict && !mcpAdapterConflictNotified) {
-        mcpAdapterConflictNotified = notifyError(ctx, formatMcpAdapterConflict(mcpAdapterConflict));
-      }
       if (systemPromptAssetsFailure && !systemPromptAssetsFailureNotified) {
         systemPromptAssetsFailureNotified = notifyError(ctx, formatSystemPromptAssetsFailure(systemPromptAssetsFailure));
       }
       if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
+      registerRuntimeServers(pi, readSessionId(ctx));
     });
 
     pi.events.on("permissions:ready", (event) => {
@@ -194,13 +182,15 @@ export function createBootstrap({
       });
     });
 
-    pi.on("session_shutdown", (_event, ctx) => {
+    pi.on("session_shutdown", async (_event, ctx) => {
       const sessionId = readSessionId(ctx);
       if (!sessionId || sessionId === currentSessionId) currentSessionId = undefined;
       if (sessionId) {
         readySessions.delete(sessionId);
         reconciledSessions.delete(sessionId);
         hiddenSelections.delete(sessionId);
+        runtimeOutcomes.delete(sessionId);
+        await disposeRuntimeHandles(sessionId);
       }
       emitQualityCapabilities(pi, {
         bootstrapReady: false,
@@ -244,16 +234,20 @@ export function createBootstrap({
       bootstrapFailure = normalizeFailure(failure);
     }
 
-    if (!bootstrapFailure && !mcpAdapterConflict) {
+    if (!bootstrapFailure) {
       try {
-        const resolution = await mcpInstaller(createToolCaptureApi(pi, companionTools));
+        const resolution = await bridgeResolver();
+        bridgeResolution = resolution;
         mcpEngramState = resolution.state;
         context7State = resolution.context7;
+        context7Registered = resolution.state === "managed"
+          && (resolution.context7?.state === "registered"
+            || (resolution.context7?.state === "available" && Boolean(resolution.config?.mcpServers?.context7)));
         devtoolsRegistered = resolution.state === "managed" && Boolean(resolution.config?.mcpServers?.["chrome-devtools"]);
         if (resolution.state !== "managed") {
-          mcpEngramFailure = resolution.state === "collision"
-            ? "an existing MCP server named engram was preserved; remove the conflict and reload Pi to use the managed bridge"
-            : resolution.reason ?? "the Engram binary was not found";
+          mcpEngramFailure = resolution.state === "missing"
+            ? "the Engram binary was not found"
+            : resolution.reason ?? "the official Engram setup could not be verified";
         }
       } catch (error) {
         mcpEngramFailure = error instanceof Error ? error.message : String(error);
@@ -279,6 +273,24 @@ export function createBootstrap({
       if (systemPromptAssetsFailure && !systemPromptAssetsFailureNotified) {
         systemPromptAssetsFailureNotified = notifyError(ctx, formatSystemPromptAssetsFailure(systemPromptAssetsFailure));
       }
+      // Registration seam: observe the post-session_start runtime state before
+      // the agent starts. A failed runtime registration hides its prompt
+      // module and is diagnosed once; sessions that never started keep the
+      // bootstrap-time resolution flags.
+      const runtimeOutcome = activeSession ? runtimeOutcomes.get(activeSession) : undefined;
+      const context7Attempt = runtimeOutcome?.context7;
+      const devtoolsAttempt = runtimeOutcome?.["chrome-devtools"];
+      const showContext7 = context7Attempt ? context7Attempt.status === "ok" : context7Registered;
+      const showDevtools = devtoolsAttempt ? devtoolsAttempt.status === "ok" : devtoolsRegistered;
+      if ((context7Attempt && context7Attempt.status !== "ok")
+        || (!context7Attempt && context7State && context7State.state !== "registered" && !context7Registered)) {
+        if (!runtimeNotifiedContext7) {
+          runtimeNotifiedContext7 = notifyError(ctx, `JorgeX Context7 runtime registration is unavailable: ${context7Attempt?.reason ?? context7State?.code ?? "registration-incomplete"} (${context7Attempt ? "runtime-register" : (context7State?.source ?? "managed bridge")}). Preserve the existing configuration, resolve the conflict, and reload Pi.`);
+        }
+      }
+      if (devtoolsAttempt && devtoolsAttempt.status !== "ok" && !runtimeNotifiedDevtools) {
+        runtimeNotifiedDevtools = notifyError(ctx, `JorgeX Chrome DevTools runtime registration is unavailable: ${devtoolsAttempt.reason} (runtime-register). Preserve the existing configuration and reload Pi.`);
+      }
       return {
         systemPrompt: systemPromptAssetsFailure
           ? composeEmergencySystemPrompt(agentEvent?.systemPrompt)
@@ -286,12 +298,65 @@ export function createBootstrap({
               agentEvent?.systemPrompt,
               systemPromptAssets,
               mcpEngramState === "managed",
-              browserRouting(systemPromptAssets, resolvePlaywrightCapability, devtoolsRegistered),
+              browserRouting(systemPromptAssets, resolvePlaywrightCapability, showDevtools),
               companionsHealthy && !webAccessConflict,
-              context7State?.state === "registered",
+              showContext7,
             ),
       };
     });
+
+    function registerRuntimeServers(piApi, sessionId) {
+      if (!sessionId || bootstrapFailure || !companionsHealthy || bridgeResolution?.state !== "managed") return;
+      void disposeRuntimeHandles(sessionId);
+      const outcomes = {};
+      const definitions = bridgeResolution?.config?.mcpServers ?? {};
+      for (const name of ["context7", "chrome-devtools"]) {
+        const definition = definitions[name];
+        // Only the managed Context7/DevTools definitions register here. The
+        // Engram server remains owned by the official setup and is not sent
+        // through the runtime bus.
+        if (!definition || typeof definition !== "object") continue;
+        const request = { version: RUNTIME_REGISTER_VERSION, name, definition };
+        let result;
+        try {
+          piApi.events?.emit?.(RUNTIME_REGISTER_EVENT, request);
+          result = request.result;
+        } catch (error) {
+          result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+        if (result?.ok === true) {
+          const dispose = typeof result.dispose === "function" ? result.dispose : undefined;
+          outcomes[name] = { status: "ok" };
+          if (dispose) runtimeHandles.set(`${sessionId}::${name}`, { dispose, disposed: false });
+        } else {
+          outcomes[name] = {
+            status: "failed",
+            reason: typeof result?.error === "string" && result.error
+              ? result.error
+              : result === undefined || result === null
+                ? "registration result absent"
+                : "registration failed",
+          };
+        }
+      }
+      runtimeOutcomes.set(sessionId, outcomes);
+    }
+
+    async function disposeRuntimeHandles(sessionId) {
+      const prefix = `${sessionId}::`;
+      for (const [key, handle] of [...runtimeHandles]) {
+        if (!key.startsWith(prefix) || handle.disposed) continue;
+        handle.disposed = true;
+        try {
+          await handle.dispose();
+        } catch {
+          // Shutdown disposal must never break the session lifecycle.
+        }
+      }
+      for (const key of [...runtimeHandles.keys()]) {
+        if (key.startsWith(prefix)) runtimeHandles.delete(key);
+      }
+    }
 
     function emitQualityCapabilities(piApi, flags) {
       const report = reportPiQualityCapabilities(flags);
@@ -357,21 +422,6 @@ function createWebAccessApi(pi, companionTools, readWebAccessConfig) {
         return (tool) => {
           companionTools.add(tool.name);
           target.registerTool(wrapWebTool(tool, readWebAccessConfig));
-        };
-      }
-      const value = Reflect.get(target, property, receiver);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-}
-
-function createToolCaptureApi(pi, companionTools) {
-  return new Proxy(pi, {
-    get(target, property, receiver) {
-      if (property === "registerTool") {
-        return (tool) => {
-          companionTools.add(tool.name);
-          return target.registerTool(tool);
         };
       }
       const value = Reflect.get(target, property, receiver);
@@ -565,16 +615,6 @@ export function detectGoalConflict({
   projectSettingsPath = join(process.cwd(), ".pi", "settings.json"),
 } = {}) {
   return detectPackageConflict("@narumitw/pi-goal", /^npm:@narumitw\/pi-goal(?:@[^/\s]+)?$/, {
-    globalSettingsPath,
-    projectSettingsPath,
-  });
-}
-
-export function detectMcpAdapterConflict({
-  globalSettingsPath = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "settings.json"),
-  projectSettingsPath = join(process.cwd(), ".pi", "settings.json"),
-} = {}) {
-  return detectPackageConflict("pi-mcp-adapter", /^npm:pi-mcp-adapter(?:@[^/\s]+)?$/, {
     globalSettingsPath,
     projectSettingsPath,
   });
@@ -824,12 +864,6 @@ function formatPackageConflict({ packageName, scope, source, error }) {
     return `${packageName} settings detection failed closed (${scope}: ${source}): ${message}. Correct the settings and reload Pi explicitly.`;
   }
   return `Direct duplicate ${packageName} package detected in ${scope} Pi settings (${source}); remove the direct entry, keep jorgex-pi as the owner, and reload Pi explicitly.`;
-}
-
-function formatMcpAdapterConflict(conflict) {
-  if (conflict.error) return formatPackageConflict(conflict);
-  const { scope, source } = conflict;
-  return `An external duplicate pi-mcp-adapter package was detected in ${scope} Pi settings (${source}). That adapter is unmanaged; remove the direct entry and reload Pi explicitly to activate the internal Engram adapter.`;
 }
 
 export default createBootstrap();

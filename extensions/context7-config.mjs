@@ -7,6 +7,51 @@ import stripJsonComments from "strip-json-comments";
 const maxConfigBytes = 1024 * 1024;
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
+// Official provider-owned packages: exactly one global gentle-engram@<semver>
+// and one global pi-mcp-adapter own the Engram channel. Concrete versions are
+// provider-managed and never asserted here, only the semver shape.
+const gentleSourcePattern = /^npm:gentle-engram@([^/\s]+)$/;
+const adapterSourcePattern = /^npm:pi-mcp-adapter(?:@([^/\s]+))?$/;
+const semverPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+function entrySource(entry) {
+  return typeof entry === "string" ? entry : entry?.source;
+}
+
+function isGentleEntry(source) {
+  if (typeof source !== "string") return false;
+  const match = gentleSourcePattern.exec(source);
+  return match !== null && semverPattern.test(match[1]);
+}
+
+function isAdapterEntry(source) {
+  if (typeof source !== "string") return false;
+  const match = adapterSourcePattern.exec(source);
+  return match !== null && (match[1] === undefined || semverPattern.test(match[1]));
+}
+
+function isOfficialPackageName(source) {
+  return typeof source === "string"
+    && (source === "npm:gentle-engram"
+      || source.startsWith("npm:gentle-engram@")
+      || source === "npm:pi-mcp-adapter"
+      || source.startsWith("npm:pi-mcp-adapter@"));
+}
+
+function isPiOrOfficialName(source) {
+  return isOfficialPackageName(source)
+    || (typeof source === "string"
+      && (source === "npm:jorgex-pi" || source.startsWith("npm:jorgex-pi@")));
+}
+
+function isUnreadableByIntent(file) {
+  try {
+    return (statSync(file).mode & 0o444) === 0;
+  } catch {
+    return false;
+  }
+}
+
 export function resolvePiAgentDir({ env = process.env, cwd = process.cwd(), platform = process.platform, configDir = ".pi" } = {}) {
   const paths = platform === "win32" ? win32 : posix;
   const home = (platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? homedir();
@@ -42,6 +87,9 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
   let agentDir;
   try { agentDir = resolvePiAgentDir({ env, cwd, platform, configDir }); }
   catch { return invalid("pi-global", "invalid-path"); }
+  const packageEntries = [];
+  const packageFiles = [];
+  let settingsFound = false;
   for (const [source, file] of [
     ["pi-global-settings", paths.join(agentDir, "settings.json")],
     ["pi-project-settings", paths.join(cwd, configDir, "settings.json")],
@@ -52,11 +100,41 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
       if (error?.code === "ENOENT") continue;
       return invalid(source, "unreadable-settings");
     }
+    settingsFound = true;
+    if (isUnreadableByIntent(file)) return invalid(source, "unreadable-settings");
     if (!isRecord(settings) || (settings.packages !== undefined && !Array.isArray(settings.packages))) return invalid(source, "invalid-settings");
-    if (settings.packages?.some((entry) => {
-      const registered = typeof entry === "string" ? entry : entry?.source;
-      return typeof registered === "string" && /^npm:pi-mcp-adapter(?:@[^/\s]+)?$/.test(registered);
-    })) return { state: "conflict", source, code: "external-mcp-adapter" };
+    packageFiles.push({ scope: source, declared: settings.packages !== undefined });
+    for (const entry of settings.packages ?? []) {
+      packageEntries.push({ scope: source, source: entrySource(entry) });
+    }
+  }
+  // The package gate only evaluates Pi-installation evidence: an explicitly
+  // emptied list, a jorgex-pi entry, or an official package name. Foreign-only
+  // declarations carry no Pi evidence and never block Context7 on packages.
+  // Evidence without the single global pair fails closed.
+  const hasPiEvidence = (entries) => entries.length === 0
+    || entries.some(({ source }) => isPiOrOfficialName(source));
+  const packagesDeclared = packageFiles.some(({ declared }) => declared);
+  const evidenceFound = packageFiles.some(({ scope, declared }) => declared
+    && hasPiEvidence(packageEntries.filter((entry) => entry.scope === scope)));
+  if (settingsFound && packagesDeclared && evidenceFound) {
+    // Project duplicates always block: the official pair is global-only.
+    const projectDuplicate = packageEntries.find(({ scope, source }) => scope === "pi-project-settings" && isOfficialPackageName(source));
+    if (projectDuplicate) {
+      const gentle = projectDuplicate.source.startsWith("npm:gentle-engram");
+      return { state: "conflict", source: projectDuplicate.scope, code: gentle ? "duplicate-gentle-engram" : "duplicate-pi-mcp-adapter" };
+    }
+    const globalEntries = packageEntries.filter(({ scope }) => scope === "pi-global-settings");
+    const gentleCount = globalEntries.filter(({ source }) => isGentleEntry(source)).length;
+    const adapterCount = globalEntries.filter(({ source }) => isAdapterEntry(source)).length;
+    if (gentleCount > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-gentle-engram" };
+    if (adapterCount > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-pi-mcp-adapter" };
+    // Absent settings files carry no evidence and stay permissive (isolated
+    // resolvers rely on it); present settings without the single official
+    // pair fail closed without any bundled fallback.
+    if (gentleCount !== 1 || adapterCount !== 1) {
+      return { state: "missing", source: "pi-global-settings", code: "missing-official-packages" };
+    }
   }
   const sources = [
     ["shared-global", paths.join(home, ".config", "mcp", "mcp.json")],

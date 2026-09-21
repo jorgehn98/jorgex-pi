@@ -15,18 +15,19 @@ const expected = readJson(join(testDir, "fixtures", "runtime-agents.expected.jso
 const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
 const foundationExpected = readJson(join(testDir, "fixtures", "foundation-contract.expected.json"), "foundation contract fixture");
 const webAccessExpected = readJson(join(testDir, "fixtures", "web-access.expected.json"), "web access fixture");
-const mcpEngramExpected = readJson(join(testDir, "fixtures", "mcp-engram.expected.json"), "MCP Engram fixture");
 
 test("pi-subagents is pinned with its audited bundled closure", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest");
-  const expectedDependencies = [...bootstrapExpected.companions, mcpEngramExpected.adapter];
+  const expectedDependencies = [...bootstrapExpected.companions];
   assert.deepEqual(
     manifest.dependencies,
     Object.fromEntries(expectedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right))),
   );
   assert.deepEqual([...manifest.bundledDependencies].sort(), expectedDependencies.map(({ name }) => name).sort());
+  assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "official bridge must not bundle its own adapter copy");
   assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 13 runnable package agents may be discoverable by pi-subagents");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
+  assert.doesNotMatch(lock, /pi-mcp-adapter@2\.27\.0/, "lock must not pin the retired bundled adapter");
   for (const dependency of expected.dependency.bundledClosure) assertLockIntegrity(lock, dependency);
 });
 
@@ -305,10 +306,16 @@ test("the real tarball contains the closed runtime assets and audited dependency
       .filter(([path]) => path.startsWith("package/node_modules/") && path.endsWith("/package.json"))
       .map(([, bytes]) => JSON.parse(bytes.toString("utf8")))
       .filter(({ name, version }) => typeof name === "string" && name.length > 0 && typeof version === "string" && version.length > 0);
-    for (const { packageName, file } of mcpEngramExpected.portableKeyringBindings) {
-      const bindingPath = `package/node_modules/${packageName}/${file}`;
-      assert.equal(archive.has(bindingPath), true, `portable MCP bundle must contain regular native binding ${bindingPath}`);
-    }
+    assert.equal(
+      [...archive.keys()].some((path) => path.includes("/node_modules/pi-mcp-adapter/")),
+      false,
+      "tarball must not bundle the retired official adapter copy",
+    );
+    assert.equal(
+      [...archive.keys()].some((path) => path.includes("/node_modules/@napi-rs/keyring-")),
+      false,
+      "tarball must not carry the retired adapter keyring bindings",
+    );
     assert.equal(
       [...archive.keys()].some((path) => path.includes("/node_modules/@napi-rs/keyring-freebsd-")),
       false,

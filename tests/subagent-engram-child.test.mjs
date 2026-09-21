@@ -65,12 +65,9 @@ test("engram child runtime registers and executes its six read-only tools before
     assert.equal(probed.preflight.ok, true, "preflight must resolve before the child runtime starts");
     assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
     assert.equal(probed.child.mcpDirectToolsEnv, "__none__", "child env must carry the contract MCP selection into the runtime");
-    const expectedSelectors = probed.preflight.effectiveAllowlist.map((name) => `engram/${name}`).join(",");
-    assert.equal(probed.child.envAfterLoad, expectedSelectors, "shim selectors must match exactly the contract tools");
-    // Proxy gateway off (config shape covered by the mcp-engram unit test
-    // "engram child config hides proxy and script tools"): here only live
-    // runtime state after session_start, before the turn. subagent_wait is
-    // independent infra and stays out of this claim.
+    assert.equal(probed.child.envAfterLoad, "__none__", "no shim selectors: native tools need no env wiring");
+    // Check live gateway state after session_start, before the turn. The
+    // independent subagent_wait infrastructure stays out of this claim.
     assert.equal(probed.child.proxy.deactivatedInTime, true, "transient proxy must deactivate within the bound");
     assert.equal(probed.child.proxy.mcpScriptRegistered, false, "mcpScript must never register in the child");
     assert.equal(probed.child.proxy.mcpScriptActive, false, "mcpScript must not be active in the child");
@@ -104,8 +101,8 @@ test("hostile backend cannot smuggle mutants into the child registry", () => {
     const probed = runProbe(sandbox);
     assert.equal(probed.preflight.ok, true, "preflight must resolve before the child runtime starts");
     assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
-    // Gateway off under attack too; config shape stays covered by the
-    // mcp-engram unit test, not duplicated here.
+    // The gateway must remain unavailable even when the backend advertises
+    // additional tools; configuration-shape assertions stay in the unit test.
     assert.equal(probed.child.proxy.deactivatedInTime, true, "transient proxy must deactivate within the bound");
     assert.equal(probed.child.proxy.mcpScriptRegistered, false, "mcpScript must never register in the child");
     assert.equal(probed.child.proxy.mcpScriptActive, false, "mcpScript must not be active in the child");
@@ -149,22 +146,19 @@ test("valid partial backend registers available tools and diagnostic identifies 
   }
 });
 
-test("shim restore paths leave no leaked MCP selection behind", () => {
+test("shim never touches the environment and registers only its gate", () => {
   const sandbox = setupSandbox({ backend: "valid" });
   try {
     const probed = runProbe(sandbox);
-    const expectedSix = probed.preflight.effectiveAllowlist.map((name) => `engram/${name}`).join(",");
-    assert.equal(probed.shimRestore.undefDuringLoad, expectedSix, "shim must apply the six selectors when previous is undefined");
-    assert.equal(probed.shimRestore.undefAfterAgentStart, null, "undefined previous must be deleted on agent_start");
-    assert.equal(probed.shimRestore.undefAfterSecondAgentStart, null, "double agent_start must stay deleted");
-    assert.equal(probed.shimRestore.undefAfterShutdown, null, "shutdown after restore must stay deleted");
-    assert.equal(probed.shimRestore.foreignDuringLoad, expectedSix, "foreign previous must be replaced by six during load");
-    assert.equal(probed.shimRestore.foreignAfterAgentStart, "foreign,keep-me", "foreign previous must be restored exactly");
-    assert.equal(probed.shimRestore.foreignAfterSecond, "foreign,keep-me", "double agent_start must keep the exact foreign value");
-    assert.equal(probed.shimRestore.shutdownUndefAfter, null, "shutdown without agent_start must delete undefined previous");
-    assert.equal(probed.shimRestore.shutdownForeignAfter, "foreign,keep-me", "shutdown without agent_start must restore foreign previous");
+    assert.equal(probed.shimRestore.undefDuringLoad, null, "shim must not set any selection when previous is undefined");
+    assert.equal(probed.shimRestore.undefAfterAgentStart, null, "agent_start must leave an absent selection absent");
+    assert.equal(probed.shimRestore.undefAfterShutdown, null, "shutdown must leave an absent selection absent");
+    assert.equal(probed.shimRestore.foreignDuringLoad, "foreign,keep-me", "foreign previous must survive load untouched");
+    assert.equal(probed.shimRestore.foreignAfterAgentStart, "foreign,keep-me", "agent_start must preserve the foreign value exactly");
+    assert.equal(probed.shimRestore.foreignAfterShutdown, "foreign,keep-me", "shutdown must preserve the foreign value exactly");
     assert.equal(probed.shimRestore.nonEngramAfter, "untouched", "other agents must leave the env untouched");
-    assert.deepEqual(probed.shimRestore.nonEngramHandlers, { agent_start: 0, session_shutdown: 0 }, "other agents must register no restore handlers");
+    assert.deepEqual(probed.shimRestore.nonEngramHandlers, { tool_call: 0, agent_start: 0, session_shutdown: 0 }, "other agents must register no handlers");
+    assert.deepEqual(probed.shimRestore.engramHandlerNames, ["tool_call"], "the engram shim registers only its read-only gate");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
   }
@@ -201,7 +195,7 @@ test("mutants-only backend keeps proxy fallback but shim blocks the gateway befo
     const probed = runProbe(sandbox);
     assert.equal(probed.preflight.ok, true, "preflight must resolve before the child runtime starts");
     assert.deepEqual(probed.child.loaderErrors, [], "child runtime must load its contract extensions without diagnostics");
-    // Adapter fallback reproduced: with zero direct specs the proxy stays, so
+    // Test adapter fallback: with zero direct specs the proxy stays, so
     // proxy inactivity is NOT claimed here; the barrier below is the proof.
     assert.equal(probed.child.proxy.mcpActive, true, "adapter fallback must keep the proxy while directSpecs is zero");
     assert.equal(probed.child.memTools.length, 0, "mutants-only backend must register zero direct reads");

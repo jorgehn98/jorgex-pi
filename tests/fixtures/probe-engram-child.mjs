@@ -97,9 +97,12 @@ async function runChildRuntime(preflight) {
   // Real package order: contract CLI extensionArgs first (prompt-runtime,
   // then the engram child-only shim from the installed sandbox copy), package
   // root last so ambient bootstrap loads after them — the same CLI-before-
-  // ambient merge Pi uses for --extension flags. No separate artificial
-  // installer: the bundled adapter arrives via the real bootstrap path.
-  const additionalExtensionPaths = [...extensionArgs, root];
+  // ambient merge Pi uses for --extension flags. The official bridge never
+  // installs an adapter, so the probe appends its own stand-in for the
+  // provider-managed transport (see probe-official-adapter.ts) after the
+  // production extensions. This stand-in is test-only and is not installed by
+  // the production bootstrap.
+  const additionalExtensionPaths = [...extensionArgs, root, join(probeDir, "probe-official-adapter.ts")];
   const eventBus = createEventBus();
   const loader = new DefaultResourceLoader({
     cwd: process.cwd(),
@@ -157,6 +160,13 @@ async function runChildRuntime(preflight) {
     },
   );
   activeTools = runner.getAllRegisteredTools().map(({ definition }) => definition.name);
+  // Probe-side transport signal for the stand-in adapter: the retired shim
+  // used to publish the six selectors before session_start and restore the
+  // previous value on agent_start. Production sets nothing (gentle-engram
+  // provides native tools); the probe reproduces the signal window so the
+  // test-only stand-in registers direct tools, then restores it.
+  const transportSelectors = [...POSITIVE].map((name) => `engram/${name}`).join(",");
+  process.env.MCP_DIRECT_TOOLS = transportSelectors;
   await runner.emit({ type: "session_start", reason: "startup" });
   await waitFor(
     () => runner.getAllRegisteredTools().some(({ definition }) => definition.name.startsWith("mem_")),
@@ -172,6 +182,7 @@ async function runChildRuntime(preflight) {
     () => !activeTools.includes("mcp") && !activeTools.includes("mcpScript"),
     { timeoutMs: 8_000, intervalMs: 50 },
   );
+  process.env.MCP_DIRECT_TOOLS = "__none__";
   const activeAfterStart = [...activeTools];
   // Gateway attempt through the live active set: with the proxy deactivated
   // there must be no active mcp definition to invoke. Registry presence alone
@@ -303,8 +314,11 @@ async function runChildRuntime(preflight) {
 }
 
 async function checkShimRestore() {
-  // Closest seam for the shim restore paths: invoke the real production
-  // module directly with a fake pi, no network and no model.
+  // Closest seam for the official shim contract: invoke the real production
+  // module directly with a fake pi, no network and no model. gentle-engram
+  // provides native tools, so the shim must leave the process environment
+  // untouched in every lifecycle transition and register only its tool_call
+  // gate (covered separately by checkShimToolCall).
   const savedAgent = process.env.PI_SUBAGENT_CHILD_AGENT;
   const savedDirect = process.env.MCP_DIRECT_TOOLS;
   const hasDirect = () => Object.hasOwn(process.env, "MCP_DIRECT_TOOLS");
@@ -317,7 +331,7 @@ async function checkShimRestore() {
     };
     const fire = (pi, event) => { for (const fn of pi.handlers[event] ?? []) fn(); };
 
-    // previous undefined → six during load, deleted on restore
+    // previous undefined → untouched through load, agent_start and shutdown
     delete process.env.MCP_DIRECT_TOOLS;
     process.env.PI_SUBAGENT_CHILD_AGENT = "engram";
     const piUndef = fakePi();
@@ -325,32 +339,18 @@ async function checkShimRestore() {
     const undefDuringLoad = readDirect();
     fire(piUndef, "agent_start");
     const undefAfterAgentStart = readDirect();
-    fire(piUndef, "agent_start");
-    const undefAfterSecondAgentStart = readDirect();
     fire(piUndef, "session_shutdown");
     const undefAfterShutdown = readDirect();
 
-    // previous foreign list → replaced by six during load, restored exactly
+    // previous foreign list → preserved exactly, never replaced or restored
     process.env.MCP_DIRECT_TOOLS = "foreign,keep-me";
     const piForeign = fakePi();
     await engramChildMcpSelection(piForeign);
     const foreignDuringLoad = readDirect();
     fire(piForeign, "agent_start");
     const foreignAfterAgentStart = readDirect();
-    fire(piForeign, "agent_start");
-    const foreignAfterSecond = readDirect();
-
-    // shutdown without agent_start restores (fresh instances)
-    delete process.env.MCP_DIRECT_TOOLS;
-    const piShutdownUndef = fakePi();
-    await engramChildMcpSelection(piShutdownUndef);
-    fire(piShutdownUndef, "session_shutdown");
-    const shutdownUndefAfter = readDirect();
-    process.env.MCP_DIRECT_TOOLS = "foreign,keep-me";
-    const piShutdownForeign = fakePi();
-    await engramChildMcpSelection(piShutdownForeign);
-    fire(piShutdownForeign, "session_shutdown");
-    const shutdownForeignAfter = readDirect();
+    fire(piForeign, "session_shutdown");
+    const foreignAfterShutdown = readDirect();
 
     // other agent → noop, no handlers, env untouched
     process.env.MCP_DIRECT_TOOLS = "untouched";
@@ -359,15 +359,16 @@ async function checkShimRestore() {
     await engramChildMcpSelection(piOther);
     const nonEngramAfter = readDirect();
     const nonEngramHandlers = {
+      tool_call: piOther.handlers.tool_call?.length ?? 0,
       agent_start: piOther.handlers.agent_start?.length ?? 0,
       session_shutdown: piOther.handlers.session_shutdown?.length ?? 0,
     };
 
     return {
-      undefDuringLoad, undefAfterAgentStart, undefAfterSecondAgentStart, undefAfterShutdown,
-      foreignBefore: "foreign,keep-me", foreignDuringLoad, foreignAfterAgentStart, foreignAfterSecond,
-      shutdownUndefAfter, shutdownForeignBefore: "foreign,keep-me", shutdownForeignAfter,
+      undefDuringLoad, undefAfterAgentStart, undefAfterShutdown,
+      foreignBefore: "foreign,keep-me", foreignDuringLoad, foreignAfterAgentStart, foreignAfterShutdown,
       nonEngramAfter, nonEngramHandlers,
+      engramHandlerNames: Object.keys(piUndef.handlers).sort(),
     };
   } finally {
     if (savedAgent === undefined) delete process.env.PI_SUBAGENT_CHILD_AGENT;
