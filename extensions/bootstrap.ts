@@ -66,8 +66,8 @@ export function createBootstrap({
     let context7State;
     let context7Registered = false;
     let devtoolsRegistered = false;
-    let runtimeNotifiedContext7 = false;
-    let runtimeNotifiedDevtools = false;
+    const runtimeNotifiedContext7Sessions = new Set();
+    const runtimeNotifiedDevtoolsSessions = new Set();
     const runtimeOutcomes = new Map();
     const runtimeHandles = new Map();
     let systemPromptAssets;
@@ -190,6 +190,8 @@ export function createBootstrap({
         reconciledSessions.delete(sessionId);
         hiddenSelections.delete(sessionId);
         runtimeOutcomes.delete(sessionId);
+        runtimeNotifiedContext7Sessions.delete(sessionId);
+        runtimeNotifiedDevtoolsSessions.delete(sessionId);
         await disposeRuntimeHandles(sessionId);
       }
       emitQualityCapabilities(pi, {
@@ -240,9 +242,11 @@ export function createBootstrap({
         bridgeResolution = resolution;
         mcpEngramState = resolution.state;
         context7State = resolution.context7;
+        // Bootstrap requires a managed bridge with an available definition;
+        // the legacy `registered` state alone is not sufficient.
         context7Registered = resolution.state === "managed"
-          && (resolution.context7?.state === "registered"
-            || (resolution.context7?.state === "available" && Boolean(resolution.config?.mcpServers?.context7)));
+          && resolution.context7?.state === "available"
+          && Boolean(resolution.config?.mcpServers?.context7);
         devtoolsRegistered = resolution.state === "managed" && Boolean(resolution.config?.mcpServers?.["chrome-devtools"]);
         if (resolution.state !== "managed") {
           mcpEngramFailure = resolution.state === "missing"
@@ -274,22 +278,30 @@ export function createBootstrap({
         systemPromptAssetsFailureNotified = notifyError(ctx, formatSystemPromptAssetsFailure(systemPromptAssetsFailure));
       }
       // Registration seam: observe the post-session_start runtime state before
-      // the agent starts. A failed runtime registration hides its prompt
-      // module and is diagnosed once; sessions that never started keep the
-      // bootstrap-time resolution flags.
+      // the agent starts. A failed registration hides its prompt and, when a
+      // session id is available, is diagnosed once per session; sessions that
+      // never started keep the bootstrap-time resolution flags.
       const runtimeOutcome = activeSession ? runtimeOutcomes.get(activeSession) : undefined;
       const context7Attempt = runtimeOutcome?.context7;
       const devtoolsAttempt = runtimeOutcome?.["chrome-devtools"];
       const showContext7 = context7Attempt ? context7Attempt.status === "ok" : context7Registered;
       const showDevtools = devtoolsAttempt ? devtoolsAttempt.status === "ok" : devtoolsRegistered;
       if ((context7Attempt && context7Attempt.status !== "ok")
-        || (!context7Attempt && context7State && context7State.state !== "registered" && !context7Registered)) {
-        if (!runtimeNotifiedContext7) {
-          runtimeNotifiedContext7 = notifyError(ctx, `JorgeX Context7 runtime registration is unavailable: ${context7Attempt?.reason ?? context7State?.code ?? "registration-incomplete"} (${context7Attempt ? "runtime-register" : (context7State?.source ?? "managed bridge")}). Preserve the existing configuration, resolve the conflict, and reload Pi.`);
-        }
+        || (!context7Attempt && context7State && !context7Registered)) {
+        notifyRuntimeOnce(
+          runtimeNotifiedContext7Sessions,
+          ctx,
+          activeSession,
+          formatRuntimeContext7Error(context7Attempt, context7State),
+        );
       }
-      if (devtoolsAttempt && devtoolsAttempt.status !== "ok" && !runtimeNotifiedDevtools) {
-        runtimeNotifiedDevtools = notifyError(ctx, `JorgeX Chrome DevTools runtime registration is unavailable: ${devtoolsAttempt.reason} (runtime-register). Preserve the existing configuration and reload Pi.`);
+      if (devtoolsAttempt && devtoolsAttempt.status !== "ok") {
+        notifyRuntimeOnce(
+          runtimeNotifiedDevtoolsSessions,
+          ctx,
+          activeSession,
+          formatRuntimeDevtoolsError(devtoolsAttempt),
+        );
       }
       return {
         systemPrompt: systemPromptAssetsFailure
@@ -306,17 +318,19 @@ export function createBootstrap({
     });
 
     async function registerRuntimeServers(piApi, sessionId) {
-      if (!sessionId || bootstrapFailure || !companionsHealthy || bridgeResolution?.state !== "managed") return;
+      if (!sessionId || bootstrapFailure || !companionsHealthy || bridgeResolution?.state !== "managed") {
+        if (sessionId) runtimeOutcomes.delete(sessionId);
+        return;
+      }
       await disposeRuntimeHandles(sessionId);
       const outcomes = {};
       const definitions = bridgeResolution?.config?.mcpServers ?? {};
       for (const name of ["context7", "chrome-devtools"]) {
-        const definition = definitions[name];
         // Only the managed Context7/DevTools definitions register here. The
         // Engram server remains owned by the official setup and is not sent
         // through the runtime bus.
-        if (!definition || typeof definition !== "object") continue;
-        const request = { version: RUNTIME_REGISTER_VERSION, name, definition };
+        const request = createRuntimeRegisterRequest(name, definitions[name]);
+        if (!request) continue;
         let result;
         try {
           piApi.events?.emit?.(RUNTIME_REGISTER_EVENT, request);
@@ -324,28 +338,12 @@ export function createBootstrap({
         } catch (error) {
           result = { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
-        // Observed provider contract: success is
-        // { ok: true, registration: { dispose } } with no top-level dispose
-        // or snapshot. Snapshots require a separate runtime-snapshot:v1
-        // request after registration; never read fictional result fields.
-        if (result?.ok === true) {
-          const registration = result?.registration;
-          const dispose = typeof registration?.dispose === "function" ? registration.dispose : undefined;
-          if (!dispose) {
-            outcomes[name] = { status: "failed", reason: "registration handle absent" };
-          } else {
-            outcomes[name] = { status: "ok" };
-            runtimeHandles.set(`${sessionId}::${name}`, { dispose, disposed: false, registration });
-          }
+        const outcome = resolveRuntimeRegisterOutcome(result);
+        if (outcome.status === "ok") {
+          outcomes[name] = { status: "ok" };
+          runtimeHandles.set(`${sessionId}::${name}`, { dispose: outcome.dispose, disposed: false, registration: outcome.registration });
         } else {
-          outcomes[name] = {
-            status: "failed",
-            reason: typeof result?.error === "string" && result.error
-              ? result.error
-              : result === undefined || result === null
-                ? "registration result absent"
-                : "registration failed",
-          };
+          outcomes[name] = { status: "failed", reason: outcome.reason };
         }
       }
       runtimeOutcomes.set(sessionId, outcomes);
@@ -354,16 +352,15 @@ export function createBootstrap({
     async function disposeRuntimeHandles(sessionId) {
       const prefix = `${sessionId}::`;
       for (const [key, handle] of [...runtimeHandles]) {
-        if (!key.startsWith(prefix) || handle.disposed) continue;
+        if (!key.startsWith(prefix)) continue;
+        runtimeHandles.delete(key);
+        if (handle.disposed) continue;
         handle.disposed = true;
         try {
           await handle.dispose();
         } catch {
           // Shutdown disposal must never break the session lifecycle.
         }
-      }
-      for (const key of [...runtimeHandles.keys()]) {
-        if (key.startsWith(prefix)) runtimeHandles.delete(key);
       }
     }
 
@@ -873,6 +870,48 @@ function formatPackageConflict({ packageName, scope, source, error }) {
     return `${packageName} settings detection failed closed (${scope}: ${source}): ${message}. Correct the settings and reload Pi explicitly.`;
   }
   return `Direct duplicate ${packageName} package detected in ${scope} Pi settings (${source}); remove the direct entry, keep jorgex-pi as the owner, and reload Pi explicitly.`;
+}
+
+function createRuntimeRegisterRequest(name, definition) {
+  if (!definition || typeof definition !== "object") return undefined;
+  return { version: RUNTIME_REGISTER_VERSION, name, definition };
+}
+
+function resolveRuntimeRegisterOutcome(result) {
+  // The provider returns { ok: true, registration: { dispose } } on success.
+  // Snapshots require a separate runtime-snapshot:v1 request after
+  // registration; do not infer them from unrelated result fields.
+  if (result?.ok === true) {
+    const registration = result?.registration;
+    const dispose = typeof registration?.dispose === "function" ? registration.dispose : undefined;
+    if (!dispose) return { status: "failed", reason: "registration handle absent" };
+    return { status: "ok", dispose, registration };
+  }
+  return {
+    status: "failed",
+    reason: typeof result?.error === "string" && result.error
+      ? result.error
+      : result === undefined || result === null
+        ? "registration result absent"
+        : "registration failed",
+  };
+}
+
+function formatRuntimeContext7Error(attempt, contextState) {
+  const reason = attempt?.reason ?? contextState?.code ?? "registration-incomplete";
+  const origin = attempt ? "runtime-register" : (contextState?.source ?? "managed bridge");
+  return `JorgeX Context7 runtime registration is unavailable: ${reason} (${origin}). Preserve the existing configuration, resolve the conflict, and reload Pi.`;
+}
+
+function formatRuntimeDevtoolsError(attempt) {
+  return `JorgeX Chrome DevTools runtime registration is unavailable: ${attempt.reason} (runtime-register). Preserve the existing configuration and reload Pi.`;
+}
+
+function notifyRuntimeOnce(notifiedSessions, ctx, sessionId, message) {
+  if (sessionId && notifiedSessions.has(sessionId)) return false;
+  const notified = notifyError(ctx, message);
+  if (notified && sessionId) notifiedSessions.add(sessionId);
+  return notified;
 }
 
 export default createBootstrap();

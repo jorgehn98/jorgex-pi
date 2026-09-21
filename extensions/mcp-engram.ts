@@ -37,6 +37,18 @@ export async function resolveMcpEngramConfig({
 } = {}) {
   const config = { mcpServers: {} };
   const context7 = inspectContext7Config({ env, platform, cwd });
+  // Invalid package-scope settings fail the bridge closed and are never
+  // managed or protocol-advertised. Unrelated MCP-scan invalidity remains
+  // scoped to the managed result with its diagnosis preserved.
+  if (context7.state === "invalid"
+    && (context7.source === "pi-global-settings" || context7.source === "pi-project-settings")) {
+    return {
+      state: "failed",
+      config,
+      context7,
+      reason: `Invalid package-scope settings (${context7.source}: ${context7.code})`,
+    };
+  }
   if (context7.state === "available") {
     config.mcpServers.context7 = {
       url: CONTEXT7_URL,
@@ -193,7 +205,12 @@ export function resolveConfiguredEngramBinary({
     if (platform === "win32" && !/\.exe$/i.test(configured)) {
       throw new Error("ENGRAM_BIN must point to a native .exe executable on Windows");
     }
-    return isExecutable(configured, platform) ? configured : undefined;
+    // An explicitly set invalid binary is terminal: never fall through to the
+    // receipt or mask the configuration error; the bridge fails closed.
+    if (!isExecutable(configured, platform)) {
+      throw new Error(`ENGRAM_BIN is set but not executable: ${configured}`);
+    }
+    return configured;
   }
   return resolveStackReceiptEngramBinary({ env, platform });
 }

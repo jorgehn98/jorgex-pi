@@ -28,10 +28,16 @@ test("Context7 guidance is exposed only after its managed HTTP server registrati
   const context7 = directInstallAsset("context7");
   const scenarios = [
     {
-      name: "registered",
-      context7State: { state: "registered" },
+      name: "managed available with definition",
+      context7State: { state: "available" },
       mcpConfig: { mcpServers: { engram: {}, context7: { url: "https://mcp.context7.com/mcp" } } },
       expected: true,
+    },
+    {
+      name: "stale registered without available",
+      context7State: { state: "registered" },
+      mcpConfig: { mcpServers: { engram: {}, context7: { url: "https://mcp.context7.com/mcp" } } },
+      expected: false,
     },
     {
       name: "homonymous user configuration",

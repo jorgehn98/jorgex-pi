@@ -53,7 +53,8 @@ test("Context7 inspection recognizes a direct Pi config without importing or rew
 
   try {
     const missing = inspectContext7Config({ env, cwd: sandbox, platform: process.platform });
-    assert.equal(missing.state, "available");
+    assert.equal(missing.state, "missing", "absent official packages fail closed as missing (total gate)");
+    assert.equal(missing.source, "pi-global-settings");
 
     const previousBytes = `{
   // User-owned MCP configuration must remain byte-identical.
@@ -181,10 +182,13 @@ test("managed Engram registers anonymous Context7 over HTTP and keeps an optiona
   const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
+  const agentDir = join(sandbox, "agent");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
   try {
     const anonymous = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
-      env: { HOME: join(sandbox, "home") },
+      env: { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir },
     });
     assert.equal(anonymous.state, "managed");
     assert.equal(anonymous.context7?.state, "available", "Context7 must be available for managed registration when no prior definition exists");
@@ -194,14 +198,14 @@ test("managed Engram registers anonymous Context7 over HTTP and keeps an optiona
 
     const emptyKey = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
-      env: { HOME: join(sandbox, "home"), CONTEXT7_API_KEY: "  " },
+      env: { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir, CONTEXT7_API_KEY: "  " },
     });
     assert.equal(emptyKey.context7?.state, "available");
     assert.equal("headers" in emptyKey.config.mcpServers.context7, false, "an empty key must not create an empty HTTP header");
 
     const keyed = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
-      env: { HOME: join(sandbox, "home"), CONTEXT7_API_KEY: "fixture-context7-token" },
+      env: { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir, CONTEXT7_API_KEY: "fixture-context7-token" },
     });
     assert.equal(keyed.state, "managed");
     assert.equal(keyed.context7?.state, "available");
@@ -254,14 +258,17 @@ test("official Context7 definitions register over the event bus with directTools
   const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
+  const agentDir = join(sandbox, "agent");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
   try {
     for (const scenario of [
       { name: "anonymous", key: undefined },
       { name: "optional key", key: "fixture-context7-token" },
     ]) {
       const env = scenario.key === undefined
-        ? { HOME: join(sandbox, "home") }
-        : { HOME: join(sandbox, "home"), CONTEXT7_API_KEY: scenario.key };
+        ? { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir }
+        : { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir, CONTEXT7_API_KEY: scenario.key };
       const result = await resolveMcpEngramConfig({ resolveEngramBinary: () => fakeBin, env });
       assert.equal(result.state, "managed", `${scenario.name} must resolve managed`);
       assert.equal(result.config.mcpServers.context7?.directTools, false, `${scenario.name} runtime definition must request directTools:false`);
@@ -286,10 +293,13 @@ test("managed Engram resolves the direct official binary config containing Engra
   mkdirSync(dirname(fakeBin), { recursive: true });
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
+  const agentDir = join(sandbox, "agent");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
   try {
     const result = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
-      env: { HOME: "/safe/home", NODE_OPTIONS: "--require hostile", ENGRAM_CLOUD_TOKEN: "must-not-pass" },
+      env: { HOME: "/safe/home", PI_CODING_AGENT_DIR: agentDir, NODE_OPTIONS: "--require hostile", ENGRAM_CLOUD_TOKEN: "must-not-pass" },
     });
     assert.equal(result.state, "managed");
     assert.deepEqual(result.config, {
@@ -381,6 +391,7 @@ test("managed Engram adds the exact optional Pi Chrome DevTools handoff", async 
   chmodSync(pnpmPath, 0o755);
   mkdirSync(dirname(handoffPath), { recursive: true });
   writeFileSync(handoffPath, `${JSON.stringify({ schemaVersion: 1, enabled: true, command: pnpmPath, args })}\n`);
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
   try {
     const result = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -442,7 +453,10 @@ test("an invalid Pi Chrome DevTools handoff fails closed with a diagnostic", asy
 test("missing or failed Engram resolution preserves the isolated Context7 registration and its diagnosis", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-missing-engram-"));
-  const env = { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: join(sandbox, "agent") };
+  const agentDir = join(sandbox, "agent");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  const env = { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir };
   try {
     const missing = await resolveMcpEngramConfig({ resolveEngramBinary: () => undefined, env });
     assert.equal(missing.state, "missing");
@@ -518,10 +532,10 @@ test("managed Engram falls back only to the exact installed Stack receipt", asyn
       "a valid absolute ENGRAM_BIN must take precedence over the managed receipt",
     );
 
-    assert.equal(
-      resolveConfiguredEngramBinary({ env: { ...env, ENGRAM_BIN: win32.join(home, "missing-engram.exe") }, platform: "win32" }),
-      undefined,
-      "an invalid explicit ENGRAM_BIN must not fall through to the managed receipt",
+    assert.throws(
+      () => resolveConfiguredEngramBinary({ env: { ...env, ENGRAM_BIN: win32.join(home, "missing-engram.exe") }, platform: "win32" }),
+      /executable|permission|ENGRAM_BIN/i,
+      "an invalid explicit ENGRAM_BIN must throw and never fall through to the managed receipt",
     );
 
     for (const { label, mutation } of [

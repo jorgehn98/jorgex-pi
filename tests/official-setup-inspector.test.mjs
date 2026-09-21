@@ -93,7 +93,8 @@ test("official setup distinguishes missing/duplicate/malformed/unreadable/confli
   try {
     rmSync(globalSettingsPath, { force: true });
     const missing = inspectContext7Config({ env, cwd, platform: "linux" });
-    assert.equal(missing.state, "available", "absent settings remain permissive for isolated inspection");
+    assert.equal(missing.state, "missing", "absent settings fail closed as missing (total gate)");
+    assert.equal(missing.source, "pi-global-settings");
 
     writeFileSync(globalSettingsPath, "{ invalid json\n");
     const malformed = inspectContext7Config({ env, cwd, platform: "linux" });
@@ -112,8 +113,8 @@ test("official setup distinguishes missing/duplicate/malformed/unreadable/confli
     } finally {
       chmodSync(globalSettingsPath, 0o644);
     }
-    // Root may still read 000 files; accept either invalid or available but require no throw and no write.
-    assert.ok(["invalid", "available"].includes(unreadable.state), "unreadable settings must not throw");
+    // Root may still read 000 files; accept either invalid or missing but require no throw and no write.
+    assert.ok(["invalid", "missing"].includes(unreadable.state), "unreadable settings must not throw");
     assert.equal(readFileSync(globalSettingsPath, "utf8"), '{"packages":[]}\n', "inspection must be read-only");
 
     writeFileSync(globalSettingsPath, `${JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }, null, 2)}\n`);
@@ -232,10 +233,13 @@ test("Context7 keeps canonical endpoint and never persists the secret (control)"
   const fakeBin = join(sandbox, "engram");
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
+  const agentDir = join(sandbox, "agent");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
   try {
     const keyed = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
-      env: { HOME: join(sandbox, "home"), CONTEXT7_API_KEY: "fixture-context7-token" },
+      env: { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir, CONTEXT7_API_KEY: "fixture-context7-token" },
     });
     assert.equal(keyed.state, "managed");
     assert.equal(keyed.config.mcpServers.context7?.url, CANONICAL_CONTEXT7_URL);
