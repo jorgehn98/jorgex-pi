@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { inspectContext7Config, resolvePiAgentDir } from "./context7-config.mjs";
 
 // Synchronous runtime registration event published by the external
-// pi-mcp-adapter contract (version 1): { version: 1, name, definition }.
+// pi-mcp-adapter contract observed by the smoke harness (version 1):
+// { version: 1, name, definition }.
 // The adapter answers inline on request.result as
 // { ok: true, registration: { dispose } } with no top-level dispose or
 // snapshot; snapshots flow through the separate runtime-snapshot:v1 event

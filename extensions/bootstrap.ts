@@ -324,7 +324,7 @@ export function createBootstrap({
         } catch (error) {
           result = { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
-        // Real pi-mcp-adapter 2.36.0 contract: success is
+        // Observed provider contract: success is
         // { ok: true, registration: { dispose } } with no top-level dispose
         // or snapshot. Snapshots require a separate runtime-snapshot:v1
         // request after registration; never read fictional result fields.

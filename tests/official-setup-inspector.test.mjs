@@ -42,8 +42,7 @@ test("official setup requires exactly one global gentle-engram@semver and one pi
 
   try {
     // Valid official setup: exactly one gentle + one adapter globally, none in project.
-    // Desired: managed/available (single external owner). Current bundled inspector
-    // treats any external adapter as conflict to remove, so this RED must fail now.
+    // The pair is provider-owned and must be accepted as the single external owner.
     writeSettings(["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"], []);
     const valid = inspectContext7Config({ env, cwd: projectDir, platform: "linux" });
     assert.equal(
@@ -119,9 +118,7 @@ test("official setup distinguishes missing/duplicate/malformed/unreadable/confli
 
     writeFileSync(globalSettingsPath, `${JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }, null, 2)}\n`);
     const conflictProbe = inspectContext7Config({ env, cwd, platform: "linux" });
-    // Current bundled logic reports external adapter as conflict; official logic
-    // must instead treat the single global pair as the required owner.
-    // This assertion documents the migration: it fails now and passes after T22.
+    // The single global pair is the required provider-owned setup, not a conflict.
     assert.equal(conflictProbe.state, "available", "single global official pair must not be reported as unmanaged conflict");
   } finally {
     rmSync(sandbox, { recursive: true, force: true });

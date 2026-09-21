@@ -160,11 +160,9 @@ async function runChildRuntime(preflight) {
     },
   );
   activeTools = runner.getAllRegisteredTools().map(({ definition }) => definition.name);
-  // Probe-side transport signal for the stand-in adapter: the retired shim
-  // used to publish the six selectors before session_start and restore the
-  // previous value on agent_start. Production sets nothing (gentle-engram
-  // provides native tools); the probe reproduces the signal window so the
-  // test-only stand-in registers direct tools, then restores it.
+  // Probe-only transport signal for the stand-in adapter. Production sets
+  // nothing because gentle-engram provides native tools; the probe supplies
+  // selectors only so its test transport can register the six reads.
   const transportSelectors = [...POSITIVE].map((name) => `engram/${name}`).join(",");
   process.env.MCP_DIRECT_TOOLS = transportSelectors;
   await runner.emit({ type: "session_start", reason: "startup" });
@@ -174,10 +172,10 @@ async function runChildRuntime(preflight) {
   );
   const allTools = runner.getAllRegisteredTools().map(({ definition }) => definition.name).sort();
   const envAfterSessionStart = process.env.MCP_DIRECT_TOOLS;
-  // Security: the child config disables the proxy gateway and script tool.
-  // The proxy may exist transiently before the adapter syncs direct tools, so
-  // wait boundedly for its deactivation and fail if it persists. Active tools
-  // are only observed here, never preset to a favorable set.
+  // The test-only stand-in config disables the proxy gateway and script tool.
+  // The proxy may exist transiently before it syncs direct tools, so wait
+  // boundedly for deactivation and fail if it persists. Active tools are only
+  // observed here, never preset to a favorable set.
   const proxyDeactivated = await waitFor(
     () => !activeTools.includes("mcp") && !activeTools.includes("mcpScript"),
     { timeoutMs: 8_000, intervalMs: 50 },
@@ -314,7 +312,7 @@ async function runChildRuntime(preflight) {
 }
 
 async function checkShimRestore() {
-  // Closest seam for the official shim contract: invoke the real production
+  // Closest seam for the child gate contract: invoke the real production
   // module directly with a fake pi, no network and no model. gentle-engram
   // provides native tools, so the shim must leave the process environment
   // untouched in every lifecycle transition and register only its tool_call

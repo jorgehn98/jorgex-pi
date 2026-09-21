@@ -89,7 +89,7 @@ function createPiHarness() {
   };
 }
 
-// Fake external adapter implementing the real pi-mcp-adapter 2.36.0 contract:
+// Fake external adapter implementing the observed provider contract:
 // synchronous register event version:1 + name + definition, success as
 // { ok: true, registration: { dispose } } with no top-level dispose or
 // snapshot; snapshots flow through the separate runtime-snapshot:v1 event

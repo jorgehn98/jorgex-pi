@@ -24,11 +24,10 @@ export default async function probeOfficialAdapterInstaller(pi: any): Promise<vo
   const binary = process.env.ENGRAM_BIN;
   // Fail closed like the official bridge: a missing backend installs nothing.
   if (typeof binary !== "string" || !binary || !isRunnableFile(binary)) return;
-  // The test-only stand-in captures the direct-tool override synchronously from
-  // the environment when created (like the retired shim provided at load).
-  // Publish the six selectors for the call, then restore immediately so the
-  // load-time environment stays untouched; the probe re-publishes the signal
-  // around session_start for the adapter's live reads.
+  // This test-only stand-in uses the retired adapter API to model the native
+  // six-read provider surface; production does not set this environment value.
+  // Publish the selectors only while creating the stand-in, then restore the
+  // environment before the probe continues.
   const selectors = [
     "mem_search",
     "mem_context",
@@ -44,9 +43,9 @@ export default async function probeOfficialAdapterInstaller(pi: any): Promise<vo
     const { createMcpAdapter } = await import(adapterEntry);
     createMcpAdapter({
       config: {
-        // Child posture for the stand-in transport: no proxy gateway and no
-        // script tool, exactly as the retired bundled bridge configured its
-        // child. The official Pi bridge carries no adapter settings.
+        // Child posture for the stand-in only: disable its proxy and script
+        // tools so the probe checks the same gateway boundary as production.
+        // The official Pi bridge carries no adapter settings.
         settings: { disableProxyTool: true, scriptMode: false },
         mcpServers: {
           engram: {
