@@ -169,12 +169,14 @@ function describeEngramPrompt(prompt) {
     hasJorgeXEngramBlock: text.includes(`<!-- ${JORGEX_ENGRAM_MARKER} -->`),
   };
 }
-let engramChildBase = "Engram child base policy";
+let engramChildBase;
 try {
-  const roleBytes = readFileSync(join(root, "agents", "engram.md"), "utf8");
-  if (roleBytes.trim().length > 0) engramChildBase = roleBytes;
-} catch {
-  // Fall back to the minimal base; the provider injection is what matters.
+  engramChildBase = readFileSync(join(root, "agents", "engram.md"), "utf8");
+} catch (error) {
+  throw new Error(`official real probe requires agents/engram.md: missing or unreadable at ${join(root, "agents", "engram.md")}: ${error?.message ?? error}`);
+}
+if (engramChildBase.trim().length === 0) {
+  throw new Error(`official real probe requires agents/engram.md: empty at ${join(root, "agents", "engram.md")}: role must be non-empty`);
 }
 const childPrompt = await runner.emitBeforeAgentStart("continue", undefined, engramChildBase, { cwd });
 const mainEngram = describeEngramPrompt(prompt1);

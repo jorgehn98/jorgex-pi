@@ -129,9 +129,6 @@ function assertTopologyCompatible(previous, next) {
   if (!isExactRetiredRemoval) {
     assert.deepEqual(nextTopology, previousTopology, "Snapshot topology/schema changes require manual review");
   }
-  const previousWithoutEngram = structuredClone(previousTopology);
-  delete previousWithoutEngram.engramProtocol;
-  assert.deepEqual(nextTopology, previousWithoutEngram, "Snapshot topology/schema changes require manual review");
   // Isolation: the retired removal must be the only change. Any additional
   // content drift (hashes) bundled with the removal still requires manual review.
   const previousExact = structuredClone(previous);

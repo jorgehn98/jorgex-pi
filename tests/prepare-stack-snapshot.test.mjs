@@ -271,9 +271,8 @@ test("prepareStackSnapshot accepts only the retired engramProtocol topology remo
     // the OLD Pi/Stack state (with retired protocol) so the transition
     // OLD -> NEW (exact removal) can be verified in isolation.
     writeFileSync(join(stackDir, retiredSource), "legacy Engram protocol fixture\n");
-    execFileSync("git", ["-C", stackDir, "-c", "user.name=JorgeX Test", "-c", "user.email=test@example.invalid", "add", "--", retiredSource], { stdio: "pipe" });
-    execFileSync("git", ["-C", stackDir, "-c", "user.name=JorgeX Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "restore legacy engram protocol for removal transition"], { stdio: "pipe" });
-    git(stackDir, ["update-ref", "refs/remotes/origin/main", git(stackDir, ["rev-parse", "HEAD"])]);
+    commitAll(stackDir, "restore legacy engram protocol for removal transition");
+    updateOriginMain(stackDir);
     const legacySourceCommit = git(stackDir, ["rev-parse", "HEAD"]);
     writeFileSync(join(root, retiredTarget), "legacy Engram protocol fixture\n");
     const piParityPath = join(root, "contract", "parity.v2.json");
@@ -286,20 +285,11 @@ test("prepareStackSnapshot accepts only the retired engramProtocol topology remo
       outputSha256: "0".repeat(64),
     };
     writeFileSync(piParityPath, `${JSON.stringify(piParity, null, 2)}\n`);
-    const piFixturePath = join(root, "tests", "fixtures", "snapshot-parity.expected.json");
-    const piFixture = JSON.parse(readFileSync(piFixturePath, "utf8"));
-    writeFileSync(piFixturePath, `${JSON.stringify({ ...piFixture, sourceCommit: legacySourceCommit }, null, 2)}\n`);
-    const piScriptPath = join(root, "scripts", "generate-snapshot.mjs");
-    const piScript = readFileSync(piScriptPath, "utf8");
-    writeFileSync(piScriptPath, piScript.replace(
-      /const DEFAULT_SOURCE_COMMIT = "[a-f0-9]{40}";/,
-      `const DEFAULT_SOURCE_COMMIT = "${legacySourceCommit}";`,
-    ));
-    git(root, ["add", "--", retiredTarget, "contract/parity.v2.json", "tests/fixtures/snapshot-parity.expected.json", "scripts/generate-snapshot.mjs"]);
-    git(root, ["-c", "user.name=JorgeX Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "restore legacy engram protocol for removal transition"]);
-    execFileSync("git", ["-C", stackDir, "rm", "-q", "--", retiredSource], { stdio: "pipe" });
-    execFileSync("git", ["-C", stackDir, "-c", "user.name=JorgeX Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "retire Stack engram protocol"], { stdio: "pipe" });
-    git(stackDir, ["update-ref", "refs/remotes/origin/main", git(stackDir, ["rev-parse", "HEAD"])]);
+    setFixtureGeneratorIdentity(root, legacySourceCommit);
+    commitAll(root, "restore legacy engram protocol for removal transition");
+    git(stackDir, ["rm", "-q", "--", retiredSource]);
+    commitAll(stackDir, "retire Stack engram protocol");
+    updateOriginMain(stackDir);
     const sourceCommit = git(stackDir, ["rev-parse", "HEAD"]);
     const before = readTree(root);
 
@@ -307,7 +297,7 @@ test("prepareStackSnapshot accepts only the retired engramProtocol topology remo
     assert.equal(result.status, "prepared", "the single-field retired protocol removal must be accepted as prepared");
     assert.equal(result.sourceCommit, sourceCommit);
     assert.ok(result.changedPaths.includes("contract/parity.v2.json"), "parity must record the retired projection removal");
-    assert.ok(result.changedPaths.includes(retiredTarget) || result.changedPaths.some((path) => path.includes("engram-protocol")), "the retired asset removal must be reported");
+    assert.ok(result.changedPaths.some((path) => path.includes("engram-protocol")), "the retired asset removal must be reported");
     assert.deepEqual(readTree(root), before, "dry-run must leave every Pi byte untouched");
     for (const path of result.changedPaths) {
       assert.equal(path.includes("engram-protocol") || path === "contract/parity.v2.json" || path === "scripts/generate-snapshot.mjs" || path === "tests/fixtures/snapshot-parity.expected.json", true, `only the retired protocol topology may change: ${path}`);
@@ -315,8 +305,8 @@ test("prepareStackSnapshot accepts only the retired engramProtocol topology remo
 
     const extraDriftFile = join(stackDir, "stack", "system-prompt", "AGENTS.md");
     writeFileSync(extraDriftFile, `${readFileSync(extraDriftFile, "utf8")}extra drift\n`);
-    execFileSync("git", ["-C", stackDir, "-c", "user.name=JorgeX Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-am", "retire plus extra drift"], { stdio: "pipe" });
-    git(stackDir, ["update-ref", "refs/remotes/origin/main", git(stackDir, ["rev-parse", "HEAD"])]);
+    commitAll(stackDir, "retire plus extra drift");
+    updateOriginMain(stackDir);
     const driftCommit = git(stackDir, ["rev-parse", "HEAD"]);
     assert.throws(
       () => prepareStackSnapshot({ root, stackDir, sourceCommit: driftCommit, apply: false }),
@@ -411,7 +401,6 @@ function archivePiFixture(root) {
       if (first === ".jorgex-stack") return false;
       if (first === "node_modules") return false;
       if (first.startsWith(".snapshot-")) return false;
-      if (first.startsWith(".snapshot-build-")) return false;
       return true;
     },
   });

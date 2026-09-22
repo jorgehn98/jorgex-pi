@@ -418,3 +418,112 @@ test("official smoke: child uses ambient gentle-engram with no JorgeX gate, sele
     assert.doesNotMatch(source, /MCP_DIRECT_TOOLS\s*=\s*["'](__none__|engram\/)/, `${name} must not wire MCP_DIRECT_TOOLS for the child`);
   }
 });
+
+// T63: real probe role-loading seam must fail visibly when agents/engram.md
+// is missing/unreadable/empty; no artificial fallback is accepted. Focal RED
+// without a real provider: executes the probe's actual role snippet (verbatim
+// slice between markers) against isolated temp role roots at the real
+// filesystem boundary. Real non-empty composition stays byte-real (control).
+function loadT63ProbeRoleSnippet() {
+  const probePath = join(root, "tests", "fixtures", "probe-official-real.mjs");
+  const probeSource = readFileSync(probePath, "utf8");
+  const start = probeSource.indexOf("let engramChildBase");
+  const end = probeSource.indexOf("const childPrompt");
+  assert.notEqual(start, -1, "probe must keep the role seam marker 'let engramChildBase'");
+  assert.notEqual(end, -1, "probe must keep the child prompt marker 'const childPrompt'");
+  assert.ok(end > start, "probe role seam must precede the child prompt");
+  return probeSource.slice(start, end);
+}
+
+function runT63ProbeRoleSeam(roleRoot) {
+  const snippet = loadT63ProbeRoleSnippet();
+  const runner = new Function("root", "join", "readFileSync", `${snippet}\nreturn engramChildBase;`);
+  return runner(roleRoot, join, readFileSync);
+}
+
+function makeT63RoleRoot() {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-t63-"));
+  mkdirSync(join(sandbox, "agents"), { recursive: true });
+  return sandbox;
+}
+
+function cleanupT63RoleRoot(sandbox) {
+  try {
+    chmodSync(join(sandbox, "agents", "engram.md"), 0o644);
+  } catch {
+    // Missing or already removed; cleanup below still applies.
+  }
+  rmSync(sandbox, { recursive: true, force: true });
+}
+
+test("T63: non-empty agents/engram.md is used byte-real as child base (control)", () => {
+  const sandbox = makeT63RoleRoot();
+  try {
+    const realBytes = readFileSync(join(root, "agents", "engram.md"), "utf8");
+    assert.ok(realBytes.trim().length > 0, "repo fixture must carry a real non-empty role");
+    writeFileSync(join(sandbox, "agents", "engram.md"), realBytes);
+    const base = runT63ProbeRoleSeam(sandbox);
+    assert.equal(base, realBytes, "real non-empty role must be used byte-real, never synthesized");
+    assert.notEqual(base, "Engram child base policy", "real role must not collapse to the artificial fallback");
+  } finally {
+    cleanupT63RoleRoot(sandbox);
+  }
+});
+
+test("T63: missing/empty/unreadable agents/engram.md aborts probe role seam without fallback", () => {
+  const failures = [];
+  const checkAbort = (label, setup) => {
+    const sandbox = makeT63RoleRoot();
+    try {
+      const skipReason = setup(sandbox);
+      if (skipReason) return `skipped ${label}: ${skipReason}`;
+      try {
+        const base = runT63ProbeRoleSeam(sandbox);
+        failures.push(`${label}: expected abort with diagnostic, got fallback base=${JSON.stringify(String(base).slice(0, 80))}`);
+      } catch (error) {
+        const message = String(error?.message ?? error);
+        if (!/agents\/engram\.md/.test(message)) {
+          failures.push(`${label}: diagnostic must name agents/engram.md, got ${message.slice(0, 200)}`);
+        } else if (!/missing|unreadable|empty|ENOENT|EACCES|EPERM/i.test(message)) {
+          failures.push(`${label}: diagnostic must name missing/unreadable/empty, got ${message.slice(0, 200)}`);
+        }
+      }
+      return undefined;
+    } finally {
+      cleanupT63RoleRoot(sandbox);
+    }
+  };
+
+  const skipped = [];
+  const noteSkip = (reason) => {
+    if (reason) skipped.push(reason);
+  };
+
+  noteSkip(checkAbort("missing", (sandbox) => undefined));
+  noteSkip(checkAbort("empty:0-byte", (sandbox) => {
+    writeFileSync(join(sandbox, "agents", "engram.md"), "");
+    return undefined;
+  }));
+  noteSkip(checkAbort("empty:whitespace", (sandbox) => {
+    writeFileSync(join(sandbox, "agents", "engram.md"), "  \n\t\n");
+    return undefined;
+  }));
+  noteSkip(checkAbort("unreadable", (sandbox) => {
+    if (process.platform === "win32") return "chmod 000 is not portable on Windows";
+    writeFileSync(join(sandbox, "agents", "engram.md"), "real role bytes\n");
+    chmodSync(join(sandbox, "agents", "engram.md"), 0o000);
+    try {
+      readFileSync(join(sandbox, "agents", "engram.md"), "utf8");
+      return "still readable after chmod 000 (root or permissive fs); portable skip";
+    } catch {
+      return undefined;
+    }
+  }));
+
+  assert.equal(failures.length, 0, `T63 RED: probe role seam must abort with diagnostic, never fall back:\n${failures.join("\n")}${skipped.length ? `\n${skipped.join("\n")}` : ""}`);
+});
+
+test("T63: probe carries no artificial child fallback", () => {
+  const probeSource = readFileSync(join(root, "tests", "fixtures", "probe-official-real.mjs"), "utf8");
+  assert.doesNotMatch(probeSource, /Engram child base policy/, "probe must not synthesize a child base; missing/unreadable/empty must abort with diagnostic");
+});
