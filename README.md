@@ -9,14 +9,14 @@ The version in `package.json` is the release authority. Minor and major remain m
 | Area | Current state |
 | --- | --- |
 | Compatibility | Explicitly tested with Pi `0.84.2` and `0.85.1`; the contract does not claim `0.85.0` or an interval. |
-| Pi resources | Bootstrap and TUI branding extensions, 17 reviewed JorgeX skills, the canonical policy/protocol fallbacks, modular Context7 and browser prompt assets, and the `/lean-audit` prompt are active. Context7 is projected only after its isolated HTTP server is registered successfully. `sync` seeds the `JorgeX` theme only when its global setting is absent. |
+| Pi resources | Bootstrap and TUI branding extensions, 17 reviewed JorgeX skills, the canonical policy fallback, modular Context7 and browser prompt assets, and the `/lean-audit` prompt are active. Context7 is projected only after its isolated HTTP server is registered successfully. `sync` seeds the `JorgeX` theme only when its global setting is absent. |
 | Canonical snapshot | 14 agents (one dormant primary and 13 subagents) and 17 complete skill trees (89 files), plus the quality receipt v1 and quality capabilities v1 schemas. See `contract/parity.v2.json` for the source commit and projection hashes. |
 | Runtime agents | 13 runnable subagents, including the read-only Engram specialist, plus a dormant primary orchestrator. |
 | Package assets | `contract/assets.v1.json` owns the packaged extensions, theme, runtime agents, snapshot, skills, and contracts; it declares the bounded Sol lifecycle writes and preserves companion-owned state paths. |
 | Active companions | `@gotgenes/pi-permission-system@27.0.0`, `@juicesharp/rpiv-ask-user-question@2.7.0`, `pi-subagents@0.54.0`, `pi-web-access@0.24.1`, and `@narumitw/pi-goal@0.53.0`. Official `gentle-engram` and `pi-mcp-adapter` are installed externally and remain provider-managed; their observed versions are not pinned by this package. |
 | Model policy | The managed primary is `openai-codex/gpt-5.6-sol`; Pi session thinking remains user/session policy. The local `contextWindow` request is `872000`. |
 
-The active skill list contains 17 explicit package-local paths. Browser automation is a separate opt-in integration provided through the verified Playwright handoff and package-local fallback. Upstream companion skills and prompts are also left inactive. The parity v2 contract records agents, skills, the shared policy, the Engram protocol, the modular system-prompt projections, the portable command projection, the quality-capabilities projection, and deliberate exclusions in `contract/parity.v2.json`.
+The active skill list contains 17 explicit package-local paths. Browser automation is a separate opt-in integration provided through the verified Playwright handoff and package-local fallback. Upstream companion skills and prompts are also left inactive. The parity v2 contract records agents, skills, the shared policy, the modular system-prompt projections, the portable command projection, the quality-capabilities projection, and deliberate exclusions in `contract/parity.v2.json`; it does not project a JorgeX Engram protocol.
 
 ### Direct package versus managed Stack
 
@@ -136,7 +136,7 @@ When a compatible Stack projection provides `PI_CODING_AGENT_DIR/jorgex-pi/devto
 
 The official setup owns the Engram binary, database, and memories. Pi only validates the external configuration needed for the session and never installs, updates, removes, or takes ownership of that state. Child environment handling is provider/runtime-owned; JorgeX defines no environment allowlist. Provider-managed `gentle-engram` hooks may automatically persist session, prompt, and compaction context; JorgeX does not own or configure those hooks.
 
-The `engram` child declares no JorgeX tool selector: its contract omits the tools field and declares no child-only extension, and it sets no `MCP_DIRECT_TOOLS`. Prompt, tools, capture, and hooks come from the official `gentle-engram` provider unchanged and provider-owned; JorgeX neither filters Engram tools nor configures provider hooks. The role prompt still tells the agent not to use shell, while `maxSubagentDepth: 0` prevents subdelegation; the shell guidance is behavioral, not a custom tool filter.
+The `engram` child declares no JorgeX tool selector: its contract omits the tools field and declares no child-only extension, and it sets no `MCP_DIRECT_TOOLS`. Official `gentle-engram` owns and injects the prompt, tools, capture, and hooks unchanged; JorgeX neither filters Engram tools nor configures provider hooks. Pi only recognizes and removes legacy `jorgex:engram-protocol` marker blocks during migration cleanup; it never injects that retired protocol or treats it as an active asset. The role prompt still tells the agent not to use shell, while `maxSubagentDepth: 0` prevents subdelegation; the shell guidance is behavioral, not a custom tool filter.
 
 Runtime compatibility is limited to the explicitly tested Pi versions `0.84.2` and `0.85.1`; no additional Pi version is implied by provider-managed package versions.
 
@@ -253,7 +253,7 @@ Regenerate only from a local JorgeX Stack checkout containing the exact commit r
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" pnpm snapshot:generate
 ```
 
-The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, `assets/system-prompt/engram-protocol.md`, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, `contract/schemas/quality-capabilities.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 14 agents and all 89 files from the 17 approved skill trees.
+The generator reads raw Git objects at the exact SHA, ignoring replacement refs; it does not use live working-tree content or download upstream assets. It produces `snapshot/agents`, `skills`, `assets/system-prompt/AGENTS.md`, the Context7 and browser system-prompt modules, `prompts/lean-audit.md`, `contract/schemas/quality-receipt.v1.schema.json`, `contract/schemas/quality-capabilities.v1.schema.json`, and `contract/parity.v2.json` deterministically. Publication is transactional across those roots: existing roots are staged aside, every v2 root is published, and the legacy parity contract is removed; if any move fails, the previous generation is restored. The generated assets contain 14 agents and all 89 files from the 17 approved skill trees. The retired `engram-protocol.md` asset is not generated or packed.
 
 Run the explicit cross-repository parity check against the same checkout:
 
@@ -261,7 +261,7 @@ Run the explicit cross-repository parity check against the same checkout:
 JORGEX_STACK_DIR="/abs/path/to/JorgeX Stack" node --test tests/cross-repo/snapshot-parity.test.mjs
 ```
 
-Skills are preserved byte-for-byte. Agent sources are normalized to LF for portable output, so `contract/parity.v2.json` records separate source and output SHA-256 hashes for agents; copied policy/protocol files and the translated prompt also record their source and output paths and hashes. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical skills; the v2 manifest is the parity authority.
+Skills are preserved byte-for-byte. Agent sources are normalized to LF for portable output, so `contract/parity.v2.json` records separate source and output SHA-256 hashes for agents; copied policy and modular prompt files and the translated prompt also record their source and output paths and hashes. A general `git diff --check` can therefore report the three reviewed trailing-whitespace occurrences inherited from the canonical skills; the v2 manifest is the parity authority.
 
 Regenerate the Pi-native agent projection after refreshing the snapshot:
 
