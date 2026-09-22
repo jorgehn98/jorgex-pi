@@ -70,6 +70,7 @@ export function createBootstrap({
     const runtimeNotifiedDevtoolsSessions = new Set();
     const runtimeOutcomes = new Map();
     const runtimeHandles = new Map();
+    const runtimeDisposeFailures = new Map();
     let systemPromptAssets;
     let systemPromptAssetsFailure;
     let systemPromptAssetsFailureNotified = false;
@@ -323,6 +324,24 @@ export function createBootstrap({
         return;
       }
       await disposeRuntimeHandles(sessionId);
+      // A failed dispose retains its handle: stop before re-registering the
+      // same session so a retry never duplicates registrations.
+      const pendingPrefix = `${sessionId}::`;
+      const pending = [...runtimeHandles.keys()].filter((key) => key.startsWith(pendingPrefix));
+      if (pending.length > 0) {
+        const failures = runtimeDisposeFailures.get(sessionId) ?? {};
+        const previous = runtimeOutcomes.get(sessionId) ?? {};
+        const blocked = { ...previous };
+        for (const key of pending) {
+          const name = key.slice(pendingPrefix.length);
+          blocked[name] = {
+            status: "failed",
+            reason: failures[name] ?? "runtime dispose failed; retry shutdown before re-registering",
+          };
+        }
+        runtimeOutcomes.set(sessionId, blocked);
+        return;
+      }
       const outcomes = {};
       const definitions = bridgeResolution?.config?.mcpServers ?? {};
       for (const name of ["context7", "chrome-devtools"]) {
@@ -351,17 +370,36 @@ export function createBootstrap({
 
     async function disposeRuntimeHandles(sessionId) {
       const prefix = `${sessionId}::`;
+      const failures = {};
       for (const [key, handle] of [...runtimeHandles]) {
         if (!key.startsWith(prefix)) continue;
-        runtimeHandles.delete(key);
-        if (handle.disposed) continue;
-        handle.disposed = true;
+        if (handle.disposed) {
+          runtimeHandles.delete(key);
+          continue;
+        }
         try {
           await handle.dispose();
-        } catch {
-          // Shutdown disposal must never break the session lifecycle.
+          handle.disposed = true;
+          runtimeHandles.delete(key);
+        } catch (error) {
+          // Retain the retryable handle; shutdown must never break the
+          // session lifecycle.
+          handle.disposed = false;
+          failures[key.slice(prefix.length)] = boundedFailureReason(error);
         }
       }
+      if (Object.keys(failures).length > 0) {
+        runtimeDisposeFailures.set(sessionId, { ...(runtimeDisposeFailures.get(sessionId) ?? {}), ...failures });
+        const previous = runtimeOutcomes.get(sessionId) ?? {};
+        const next = { ...previous };
+        for (const [name, reason] of Object.entries(failures)) {
+          next[name] = { status: "failed", reason };
+        }
+        runtimeOutcomes.set(sessionId, next);
+      } else if (![...runtimeHandles.keys()].some((key) => key.startsWith(prefix))) {
+        runtimeDisposeFailures.delete(sessionId);
+      }
+      return failures;
     }
 
     function emitQualityCapabilities(piApi, flags) {
@@ -895,6 +933,13 @@ function resolveRuntimeRegisterOutcome(result) {
         ? "registration result absent"
         : "registration failed",
   };
+}
+
+function boundedFailureReason(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const trimmed = message.trim();
+  const reason = trimmed.length > 0 ? trimmed : "dispose failed";
+  return reason.length > 200 ? `${reason.slice(0, 197)}...` : reason;
 }
 
 function formatRuntimeContext7Error(attempt, contextState) {

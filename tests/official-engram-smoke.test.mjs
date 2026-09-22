@@ -29,8 +29,6 @@ const jiti = createJiti(import.meta.url, { moduleCache: false });
 // assertion checks shapes and singleton ownership, never these versions.
 const SEED_GENTLE = "npm:gentle-engram@0.1.13";
 const SEED_ADAPTER = "npm:pi-mcp-adapter";
-const SIX_READS = [...expected.gentleProfile.tools];
-const BLOCKED_CHILD = ["mem_save", "mem_session_summary", "mem_update", "bash", "subagent", "mcp", "mcpScript"];
 
 // Real-package provisioning (harness-provided, never downloaded by the test):
 // JORGEX_OFFICIAL_SETUP_DIR points at an isolated agent dir prepared by a real
@@ -109,6 +107,10 @@ function setupSandbox() {
   writeFileSync(
     join(agentDir, "settings.json"),
     `${JSON.stringify({ packages: [SEED_GENTLE, SEED_ADAPTER] }, null, 2)}\n`,
+  );
+  writeFileSync(
+    join(agentDir, "mcp.json"),
+    `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`,
   );
   return { sandbox, home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir, fakeBin, fakePnpm, handoffPath };
 }
@@ -271,18 +273,9 @@ test("official smoke: isolated single pair resolves managed bridge with gentle p
   }
 });
 
-const realSetup = (() => {
-  try {
-    return resolveRealSetup();
-  } catch (error) {
-    return { error };
-  }
-})();
 const realSkip = !officialSetupDir
   ? "requires JORGEX_OFFICIAL_SETUP_DIR with real gentle-engram + pi-mcp-adapter installed by real `engram setup pi` (verified stable temp binary)"
-  : realSetup?.error
-    ? `invalid JORGEX_OFFICIAL_SETUP_DIR: ${realSetup.error.message}`
-    : false;
+  : false;
 
 for (const target of resolvePiTargets()) {
   const targetSkip = realSkip || (target.name === "0.85.1" && !target.sdkRoot
@@ -334,8 +327,8 @@ for (const target of resolvePiTargets()) {
 
 test("official smoke (real packages): registrations release on shutdown for the next session", { skip: realSkip }, async () => {
   const setup = resolveRealSetup();
-  // Version/order matrix kept explicit: the dispose leak is loader- and
-  // order-independent, but the evidence must name every provisioned combo.
+  // Version/order matrix stays explicit: runtime registration and disposal are
+  // loader- and order-independent, but the evidence must name every combo.
   const matrix = [];
   for (const target of resolvePiTargets()) {
     if (target.name === "0.85.1" && !target.sdkRoot) continue;
@@ -363,41 +356,43 @@ test("official smoke (real packages): registrations release on shutdown for the 
   }
 });
 
-test("official smoke: child gate allows exactly six gentle reads and blocks writes/shell/subagent with no env wiring", async () => {
-  const agentSource = readFileSync(join(root, "agents", "engram.md"), "utf8");
-  const toolsLine = agentSource.split("\n").find((line) => line.startsWith("tools:"));
-  assert.ok(toolsLine);
-  assert.deepEqual(
-    toolsLine.replace(/^tools:\s*/, "").split(",").map((name) => name.trim()).sort(),
-    [...SIX_READS].sort(),
-  );
-  const childSource = readFileSync(join(root, "extensions", "engram-child.ts"), "utf8");
-  assert.doesNotMatch(childSource, /MCP_DIRECT_TOOLS/);
+test("explicitly set invalid JORGEX_OFFICIAL_SETUP_DIR must fail the smoke lane, while absent env may skip", async () => {
+  const smokeSource = readFileSync(join(root, "tests", "official-engram-smoke.test.mjs"), "utf8");
+  assert.match(smokeSource, /requires JORGEX_OFFICIAL_SETUP_DIR/, "absent env may skip with a documented reason");
 
-  const savedAgent = process.env.PI_SUBAGENT_CHILD_AGENT;
-  const hadDirect = Object.hasOwn(process.env, "MCP_DIRECT_TOOLS");
-  const savedDirect = process.env.MCP_DIRECT_TOOLS;
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-official-setup-invalid-"));
   try {
-    delete process.env.MCP_DIRECT_TOOLS;
-    process.env.PI_SUBAGENT_CHILD_AGENT = "engram";
-    const { default: engramChild } = await jiti.import(join(root, "extensions", "engram-child.ts"));
-    const handlers = {};
-    const pi = { handlers, on: (event, fn) => { (handlers[event] ??= []).push(fn); } };
-    await engramChild(pi);
-    assert.equal(handlers.tool_call?.length, 1);
-    const invoke = (toolName) => handlers.tool_call[0]({ type: "tool_call", toolName, toolCallId: "smoke", input: {} });
-    for (const name of SIX_READS) assert.equal(invoke(name), undefined, `${name} must pass`);
-    for (const name of BLOCKED_CHILD) {
-      const result = invoke(name);
-      assert.equal(result?.block, true, `${name} must block`);
-      assert.equal(result?.terminate, true, `${name} must terminate`);
-      assert.match(result?.reason ?? "", /Engram child allows only/);
+    for (const path of [
+      join(sandbox, "settings.json"),
+      join(sandbox, "mcp.json"),
+      join(sandbox, "npm", "node_modules", "gentle-engram", "index.ts"),
+      join(sandbox, "npm", "node_modules", "pi-mcp-adapter", "index.ts"),
+    ]) {
+      assert.equal(existsSync(path), false, `invalid fixture must miss ${path}`);
     }
-    assert.equal(Object.hasOwn(process.env, "MCP_DIRECT_TOOLS"), false);
+    assert.equal(
+      /\?\s*`invalid JORGEX_OFFICIAL_SETUP_DIR:/.test(smokeSource),
+      false,
+      "explicitly set invalid setup must fail the smoke lane, never convert to skip success",
+    );
   } finally {
-    if (savedAgent === undefined) delete process.env.PI_SUBAGENT_CHILD_AGENT;
-    else process.env.PI_SUBAGENT_CHILD_AGENT = savedAgent;
-    if (!hadDirect) delete process.env.MCP_DIRECT_TOOLS;
-    else process.env.MCP_DIRECT_TOOLS = savedDirect;
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("official smoke: child uses ambient gentle-engram with no JorgeX gate, selector, or env wiring", async () => {
+  assert.equal(existsSync(join(root, "extensions", "engram-child.ts")), false, "extensions/engram-child.ts must not exist; gentle-engram loads ambiently");
+  const agentSource = readFileSync(join(root, "agents", "engram.md"), "utf8");
+  assert.doesNotMatch(agentSource, /engram-child/, "engram agent must not reference a package-local shim");
+  assert.match(agentSource, /maxSubagentDepth:\s*0/, "general subdelegation restriction remains");
+  assert.equal(
+    agentSource.split("\n").some((line) => line.startsWith("tools:")),
+    false,
+    "engram agent must omit tools so ambient gentle-engram loads; empty tools: would emit --no-tools",
+  );
+  for (const name of ["bootstrap.ts", "mcp-engram.ts"]) {
+    const source = readFileSync(join(root, "extensions", name), "utf8");
+    assert.doesNotMatch(source, /ENGRAM_CHILD_ALLOWED_TOOLS/, `${name} must not carry a JorgeX selector`);
+    assert.doesNotMatch(source, /MCP_DIRECT_TOOLS\s*=\s*["'](__none__|engram\/)/, `${name} must not wire MCP_DIRECT_TOOLS for the child`);
   }
 });

@@ -32,17 +32,6 @@
     "lifecycle": "lazy",
     "directTools": false
   },
-  "gentleProfile": {
-    "tools": [
-      "mem_search",
-      "mem_context",
-      "mem_get_observation",
-      "mem_suggest_topic_key",
-      "mem_current_project",
-      "mem_doctor"
-    ],
-    "blocked": ["mem_save", "mem_session_summary", "mem_update", "bash", "subagent", "mcp", "mcpScript"]
-  },
   "orders": ["adapter-first", "jorgex-first"],
   "observed": {
     "_comment": "Dated observation only (2026-09-21): real `engram setup pi` with a temp stable binary downloaded from GitHub releases/latest and verified by exact asset size/digest, under env -i isolated HOME/PI dir. Evidence, never a version requirement: assertions check shapes and singleton ownership, not these values.",

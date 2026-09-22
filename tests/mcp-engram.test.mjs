@@ -132,6 +132,7 @@ test("Context7 and Engram resolution expand a tilde agent directory under an iso
     mcpServers: {
       context7: { url: "https://example.invalid/user-context7" },
       foreign: { url: "https://example.invalid/foreign" },
+      engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false },
     },
   };
   const previousBytes = `${JSON.stringify(previousConfig, null, 2)}\n`;
@@ -185,6 +186,7 @@ test("managed Engram registers anonymous Context7 over HTTP and keeps an optiona
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const anonymous = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -229,6 +231,7 @@ test("a previous homonymous Context7 config is preserved and blocks only managed
     mcpServers: {
       context7: { url: "https://example.invalid/user-context7" },
       "user-server": { url: "https://example.invalid/foreign" },
+      engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false },
     },
   };
   const previousBytes = `${JSON.stringify(previousConfig, null, 2)}\n`;
@@ -261,6 +264,7 @@ test("official Context7 definitions register over the event bus with directTools
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     for (const scenario of [
       { name: "anonymous", key: undefined },
@@ -296,6 +300,7 @@ test("managed Engram resolves the direct official binary config containing Engra
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const result = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -330,6 +335,9 @@ test("official bridge carries no child-only adapter settings in any context", as
   const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
+  const defaultAgentDir = join(sandbox, "home", ".pi", "agent");
+  mkdirSync(defaultAgentDir, { recursive: true });
+  writeFileSync(join(defaultAgentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const parent = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -358,6 +366,8 @@ test("managed Engram leaves the optional Pi Chrome DevTools server absent withou
   const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const result = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -392,6 +402,7 @@ test("managed Engram adds the exact optional Pi Chrome DevTools handoff", async 
   mkdirSync(dirname(handoffPath), { recursive: true });
   writeFileSync(handoffPath, `${JSON.stringify({ schemaVersion: 1, enabled: true, command: pnpmPath, args })}\n`);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const result = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -430,6 +441,7 @@ test("an invalid Pi Chrome DevTools handoff fails closed with a diagnostic", asy
   chmodSync(fakeBin, 0o755);
   chmodSync(pnpmPath, 0o755);
   mkdirSync(dirname(handoffPath), { recursive: true });
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     for (const [label, contents] of [
       ["unreadable JSON", "{not-json\n"],
@@ -605,10 +617,19 @@ test("managed Engram accepts an exact Windows Stack receipt at Pi's default agen
 
 test("the official gentle profile exposes exactly the six reviewed read-only Engram tools", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
-  const managed = await resolveMcpEngramConfig({
-    resolveEngramBinary: () => resolve(process.execPath),
-    env: {},
-  });
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-gentle-profile-"));
+  const agentDir = join(sandbox, "agent");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: resolve(process.execPath), args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
+  let managed;
+  try {
+    managed = await resolveMcpEngramConfig({
+      resolveEngramBinary: () => resolve(process.execPath),
+      env: { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir },
+    });
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
   const server = managed.config.mcpServers.engram;
   assert.deepEqual(server.args, [...expected.server.args], "official server keeps the exact provider args");
   assert.equal(server.lifecycle, expected.server.lifecycle, "official server stays lazy");
@@ -628,11 +649,36 @@ test("the official gentle profile exposes exactly the six reviewed read-only Eng
   for (const blocked of ["mem_save", "mem_session_summary", "mem_update", "bash", "subagent"]) {
     assert.equal(expected.engramProfile.tools.includes(blocked), false, `gentle reads must not include ${blocked}`);
   }
-  const childSource = readFileSync(join(root, "extensions", "engram-child.ts"), "utf8");
-  for (const name of expected.engramProfile.tools) {
-    assert.ok(childSource.includes(name), `child gate must allow gentle read ${name}`);
+  const shimPath = join(root, "extensions", "engram-child.ts");
+  assert.equal(existsSync(shimPath), false, "no package-local Engram child shim may remain; gentle-engram loads ambiently");
+  const agentSource = readFileSync(join(root, "agents", "engram.md"), "utf8");
+  assert.doesNotMatch(agentSource, /engram-child/, "agent must not reference the shim");
+});
+
+test("executable ENGRAM_BIN without official mcp.json server must not resolve managed", async () => {
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-bin-without-official-"));
+  const agentDir = join(sandbox, "agent");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  const fakeBin = join(sandbox, "engram");
+  writeFileSync(fakeBin, "fake binary; never execute\n");
+  chmodSync(fakeBin, 0o755);
+  const env = { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir, ENGRAM_BIN: fakeBin };
+  try {
+    // No mcp.json: `engram setup pi` never created the official Engram server.
+    const missingFile = await resolveMcpEngramConfig({ env, platform: "linux", cwd: sandbox });
+    assert.ok(["missing", "failed"].includes(missingFile.state), `executable binary without mcp.json must not resolve managed (got ${missingFile.state})`);
+    assert.equal(missingFile.config.mcpServers.engram, undefined, "no managed Engram server without official mcp.json");
+
+    // mcp.json without the official engram server is the same incomplete setup.
+    writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
+    const missingServer = await resolveMcpEngramConfig({ env, platform: "linux", cwd: sandbox });
+    assert.ok(["missing", "failed"].includes(missingServer.state), `executable binary without official engram server must not resolve managed (got ${missingServer.state})`);
+    assert.equal(missingServer.config.mcpServers.engram, undefined, "an executable binary never substitutes the official mcp.json server");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
   }
-  assert.doesNotMatch(childSource, /MCP_DIRECT_TOOLS/, "child never wires MCP_DIRECT_TOOLS; gentle provides native tools");
 });
 
 function readJson(path) {

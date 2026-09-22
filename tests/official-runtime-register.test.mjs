@@ -305,3 +305,49 @@ test("no fallback factory: JorgeX never calls createMcpAdapter nor resolves its 
   assert.doesNotMatch(bridgeSource, /createMcpAdapter/, "bridge must not keep the programmatic factory fallback");
   assert.doesNotMatch(bridgeSource, /import\.meta\.resolve\(["']pi-mcp-adapter["']\)/, "bridge must not runtime-import its own adapter copy");
 });
+
+test("failed dispose retains retryable handle and blocks same-session re-registration", async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const pi = createPiHarness();
+  const registered = new Map();
+  let disposeCalls = 0;
+  pi.api.events.on(RUNTIME_REGISTER_EVENT, (request) => {
+    if (request?.version !== 1 || typeof request?.name !== "string" || typeof request?.definition !== "object" || request.definition === null) {
+      request.result = { ok: false, error: "invalid runtime-register request" };
+      return;
+    }
+    registered.set(request.name, { ...request.definition, directTools: false });
+    request.result = {
+      ok: true,
+      registration: {
+        dispose: async () => {
+          disposeCalls += 1;
+          registered.delete(request.name);
+          throw new Error("injected dispose failure");
+        },
+      },
+    };
+  });
+  await createBootstrap({
+    loadCompanion: async (id) => companionFactory(id),
+    getPermissionsService: () => ({ ready: true }),
+    detectWebAccessConflict: () => undefined,
+    detectGoalConflict: () => undefined,
+    readGoalConfig: () => ({ kind: "loaded" }),
+    resolveMcpEngram: async () => managedBridgeResolution(),
+  })(pi.api);
+  const context = { sessionId: "runtime-dispose-failure", ui: { notify() {} } };
+  await pi.emitLifecycle("session_start", {}, context);
+  assert.equal(registered.size, 2, "session_start must register Context7 and DevTools before failing shutdown");
+
+  await pi.emitLifecycle("session_shutdown", {}, context);
+  const callsAfterFirstShutdown = disposeCalls;
+  assert.equal(callsAfterFirstShutdown, 2, "first shutdown must attempt both runtime disposes");
+
+  await pi.emitLifecycle("session_shutdown", {}, context);
+  assert.equal(disposeCalls, callsAfterFirstShutdown + 2, "failed dispose must stay retryable instead of silently losing its handle");
+
+  await pi.emitLifecycle("session_start", {}, context);
+  const prompt = await pi.emitLifecycle("before_agent_start", { systemPrompt: "Existing Pi prompt." }, context);
+  assert.doesNotMatch(prompt?.systemPrompt ?? "", /jorgex:context7/, "failed dispose must block same-session re-registration as if cleaned");
+});

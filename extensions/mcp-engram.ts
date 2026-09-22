@@ -1,5 +1,5 @@
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
-import { isAbsolute, posix, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectContext7Config, resolvePiAgentDir } from "./context7-config.mjs";
 
@@ -62,24 +62,17 @@ export async function resolveMcpEngramConfig({
     const binary = await (resolveEngramBinary ?? (() => resolveConfiguredEngramBinary({ env, platform })))();
     const official = readOfficialEngramServer({ env, platform });
     if (official.error) throw new Error(official.error);
-    if (official.server) {
-      if (binary !== undefined && official.server.command !== binary) {
-        throw new Error("Official mcp.json Engram command does not match the configured Engram binary; explicit configuration takes precedence");
-      }
-      config.mcpServers.engram = official.server;
-    } else if (binary !== undefined) {
-      if (!isAbsolute(binary)) throw new Error("Managed Engram command paths must be absolute");
-      config.mcpServers.engram = {
-        command: binary,
-        args: [...OFFICIAL_ENGRAM_ARGS],
-        lifecycle: "lazy",
-        directTools: false,
-        toolPrefix: "none",
-        excludeTools: ["mem_capture_passive"],
-      };
-    } else {
+    // The official mcp.json server is mandatory: an executable binary never
+    // substitutes it. Absence fails closed as missing with the Context7
+    // diagnosis preserved; the configured binary only validates the official
+    // command.
+    if (!official.server) {
       return { state: "missing", config, context7 };
     }
+    if (binary !== undefined && official.server.command !== binary) {
+      throw new Error("Official mcp.json Engram command does not match the configured Engram binary; explicit configuration takes precedence");
+    }
+    config.mcpServers.engram = official.server;
     const devtools = readChromeDevToolsHandoff({ env, platform });
     if (devtools) {
       config.mcpServers["chrome-devtools"] = {
