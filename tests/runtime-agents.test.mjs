@@ -289,6 +289,7 @@ test("the real tarball contains the closed runtime assets and audited dependency
     }
     assert.ok(archive.has("package/extensions/git-read.ts"), "tarball must contain the child-only provider referenced by git-read agents");
     assert.equal(archive.has("package/extensions/engram-child.ts"), false, "tarball must not ship a package-local Engram child shim; gentle-engram loads ambiently");
+    assert.equal(archive.has("package/assets/system-prompt/engram-protocol.md"), false, "provider-only tarball must not pack the retired duplicated Engram protocol asset");
     const packedEngram = readPackedJson(archive, "package/contract/runtime-agents.v1.json").agents.find(({ name }) => name === "engram");
     assert.equal(Object.hasOwn(packedEngram ?? {}, "subagentOnlyExtensions"), false, "packed contract must not require the Engram shim");
     assert.equal(Object.hasOwn(packedEngram ?? {}, "tools"), false, "packed contract must omit tools so ambient gentle-engram loads; empty would emit --no-tools");

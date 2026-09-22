@@ -110,6 +110,36 @@ function topology(parity) {
   return value;
 }
 
+function assertTopologyCompatible(previous, next) {
+  const previousTopology = topology(previous);
+  const nextTopology = topology(next);
+  try {
+    assert.deepEqual(nextTopology, previousTopology);
+    return;
+  } catch {
+    // Fall through to the single exact-removal allowance below.
+  }
+  const retiredSource = "stack/system-prompt/engram-protocol.md";
+  const retiredTarget = "assets/system-prompt/engram-protocol.md";
+  const previousEngram = previousTopology?.engramProtocol;
+  const isExactRetiredRemoval = Object.hasOwn(previousTopology, "engramProtocol")
+    && !Object.hasOwn(nextTopology, "engramProtocol")
+    && previousEngram?.sourcePath === retiredSource
+    && previousEngram?.targetPath === retiredTarget;
+  if (!isExactRetiredRemoval) {
+    assert.deepEqual(nextTopology, previousTopology, "Snapshot topology/schema changes require manual review");
+  }
+  // Isolation: the retired removal must be the only change. Any additional
+  // content drift (hashes) bundled with the removal still requires manual review.
+  const previousExact = structuredClone(previous);
+  const nextExact = structuredClone(next);
+  delete previousExact.source.commit;
+  delete nextExact.source.commit;
+  delete previousExact.engramProtocol;
+  delete nextExact.engramProtocol;
+  assert.deepEqual(nextExact, previousExact, "Snapshot topology/schema changes require manual review");
+}
+
 /** Prepare in isolation; only --apply publishes verified files to an exclusive work checkout. */
 export function prepareStackSnapshot({ root: rootInput, stackDir: stackInput, sourceCommit, apply = false }) {
   if (!sha(sourceCommit) || typeof apply !== "boolean") throw new Error("A full lowercase source SHA and boolean apply are required");
@@ -154,7 +184,7 @@ export function prepareStackSnapshot({ root: rootInput, stackDir: stackInput, so
     }
     const nextParity = readJson(stage, PARITY);
     assert.equal(nextParity.source.commit, sourceCommit, "Generator source mismatch");
-    assert.deepEqual(topology(nextParity), topology(previous), "Snapshot topology/schema changes require manual review");
+    assertTopologyCompatible(previous, nextParity);
     assert.deepEqual(readJson(stage, RUNTIME), beforeRuntime, "Runtime contract changes require manual review");
     execFileSync(process.execPath, ["--test", join(stage, "tests", "snapshot-parity.test.mjs")], { env, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000, windowsHide: true });
     assert.equal(readFileSync(join(stage, DEFAULT_SCRIPT), "utf8"), nextScript, "Generator modified its own source");

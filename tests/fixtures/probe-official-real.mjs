@@ -151,6 +151,37 @@ for (let i = 0; i < 200 && !bootstrapRegistered; i++) {
 
 const prompt1 = await runner.emitBeforeAgentStart("continue", undefined, "Base policy", { cwd });
 
+// Provider-only child capture: the engram role persona as base lets the real
+// gentle-engram inject its official protocol for the child without Pi adding
+// any JorgeX Engram block. Only stable heading/uniqueness is recorded, never
+// provider internals.
+const OFFICIAL_ENGRAM_HEADING = "## Engram Persistent Memory — Protocol";
+const JORGEX_ENGRAM_MARKER = "jorgex:engram-protocol";
+function countOccurrences(haystack, needle) {
+  if (typeof haystack !== "string" || !needle) return 0;
+  return haystack.split(needle).length - 1;
+}
+function describeEngramPrompt(prompt) {
+  const text = prompt?.systemPrompt ?? "";
+  return {
+    officialHeadingCount: countOccurrences(text, OFFICIAL_ENGRAM_HEADING),
+    hasJorgeXEngramMarker: text.includes(JORGEX_ENGRAM_MARKER),
+    hasJorgeXEngramBlock: text.includes(`<!-- ${JORGEX_ENGRAM_MARKER} -->`),
+  };
+}
+let engramChildBase;
+try {
+  engramChildBase = readFileSync(join(root, "agents", "engram.md"), "utf8");
+} catch (error) {
+  throw new Error(`official real probe requires agents/engram.md: missing or unreadable at ${join(root, "agents", "engram.md")}: ${error?.message ?? error}`);
+}
+if (engramChildBase.trim().length === 0) {
+  throw new Error(`official real probe requires agents/engram.md: empty at ${join(root, "agents", "engram.md")}: role must be non-empty`);
+}
+const childPrompt = await runner.emitBeforeAgentStart("continue", undefined, engramChildBase, { cwd });
+const mainEngram = describeEngramPrompt(prompt1);
+const childEngram = describeEngramPrompt(childPrompt);
+
 // Third-name probe against the REAL adapter: records the actual result shape.
 const probeResult = describeResult(
   emitRegister("smoke-probe", { url: "https://mcp.context7.com/mcp", lifecycle: "lazy", directTools: false }),
@@ -280,6 +311,9 @@ process.stdout.write(
     dispose2,
     reRegisterAfterDispose: reRegisterOk,
     secondSession,
+    mainEngram,
+    childEngram,
+    officialHeading: OFFICIAL_ENGRAM_HEADING,
     settingsUnchanged: settingsBefore === settingsAfter,
     mcpUnchanged: mcpBefore === mcpAfter,
     fetchCount,

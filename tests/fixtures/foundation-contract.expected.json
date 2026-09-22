@@ -13,10 +13,6 @@
       "sourcePath": "stack/system-prompt/AGENTS.md",
       "targetPath": "assets/system-prompt/AGENTS.md"
     },
-    "engramProtocol": {
-      "sourcePath": "stack/system-prompt/engram-protocol.md",
-      "targetPath": "assets/system-prompt/engram-protocol.md"
-    },
     "permissions": {
       "sourcePath": "stack/config/defaults.json",
       "targetPath": "assets/permissions/defaults.json"
@@ -66,7 +62,6 @@
       "contract/schemas/quality-receipt.v1.schema.json",
       "contract/schemas/quality-capabilities.v1.schema.json",
       "assets/system-prompt/AGENTS.md",
-      "assets/system-prompt/engram-protocol.md",
       "assets/system-prompt/context7.md",
       "assets/system-prompt/browser-playwright.md",
       "assets/system-prompt/browser-chrome-devtools.md",

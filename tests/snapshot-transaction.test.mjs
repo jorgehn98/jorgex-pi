@@ -27,7 +27,6 @@ test("snapshot parity v1-to-v2 migration rolls back every owned root and retains
     "skills/replacement/SKILL.md": "replacement skill\n",
     "assets/permissions/defaults.json": "replacement permissions\n",
     "assets/system-prompt/AGENTS.md": "replacement policy\n",
-    "assets/system-prompt/engram-protocol.md": "replacement protocol\n",
     "prompts/lean-audit.md": "replacement prompt\n",
     "contract/parity.v2.json": "{\"schemaVersion\":2,\"generation\":\"replacement\"}\n",
     "contract/schemas/quality-capabilities.v1.schema.json": "replacement quality capabilities schema\n",
@@ -82,7 +81,6 @@ test("snapshot parity v1-to-v2 migration publishes every v2 root and removes the
     "skills/replacement/SKILL.md": "replacement skill\n",
     "assets/permissions/defaults.json": "replacement permissions\n",
     "assets/system-prompt/AGENTS.md": "replacement policy\n",
-    "assets/system-prompt/engram-protocol.md": "replacement protocol\n",
     "prompts/lean-audit.md": "replacement prompt\n",
     "contract/parity.v2.json": "{\"schemaVersion\":2,\"generation\":\"replacement\"}\n",
     "contract/schemas/quality-capabilities.v1.schema.json": "replacement quality capabilities schema\n",
@@ -93,7 +91,8 @@ test("snapshot parity v1-to-v2 migration publishes every v2 root and removes the
   try {
     await commitSnapshot({ root: packageRoot, stage });
     const expectedTree = Object.fromEntries(Object.entries(replacement).map(([path, bytes]) => [path, Buffer.from(bytes)]));
-    assert.deepEqual(readTree(packageRoot), expectedTree, "a successful migration must publish every staged v2 root and remove parity.v1.json");
+    assert.deepEqual(readTree(packageRoot), expectedTree, "a successful migration must publish every staged provider-only v2 root and remove parity.v1.json");
+    assert.equal(Object.hasOwn(readTree(packageRoot), "assets/system-prompt/engram-protocol.md"), false, "provider-only migration must not publish the retired duplicated asset");
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
   }

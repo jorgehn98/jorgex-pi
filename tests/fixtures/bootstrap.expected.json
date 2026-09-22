@@ -16,10 +16,6 @@
       "path": "assets/system-prompt/AGENTS.md",
       "marker": "jorgex:system-prompt"
     },
-    "engramProtocol": {
-      "path": "assets/system-prompt/engram-protocol.md",
-      "marker": "jorgex:engram-protocol"
-    },
     "context7": {
       "path": "assets/system-prompt/context7.md",
       "marker": "jorgex:context7"
