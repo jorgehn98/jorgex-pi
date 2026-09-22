@@ -71,7 +71,11 @@ export function resolvePiAgentDir({ env = process.env, cwd = process.cwd(), plat
   return paths.resolve(cwd, configured);
 }
 
-export function inspectContext7Config({ env = process.env, cwd = process.cwd(), platform = process.platform, argv = process.argv } = {}) {
+// Shared official package-pair gate: exactly one global gentle-engram@semver
+// and one global pi-mcp-adapter own the channel. Exposed separately so the
+// bridge can block managed on package ownership even when an independent
+// Context7 MCP conflict would otherwise hide the missing gate.
+export function inspectOfficialPackages({ env = process.env, cwd = process.cwd(), platform = process.platform } = {}) {
   const paths = platform === "win32" ? win32 : posix;
   const home = (platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? homedir();
   const invalid = (source, code) => ({ state: "invalid", source, code });
@@ -126,10 +130,26 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
   }
   if (projectDuplicateSource) {
     const gentle = projectDuplicateSource.startsWith("npm:gentle-engram");
-    return { state: "conflict", source: "pi-project-settings", code: gentle ? "duplicate-gentle-engram" : "duplicate-pi-mcp-adapter" };
+    return { state: "conflict", source: "pi-project-settings", code: gentle ? "duplicate-gentle-engram" : "duplicate-pi-mcp-adapter", agentDir, configDir };
   }
-  if (globalGentleOfficial > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-gentle-engram" };
-  if (globalAdapterOfficial > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-pi-mcp-adapter" };
+  if (globalGentleOfficial > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-gentle-engram", agentDir, configDir };
+  if (globalAdapterOfficial > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-pi-mcp-adapter", agentDir, configDir };
+  if (globalGentleValid !== 1 || globalAdapterValid !== 1) {
+    return { state: "missing", source: "pi-global-settings", code: "missing-official-packages", agentDir, configDir };
+  }
+  return { state: "ready", agentDir, configDir };
+}
+
+export function inspectContext7Config({ env = process.env, cwd = process.cwd(), platform = process.platform, argv = process.argv } = {}) {
+  const paths = platform === "win32" ? win32 : posix;
+  const home = (platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? homedir();
+  const invalid = (source, code) => ({ state: "invalid", source, code });
+  if (!paths.isAbsolute(home) || !paths.isAbsolute(cwd)) return invalid("runtime", "invalid-path");
+  const packages = inspectOfficialPackages({ env, cwd, platform });
+  if (packages.state === "invalid") return { state: "invalid", source: packages.source, code: packages.code };
+  if (packages.state === "conflict") return { state: packages.state, source: packages.source, code: packages.code };
+  const agentDir = packages.agentDir;
+  const configDir = packages.configDir ?? ".pi";
   const sources = [
     ["shared-global", paths.join(home, ".config", "mcp", "mcp.json")],
     ["agents-global", paths.join(home, ".agents", "mcp.json")],
@@ -164,8 +184,8 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
   // Total gate runs after duplicate checks and MCP-scan diagnosis: absent,
   // undeclared, empty, foreign-only, or malformed-sole all fail closed as
   // missing. MCP-scan invalid/conflict already returned above and is preserved.
-  if (globalGentleValid !== 1 || globalAdapterValid !== 1) {
-    return { state: "missing", source: "pi-global-settings", code: "missing-official-packages" };
+  if (packages.state === "missing") {
+    return { state: "missing", source: packages.source, code: packages.code };
   }
   return { state: "available" };
 }

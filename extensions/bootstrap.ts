@@ -193,7 +193,14 @@ export function createBootstrap({
         runtimeOutcomes.delete(sessionId);
         runtimeNotifiedContext7Sessions.delete(sessionId);
         runtimeNotifiedDevtoolsSessions.delete(sessionId);
-        await disposeRuntimeHandles(sessionId);
+        const failures = await disposeRuntimeHandles(sessionId);
+        const names = Object.keys(failures);
+        if (names.length > 0) {
+          // Failed dispose stays retryable via the retained handle; notify the
+          // bounded reason through the existing UI channel without throwing.
+          const reasons = names.map((name) => `${name}: ${failures[name]}`).join("; ");
+          notifyError(ctx, `JorgeX runtime dispose failed: ${reasons}. Retry shutdown before re-registering.`);
+        }
       }
       emitQualityCapabilities(pi, {
         bootstrapReady: false,
@@ -250,9 +257,10 @@ export function createBootstrap({
           && Boolean(resolution.config?.mcpServers?.context7);
         devtoolsRegistered = resolution.state === "managed" && Boolean(resolution.config?.mcpServers?.["chrome-devtools"]);
         if (resolution.state !== "managed") {
-          mcpEngramFailure = resolution.state === "missing"
-            ? "the Engram binary was not found"
-            : resolution.reason ?? "the official Engram setup could not be verified";
+          mcpEngramFailure = resolution.reason
+            ?? (resolution.state === "missing"
+              ? "official Engram MCP setup is missing; run `engram setup pi` and reload Pi"
+              : "the official Engram setup could not be verified");
         }
       } catch (error) {
         mcpEngramFailure = error instanceof Error ? error.message : String(error);

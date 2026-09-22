@@ -135,6 +135,7 @@ test("valid mcp.json Engram server requires exact fields and command precedence"
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
 
   try {
     const validServer = {
@@ -211,6 +212,7 @@ test("DevTools handoff keeps exact 1.6.0 flags (control)", async () => {
   chmodSync(pnpmPath, 0o755);
   writeFileSync(handoffPath, `${JSON.stringify({ schemaVersion: 1, enabled: true, command: pnpmPath, args: DEVTOOLS_ARGS })}\n`);
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
   try {
     const result = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,

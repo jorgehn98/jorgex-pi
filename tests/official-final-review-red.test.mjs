@@ -205,6 +205,7 @@ test("final-review: explicit ENGRAM_BIN non-executable throws and fails bridge",
       mkdirSync(join(home, ".jorgex-stack"), { recursive: true });
       writeFileSync(join(home, ".jorgex-stack", "pi-receipt.json"), `${JSON.stringify(receipt)}\n`);
       writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: validBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
+      writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
       const env = { HOME: home, PI_CODING_AGENT_DIR: agentDir };
       const bridge = await resolveMcpEngramConfig({ env, platform: "linux", cwd: sandbox });
       assert.equal(bridge.state, "managed", "unset ENGRAM_BIN may use valid receipt per contract");
@@ -256,6 +257,7 @@ test("final-review: explicit ENGRAM_BIN non-executable throws and fails bridge",
         engram: { binary: validBin },
       };
       writeFileSync(join(home, ".jorgex-stack", "pi-receipt.json"), `${JSON.stringify(receipt)}\n`);
+      writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
       const env = { HOME: home, PI_CODING_AGENT_DIR: agentDir, ENGRAM_BIN: nonExec };
       const bridge = await resolveMcpEngramConfig({ env, platform: "linux", cwd: sandbox });
       assert.equal(bridge.state, "failed", "non-executable explicit must fail bridge, never degrade to managed");
@@ -281,6 +283,7 @@ test("final-review: explicit ENGRAM_BIN non-executable throws and fails bridge",
         join(agentDir, "mcp.json"),
         `${JSON.stringify({ mcpServers: { engram: { command: validBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } })}\n`,
       );
+      writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
       const env = { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir, ENGRAM_BIN: nonExec };
       const bridge = await resolveMcpEngramConfig({ env, platform: "linux", cwd: sandbox });
       assert.equal(bridge.state, "failed", "non-executable explicit must fail even with valid official command");
@@ -311,6 +314,7 @@ test("final-review: invalid package-scope settings fails bridge, unrelated MCP-s
       mkdirSync(proj, { recursive: true });
       const fakeBin = makeBin(sandbox);
       writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ imports: ["codex"], mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }));
+      writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
       const result = await resolveMcpEngramConfig({
         resolveEngramBinary: () => fakeBin,
         env: { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir },

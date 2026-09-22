@@ -1,7 +1,7 @@
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inspectContext7Config, resolvePiAgentDir } from "./context7-config.mjs";
+import { inspectContext7Config, inspectOfficialPackages, resolvePiAgentDir } from "./context7-config.mjs";
 
 // Synchronous runtime registration event published by the external
 // pi-mcp-adapter contract observed by the smoke harness (version 1):
@@ -37,16 +37,43 @@ export async function resolveMcpEngramConfig({
 } = {}) {
   const config = { mcpServers: {} };
   const context7 = inspectContext7Config({ env, platform, cwd });
-  // Invalid package-scope settings fail the bridge closed and are never
-  // managed or protocol-advertised. Unrelated MCP-scan invalidity remains
-  // scoped to the managed result with its diagnosis preserved.
-  if (context7.state === "invalid"
-    && (context7.source === "pi-global-settings" || context7.source === "pi-project-settings")) {
+  const packages = inspectOfficialPackages({ env, platform, cwd });
+  // Official package ownership gates managed before any Context7 activation:
+  // missing/duplicate/invalid packages never resolve managed even when an
+  // independent Context7 conflict would otherwise hide the gate. Context7
+  // diagnosis is preserved via the context7 field. Unrelated MCP-scan
+  // invalidity remains scoped to the managed result with its diagnosis.
+  if (packages.state === "invalid"
+    && (packages.source === "pi-global-settings" || packages.source === "pi-project-settings")) {
     return {
       state: "failed",
       config,
       context7,
-      reason: `Invalid package-scope settings (${context7.source}: ${context7.code})`,
+      reason: `Invalid package-scope settings (${packages.source}: ${packages.code})`,
+    };
+  }
+  if (packages.state === "invalid") {
+    return {
+      state: "failed",
+      config,
+      context7,
+      reason: `Invalid official Engram setup (${packages.source}: ${packages.code}); run \`engram setup pi\` and reload Pi`,
+    };
+  }
+  if (packages.state === "conflict") {
+    return {
+      state: "failed",
+      config,
+      context7,
+      reason: `Duplicate official Engram packages (${packages.source}: ${packages.code}); remove the duplicate, run \`engram setup pi\` and reload Pi`,
+    };
+  }
+  if (packages.state === "missing") {
+    return {
+      state: "missing",
+      config,
+      context7,
+      reason: "official Engram MCP setup is missing; run `engram setup pi` and reload Pi",
     };
   }
   if (context7.state === "available") {
@@ -64,10 +91,10 @@ export async function resolveMcpEngramConfig({
     if (official.error) throw new Error(official.error);
     // The official mcp.json server is mandatory: an executable binary never
     // substitutes it. Absence fails closed as missing with the Context7
-    // diagnosis preserved; the configured binary only validates the official
-    // command.
+    // diagnosis preserved and the official setup remedy; the configured
+    // binary only validates the official command.
     if (!official.server) {
-      return { state: "missing", config, context7 };
+      return { state: "missing", config, context7, reason: "official Engram MCP setup is missing; run `engram setup pi` and reload Pi" };
     }
     if (binary !== undefined && official.server.command !== binary) {
       throw new Error("Official mcp.json Engram command does not match the configured Engram binary; explicit configuration takes precedence");

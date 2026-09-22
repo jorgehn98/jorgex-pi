@@ -149,7 +149,23 @@ function setupRealSandbox(setup) {
   assert.equal(typeof engramBin, "string", "provisioned mcp.json must carry the official engram server command");
   assert.ok(existsSync(engramBin), `provisioned engram binary must exist: ${engramBin}`);
   try {
-    execFileSync(engramBin, ["--version"], { encoding: "utf8", timeout: 15_000 });
+    execFileSync(engramBin, ["--version"], {
+      encoding: "utf8",
+      timeout: 15_000,
+      cwd: cwd,
+      env: {
+        HOME: home,
+        USERPROFILE: home,
+        PI_CODING_AGENT_DIR: agentDir,
+        XDG_CONFIG_HOME: xdgConfig,
+        XDG_CACHE_HOME: xdgCache,
+        XDG_DATA_HOME: xdgData,
+        TEMP: tempDir,
+        TMP: tempDir,
+        TMPDIR: tempDir,
+        PATH: "/usr/bin:/bin",
+      },
+    });
   } catch (error) {
     throw new Error(`provisioned engram binary is not executable: ${engramBin}`);
   }
