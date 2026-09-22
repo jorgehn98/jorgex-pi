@@ -95,6 +95,13 @@
       "entryPath": "dist/index.ts"
     }
   ],
+  "runtimeDependencies": [
+    {
+      "name": "strip-json-comments",
+      "version": "5.0.3",
+      "integrity": "sha512-1tB5mhVo7U+ETBKNf92xT4hrQa3pm0MZ0PQvuDnWgAAGHDsfp4lPSpiS6psrSiet87wyGPh9ft6wmhOMQ0hDiw=="
+    }
+  ],
   "bundledClosure": [
     { "name": "@gotgenes/pi-permission-system", "version": "27.0.0", "integrity": "sha512-5WpP2z0Ohxipi2Myfg4ArchXgtMX15HbJl7b2YMK3iB2sRIm57hDXt86e0zsVX+sGOVrDLCkKtLoqMkrPS1rwQ==" },
     { "name": "@juicesharp/rpiv-ask-user-question", "version": "2.7.0", "integrity": "sha512-5amOEZ8RfSZJUTahYSajsulHGGKHaYwEQAd+J/f7gNPq7MkzgxOUCZzvwM9V8hTmFISHWNQFq1pv0ZIky8aTNw==" },

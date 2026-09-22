@@ -21,14 +21,21 @@ test("pi-subagents is pinned with its audited bundled closure", () => {
   const expectedDependencies = [...bootstrapExpected.companions];
   assert.deepEqual(
     manifest.dependencies,
-    Object.fromEntries(expectedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right))),
+    Object.fromEntries(
+      [...expectedDependencies, ...bootstrapExpected.runtimeDependencies]
+        .map(({ name, version }) => [name, version])
+        .sort(([left], [right]) => left.localeCompare(right)),
+    ),
   );
-  assert.deepEqual([...manifest.bundledDependencies].sort(), expectedDependencies.map(({ name }) => name).sort());
+  assert.deepEqual(
+    [...manifest.bundledDependencies].sort(),
+    [...expectedDependencies, ...bootstrapExpected.runtimeDependencies].map(({ name }) => name).sort(),
+  );
   assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "official bridge must not bundle its own adapter copy");
   assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 13 runnable package agents may be discoverable by pi-subagents");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   assert.doesNotMatch(lock, /pi-mcp-adapter@2\.27\.0/, "lock must not pin the retired bundled adapter");
-  for (const dependency of expected.dependency.bundledClosure) assertLockIntegrity(lock, dependency);
+  for (const dependency of [...expected.dependency.bundledClosure, ...bootstrapExpected.runtimeDependencies]) assertLockIntegrity(lock, dependency);
 });
 
 test("the Engram child uses the ambient official provider without a JorgeX selector", () => {

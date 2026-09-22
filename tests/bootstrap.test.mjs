@@ -589,14 +589,21 @@ test("direct-install preserves readable separation around a complete adjacent ma
 test("the active companions and their audited closure are exactly pinned and bundled", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const packagedDependencies = [...expected.companions];
-  const dependencies = Object.fromEntries(packagedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right)));
+  const dependencies = Object.fromEntries(
+    [...packagedDependencies, ...expected.runtimeDependencies]
+      .map(({ name, version }) => [name, version])
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
   assert.deepEqual(manifest.dependencies, dependencies);
-  assert.deepEqual([...manifest.bundledDependencies].sort(), packagedDependencies.map(({ name }) => name).sort());
+  assert.deepEqual(
+    [...manifest.bundledDependencies].sort(),
+    [...packagedDependencies, ...expected.runtimeDependencies].map(({ name }) => name).sort(),
+  );
   assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "official bridge must not bundle its own adapter copy");
   assert.equal(manifest.dependencies?.["gentle-engram"], undefined, "official setup owns gentle-engram, not jorgex-pi");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8").replace(/\r\n/g, "\n");
   assert.doesNotMatch(lock, /pi-mcp-adapter@2\.27\.0/, "lock must not pin the retired bundled adapter");
-  for (const dependency of expected.bundledClosure) assertLockIntegrity(lock, dependency);
+  for (const dependency of [...expected.bundledClosure, ...expected.runtimeDependencies]) assertLockIntegrity(lock, dependency);
 });
 
 test("healthy Pi bootstrap reports guidance and manual approval without external verification", async () => {

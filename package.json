@@ -88,7 +88,8 @@
     "@juicesharp/rpiv-ask-user-question",
     "pi-subagents",
     "pi-web-access",
-    "@narumitw/pi-goal"
+    "@narumitw/pi-goal",
+    "strip-json-comments"
   ],
   "packageManager": "pnpm@11.22.0",
   "devDependencies": {
@@ -100,6 +101,7 @@
     "@juicesharp/rpiv-ask-user-question": "2.7.0",
     "@narumitw/pi-goal": "0.53.0",
     "pi-subagents": "0.54.0",
-    "pi-web-access": "0.24.1"
+    "pi-web-access": "0.24.1",
+    "strip-json-comments": "5.0.3"
   }
 }
