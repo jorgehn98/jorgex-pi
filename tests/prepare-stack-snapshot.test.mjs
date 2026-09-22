@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import test from "node:test";
@@ -329,6 +329,60 @@ test("prepareStackSnapshot accepts only the retired engramProtocol topology remo
   }
 });
 
+test("archivePiFixture excludes nested .jorgex-stack checkout so ordinary preparation gains no gitlink", () => {
+  const materialization = join(packageRoot, ".jorgex-stack");
+  const createdMaterialization = !existsSync(materialization);
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-prepare-stack-snapshot-nested-stack-"));
+  try {
+    if (createdMaterialization) {
+      mkdirSync(materialization, { recursive: true });
+      writeFileSync(join(materialization, "stack-marker.txt"), "CI Stack materialization fixture\n");
+      git(materialization, ["init", "-q", "-b", "main"]);
+      commitAll(materialization, "nested Stack materialization");
+    }
+    assert.equal(lstatSync(join(materialization, ".git")).isDirectory(), true, "source tree must contain a nested .jorgex-stack Git checkout to reproduce CI");
+    const { stackDir, root } = arrangeFixture(sandbox);
+    assert.equal(existsSync(join(root, ".jorgex-stack")), false, "archivePiFixture must exclude the CI .jorgex-stack materialization");
+    const tree = git(root, ["ls-tree", "-r", "HEAD"]);
+    assert.ok(!tree.includes("160000"), `ordinary preparer cases must not gain a 160000 gitlink: ${tree}`);
+    const sourceCommit = commitStackContentChange(stackDir);
+    const result = prepareStackSnapshot({ root, stackDir, sourceCommit });
+    assert.equal(result.status, "prepared");
+    assert.equal(result.sourceCommit, sourceCommit);
+    assert.ok(result.changedPaths.length > 0);
+    assert.equal(git(root, ["status", "--porcelain"]), "");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+    if (createdMaterialization) rmSync(materialization, { recursive: true, force: true });
+  }
+});
+
+test("prepareStackSnapshot still rejects a real submodule gitlink in intended Stack content", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-prepare-stack-snapshot-submodule-control-"));
+  try {
+    const { stackDir, root } = arrangeFixture(sandbox);
+    const before = readTree(root);
+    const vendorDir = join(stackDir, "stack", "agents", "nested-vendor");
+    mkdirSync(vendorDir, { recursive: true });
+    writeFileSync(join(vendorDir, "vendor.txt"), "nested vendor fixture\n");
+    git(vendorDir, ["init", "-q", "-b", "main"]);
+    commitAll(vendorDir, "nested vendor base");
+    commitAll(stackDir, "fixture nested vendor gitlink");
+    updateOriginMain(stackDir);
+    const sourceCommit = git(stackDir, ["rev-parse", "HEAD"]);
+    const stackTree = git(stackDir, ["ls-tree", "-r", sourceCommit, "--", "stack"]);
+    assert.ok(stackTree.includes("160000"), `control fixture must contain a real 160000 gitlink in packaged Stack content: ${stackTree}`);
+    assert.throws(
+      () => prepareStackSnapshot({ root, stackDir, sourceCommit, apply: false }),
+      /Unsupported Git tree entry/,
+    );
+    assert.deepEqual(readTree(root), before, "rejected gitlink must leave every Pi byte untouched");
+    assert.equal(git(root, ["status", "--porcelain"]), "");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 function arrangeFixture(sandbox, { contentBaseline = false } = {}) {
   const root = join(sandbox, "pi");
   archivePiFixture(root);
@@ -354,6 +408,7 @@ function archivePiFixture(root) {
       if (!rel) return true;
       const first = rel.split(sep)[0];
       if (first === ".git") return false;
+      if (first === ".jorgex-stack") return false;
       if (first === "node_modules") return false;
       if (first.startsWith(".snapshot-")) return false;
       if (first.startsWith(".snapshot-build-")) return false;
