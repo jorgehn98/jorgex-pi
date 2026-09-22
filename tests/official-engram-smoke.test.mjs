@@ -310,6 +310,12 @@ for (const target of resolvePiTargets()) {
         assert.equal(probed.bootstrapRegistered, true, `${where}: bootstrap registration must land on the real adapter`);
         assert.equal(probed.prompt1HasContext7, true, `${where}: managed prompt must include Context7 after real registration`);
         assert.equal(probed.prompt1HasPolicy, true, `${where}: managed prompt must keep the policy section`);
+        assert.equal(probed.officialHeading, "## Engram Persistent Memory — Protocol", `${where}: probe must use the stable official heading without snapshotting provider internals`);
+        for (const [label, eng] of [["main", probed.mainEngram], ["child", probed.childEngram]]) {
+          assert.equal(eng.officialHeadingCount, 1, `${where}: ${label} final prompt must contain the official Engram protocol exactly once`);
+          assert.equal(eng.hasJorgeXEngramMarker, false, `${where}: ${label} final prompt must contain no JorgeX Engram marker`);
+          assert.equal(eng.hasJorgeXEngramBlock, false, `${where}: ${label} final prompt must contain no JorgeX Engram block`);
+        }
         // Real adapter contract (observed, not the retired fictional shape):
         // { ok: true, registration: { dispose } }, snapshots via runtime-snapshot:v1.
         assert.equal(probed.probeResultShape.present, true, `${where}: real adapter must answer runtime-register`);

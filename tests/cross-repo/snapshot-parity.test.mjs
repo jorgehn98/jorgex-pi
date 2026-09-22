@@ -38,7 +38,8 @@ test("generated outputs match raw pinned objects with the documented byte policy
   }
 
   assertCopyProjection(stackDir, modes, parity.policy, expected.policy, "system policy");
-  assertCopyProjection(stackDir, modes, parity.engramProtocol, expected.engramProtocol, "Engram protocol");
+  assert.equal(parity.engramProtocol, undefined, "provider-only parity must omit the retired Engram protocol projection");
+  assert.equal(expected.engramProtocol, undefined, "cross-repo fixture must not expect the retired projection");
   assertPermissionsProjection(stackDir, modes, parity.permissions, expected.permissions);
   assertSystemPromptModulesProjection(stackDir, modes, parity.systemPromptModules);
   assertQualityReceiptProjection(stackDir, modes, parity.qualityReceipt, expected.qualityReceipt);
@@ -152,7 +153,6 @@ function generatedTree(packageRoot) {
     ...listFiles(join(packageRoot, "snapshot")),
     ...listFiles(join(packageRoot, "skills")),
     join(packageRoot, expected.policy.targetPath),
-    join(packageRoot, expected.engramProtocol.targetPath),
     join(packageRoot, expected.permissions.targetPath),
     ...expected.systemPromptModules.map(({ targetPath }) => join(packageRoot, targetPath)),
     ...expected.commands.map(({ targetPath }) => join(packageRoot, targetPath)),
@@ -199,11 +199,11 @@ function rawSourceModes(stackDir, sourcePaths) {
 }
 
 function trackedSourcePaths(parity) {
+  assert.equal(parity.engramProtocol, undefined, "provider-only parity must omit the retired projection");
   return [
     ...parity.agents.map(({ sourcePath }) => sourcePath),
     ...parity.skills.map(({ sourcePath }) => sourcePath),
     parity.policy.sourcePath,
-    parity.engramProtocol.sourcePath,
     parity.permissions.sourcePath,
     ...parity.systemPromptModules.map(({ sourcePath }) => sourcePath),
     parity.qualityReceipt.sourcePath,

@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "09947922e6aafee5b75286b56e8f88dd22b8fba0"
+    "commit": "a140809253e2a069fac2fa99c4b9ef45fe78f97f"
   },
   "agents": [
     {
@@ -586,12 +586,6 @@
     "targetPath": "assets/system-prompt/AGENTS.md",
     "sourceSha256": "8efcecbf36b5755e666b5b8a08b2e620420723f6995e7c5319ed0502b5c8a393",
     "outputSha256": "8efcecbf36b5755e666b5b8a08b2e620420723f6995e7c5319ed0502b5c8a393"
-  },
-  "engramProtocol": {
-    "sourcePath": "stack/system-prompt/engram-protocol.md",
-    "targetPath": "assets/system-prompt/engram-protocol.md",
-    "sourceSha256": "e23997eda1d8d43c587b5e864b280d4c77055dd30f558c9e9288264398929591",
-    "outputSha256": "e23997eda1d8d43c587b5e864b280d4c77055dd30f558c9e9288264398929591"
   },
   "systemPromptModules": [
     {

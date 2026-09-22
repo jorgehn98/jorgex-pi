@@ -157,6 +157,8 @@ test("the default bootstrap resolver advertises only the verified temporary Play
       assert.match(webAccessBlock, /Use Web Access for web research/i);
       assert.equal(result.systemPrompt.includes("<!-- jorgex:browser -->"), false);
       assert.equal(result.systemPrompt.includes("<!-- jorgex:context7 -->"), false);
+      assert.equal(result.systemPrompt.includes("jorgex:engram-protocol"), false, "provider-only Pi must never inject the retired JorgeX Engram marker");
+      assert.equal(result.systemPrompt.includes("Legacy Engram"), false, "stale legacy Engram payload must not survive browser routing");
       assert.equal(playwrightBlock.includes("PI_CODING_AGENT_DIR"), false);
       assert.equal(playwrightBlock.includes("playwright.v1.json"), false);
     });
@@ -264,7 +266,6 @@ function escapeRegExp(value) {
 function readSystemPromptAssets() {
   return Object.fromEntries([
     ["policy", "AGENTS.md"],
-    ["engramProtocol", "engram-protocol.md"],
     ["context7", "context7.md"],
     ["playwright", "browser-playwright.md"],
     ["devtools", "browser-chrome-devtools.md"],

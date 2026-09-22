@@ -33,11 +33,12 @@ test("package manifest exposes the activated JorgeX resources", () => {
   assert.ok(manifest.files.includes("prompts"), "package.json files must publish the active portable prompt");
 });
 
-test("parity v2 records the direct-install policy, Engram protocol, and portable lean-audit projection", () => {
+test("parity v2 records the direct-install policy and portable lean-audit projection without the retired Engram protocol", () => {
   const parity = readJson(join(root, expected.parityV2.path), "versioned parity v2 contract");
   assert.equal(parity.schemaVersion, expected.parityV2.schemaVersion);
   assert.deepEqual(projectionShape(parity.policy), expected.parityV2.policy, "parity v2 must record the system policy projection");
-  assert.deepEqual(projectionShape(parity.engramProtocol), expected.parityV2.engramProtocol, "parity v2 must record the Engram protocol projection");
+  assert.equal(parity.engramProtocol, undefined, "provider-only parity v2 must not record the retired Engram protocol projection");
+  assert.equal(expected.parityV2.engramProtocol, undefined, "foundation fixture must not expect the retired projection");
   assert.deepEqual(projectionShape(parity.permissions), expected.parityV2.permissions, "parity v2 must record the generated permissions projection");
   assert.deepEqual(
     parity.systemPromptModules?.map(({ name, ...projection }) => ({ name, ...projectionShape(projection) })),
@@ -249,7 +250,8 @@ function assertPackedParityTargets(archive, entries, parity) {
     for (const file of skill.files) expectedTargets.set(`package/${skill.targetPath}/${file.path}`, file.sha256);
   }
   expectedTargets.set(`package/${parity.policy.targetPath}`, parity.policy.outputSha256);
-  expectedTargets.set(`package/${parity.engramProtocol.targetPath}`, parity.engramProtocol.outputSha256);
+  assert.equal(parity.engramProtocol, undefined, "packed parity must not project the retired Engram protocol");
+  assert.equal(entries.has("package/assets/system-prompt/engram-protocol.md"), false, "packed artifact must not contain the retired duplicated asset");
   expectedTargets.set(`package/${parity.permissions.targetPath}`, parity.permissions.outputSha256);
   for (const module of parity.systemPromptModules ?? []) {
     expectedTargets.set(`package/${module.targetPath}`, module.outputSha256);

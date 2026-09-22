@@ -24,9 +24,11 @@ test("the Stack snapshot stays complete and deterministic after runtime activati
   assert.deepEqual(parity.source, { repository: expected.sourceRepository, commit: expected.sourceCommit });
   assert.deepEqual(
     Object.keys(parity).sort(),
-    ["agents", "commands", "engramProtocol", "exclusions", "permissions", "policy", "qualityCapabilities", "qualityReceipt", "schemaVersion", "skills", "source", "systemPromptModules"],
-    "parity v2 must expose every canonical source type explicitly",
+    ["agents", "commands", "exclusions", "permissions", "policy", "qualityCapabilities", "qualityReceipt", "schemaVersion", "skills", "source", "systemPromptModules"],
+    "parity v2 provider-only must omit the retired engramProtocol projection while exposing every other canonical source type",
   );
+  assert.equal(Object.hasOwn(parity, "engramProtocol"), false, "parity must not project the retired Stack engram-protocol");
+  assert.equal(expected.engramProtocol, undefined, "parity fixture must not expect the retired projection");
   assertAgentParity(parity.agents);
   assertSkillParity(parity.skills);
   assertSharedProjectionParity(parity);
@@ -79,7 +81,7 @@ function assertSkillParity(skills) {
 
 function assertSharedProjectionParity(parity) {
   assertCopyProjection(parity.policy, expected.policy, "system policy");
-  assertCopyProjection(parity.engramProtocol, expected.engramProtocol, "Engram protocol");
+  assert.equal(parity.engramProtocol, undefined, "provider-only parity must not project the retired Engram protocol");
   assertCopyProjection(parity.permissions, expected.permissions, "permissions policy");
   assertSystemPromptModulesParity(parity.systemPromptModules);
   assertQualityReceiptProjection(parity.qualityReceipt, expected.qualityReceipt);
@@ -105,10 +107,14 @@ function assertSharedProjectionParity(parity) {
     listFiles(join(root, "assets", "system-prompt")),
     [
       parity.policy.targetPath,
-      parity.engramProtocol.targetPath,
       ...parity.systemPromptModules.map(({ targetPath }) => targetPath),
     ].sort(),
-    "the bundled policy directory must contain only tracked canonical fallbacks and prompt modules",
+    "the bundled policy directory must contain only tracked canonical fallbacks and prompt modules without the retired Engram protocol",
+  );
+  assert.equal(
+    listFiles(join(root, "assets", "system-prompt")).includes("assets/system-prompt/engram-protocol.md"),
+    false,
+    "the retired engram-protocol asset must not be active, generated, or packed",
   );
   assert.deepEqual(
     listFiles(join(root, "prompts")),

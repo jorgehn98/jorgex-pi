@@ -2,7 +2,7 @@
   "parityPath": "contract/parity.v2.json",
   "schemaVersion": 2,
   "sourceRepository": "https://github.com/jorgehn98/jorgex-stack",
-  "sourceCommit": "09947922e6aafee5b75286b56e8f88dd22b8fba0",
+  "sourceCommit": "a140809253e2a069fac2fa99c4b9ef45fe78f97f",
   "agentCount": 14,
   "agentNames": [
     "code-reviewer",
@@ -44,10 +44,6 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md"
-  },
-  "engramProtocol": {
-    "sourcePath": "stack/system-prompt/engram-protocol.md",
-    "targetPath": "assets/system-prompt/engram-protocol.md"
   },
   "permissions": {
     "sourcePath": "stack/config/defaults.json",

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { commitSnapshot } from "./snapshot-transaction.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/jorgehn98/jorgex-stack";
-const DEFAULT_SOURCE_COMMIT = "09947922e6aafee5b75286b56e8f88dd22b8fba0";
+const DEFAULT_SOURCE_COMMIT = "a140809253e2a069fac2fa99c4b9ef45fe78f97f";
 const SOURCE_COMMIT = process.env.JORGEX_STACK_COMMIT?.trim() || DEFAULT_SOURCE_COMMIT;
 const QUALITY_RECEIPT_SOURCE_PATH = "stack/contracts/quality-receipt.v1.schema.json";
 const QUALITY_RECEIPT_TARGET_PATH = "contract/schemas/quality-receipt.v1.schema.json";
@@ -20,7 +20,9 @@ const QUALITY_CAPABILITIES_TARGET_PATH = "contract/schemas/quality-capabilities.
 const PERMISSIONS_SOURCE_PATH = "stack/config/defaults.json";
 const PERMISSIONS_TARGET_PATH = "assets/permissions/defaults.json";
 const POLICY_SOURCE_PATH = "stack/system-prompt/AGENTS.md";
-const ENGRAM_PROTOCOL_SOURCE_PATH = "stack/system-prompt/engram-protocol.md";
+// Provider-only Pi: the retired Stack `stack/system-prompt/engram-protocol.md`
+// is never projected. The canonical source was removed upstream; Pi must not
+// read it, fall back to invented bytes, or retain its target projection.
 const SYSTEM_PROMPT_MODULES = [
   { name: "context7", file: "context7.md" },
   { name: "playwright", file: "browser-playwright.md" },
@@ -70,7 +72,6 @@ try {
     agents: agentSources.map(generateAgent),
     skills: generateSkills(skillSources),
     policy: generateCopyProjection(POLICY_SOURCE_PATH, "assets/system-prompt/AGENTS.md"),
-    engramProtocol: generateCopyProjection(ENGRAM_PROTOCOL_SOURCE_PATH, "assets/system-prompt/engram-protocol.md"),
     systemPromptModules: SYSTEM_PROMPT_MODULES.map(({ name, file }) => ({
       name,
       ...generateCopyProjection(`stack/system-prompt/${file}`, `assets/system-prompt/${file}`),
