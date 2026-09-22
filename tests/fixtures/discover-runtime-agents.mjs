@@ -20,6 +20,7 @@ for (const name of names) {
     inheritSkills: result.ok ? result.contract.inheritSkills : undefined,
     skills: result.ok ? result.contract.skills : undefined,
     effectiveAllowlist: result.ok ? result.contract.tools.effectiveAllowlist : undefined,
+    explicitAllowlist: result.ok ? result.contract.tools.explicitAllowlist : undefined,
     configuredExtensions: result.ok ? result.contract.tools.configuredExtensions : undefined,
   });
 }

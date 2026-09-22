@@ -15,50 +15,40 @@ const expected = readJson(join(testDir, "fixtures", "runtime-agents.expected.jso
 const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"), "bootstrap fixture");
 const foundationExpected = readJson(join(testDir, "fixtures", "foundation-contract.expected.json"), "foundation contract fixture");
 const webAccessExpected = readJson(join(testDir, "fixtures", "web-access.expected.json"), "web access fixture");
-const mcpEngramExpected = readJson(join(testDir, "fixtures", "mcp-engram.expected.json"), "MCP Engram fixture");
 
 test("pi-subagents is pinned with its audited bundled closure", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest");
-  const expectedDependencies = [...bootstrapExpected.companions, mcpEngramExpected.adapter];
+  const expectedDependencies = [...bootstrapExpected.companions];
   assert.deepEqual(
     manifest.dependencies,
-    Object.fromEntries(expectedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right))),
+    Object.fromEntries(
+      [...expectedDependencies, ...bootstrapExpected.runtimeDependencies]
+        .map(({ name, version }) => [name, version])
+        .sort(([left], [right]) => left.localeCompare(right)),
+    ),
   );
-  assert.deepEqual([...manifest.bundledDependencies].sort(), expectedDependencies.map(({ name }) => name).sort());
+  assert.deepEqual(
+    [...manifest.bundledDependencies].sort(),
+    [...expectedDependencies, ...bootstrapExpected.runtimeDependencies].map(({ name }) => name).sort(),
+  );
+  assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "official bridge must not bundle its own adapter copy");
   assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 13 runnable package agents may be discoverable by pi-subagents");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
-  for (const dependency of expected.dependency.bundledClosure) assertLockIntegrity(lock, dependency);
+  assert.doesNotMatch(lock, /pi-mcp-adapter@2\.27\.0/, "lock must not pin the retired bundled adapter");
+  for (const dependency of [...expected.dependency.bundledClosure, ...bootstrapExpected.runtimeDependencies]) assertLockIntegrity(lock, dependency);
 });
 
-test("the read-only Engram specialist exposes only non-mutating ProfileAgent tools", () => {
+test("the Engram child uses the ambient official provider without a JorgeX selector", () => {
   const contract = readJson(join(root, expected.contractPath), "runtime agent contract");
   const expectedEngram = expected.agents.find(({ name }) => name === "engram");
   const actualEngram = contract.agents.find(({ name }) => name === "engram");
   assert.equal(actualEngram.status, "runnable");
   assert.equal(actualEngram.requiredCapability, "engram-runtime-tools-v1", "Engram availability must remain machine-readable when the runtime bridge is unhealthy");
-  assert.deepEqual(actualEngram.tools, expectedEngram.tools);
-  assert.deepEqual(actualEngram.tools, [
-    "mem_search",
-    "mem_context",
-    "mem_get_observation",
-    "mem_suggest_topic_key",
-    "mem_current_project",
-    "mem_doctor",
-  ]);
-  for (const mutatingTool of [
-    "mem_save",
-    "mem_session_summary",
-    "mem_session_start",
-    "mem_session_end",
-    "mem_save_prompt",
-    "mem_update",
-    "mem_judge",
-    "mem_compare",
-    "mem_review",
-    "mem_pin",
-    "mem_unpin",
-    "mem_capture_passive",
-  ]) assert.equal(actualEngram.tools.includes(mutatingTool), false, `read-only Engram must not expose ${mutatingTool}`);
+  assert.equal(actualEngram.maxSubagentDepth, 0, "general subdelegation restriction remains without an Engram selector");
+  assert.equal(Object.hasOwn(actualEngram, "subagentOnlyExtensions"), false, "engram must not require a package-local child shim; gentle-engram loads ambiently");
+  assert.equal(Object.hasOwn(expectedEngram, "subagentOnlyExtensions"), false, "fixture must not reintroduce the shim");
+  assert.equal(Object.hasOwn(actualEngram, "tools"), false, "engram must omit tools so normal extensions/tools including official gentle-engram load unchanged; empty would emit --no-tools");
+  assert.equal(Object.hasOwn(expectedEngram, "tools"), false, "fixture must omit tools; empty would emit --no-tools");
   assert.equal("deferredUntil" in actualEngram, false, "published contracts must not expose internal PR sequencing");
 });
 
@@ -117,9 +107,9 @@ test("pi-subagents 0.54.0 discovers all thirteen runnable package agents without
         assert.equal(resolve(result.configuredExtensions[0]), join(installedPackage, "extensions", "git-read.ts"));
         assert.equal(existsSync(result.configuredExtensions[0]), true, `${result.requestedName} child-only extension must exist in the installed package`);
       } else if (result.requestedName === "engram") {
-        assert.deepEqual(result.configuredExtensions, expectedChildExtensions, "engram must preserve its child-only MCP selection boundary");
-        assert.equal(result.configuredExtensions?.length, 1);
-        assert.equal(existsSync(result.configuredExtensions[0]), true, "engram child-only extension must exist in the installed package");
+        assert.deepEqual(result.configuredExtensions ?? [], [], "engram must not require a package-local child shim; gentle-engram loads ambiently");
+        assert.equal((result.configuredExtensions ?? []).length, 0, "engram must load with no JorgeX child-only extension");
+        assert.equal(result.explicitAllowlist, false, "engram must not declare an explicit tool allowlist so pi-args avoids --no-tools and ambient gentle-engram loads");
       } else assert.deepEqual(result.configuredExtensions, []);
     }
   } finally {
@@ -156,13 +146,18 @@ test("pi-subagents preflight resolves private defaults and a no-skills override 
           resolved: selection.skills.map((name) => ({ name, path: join(installedPackage, "skills", name, "SKILL.md"), source: "unknown" })),
           missing: [],
         }, `${profile} ${selection.name} must resolve only its private default skills`);
-        assert.deepEqual(result.effectiveAllowlist, agent.tools, `${profile} ${selection.name} must preserve its reviewed tool allowlist`);
+        if (selection.name === "engram") {
+          assert.equal(result.explicitAllowlist, false, `${profile} engram must not declare an explicit tool allowlist so pi-args avoids --no-tools and ambient gentle-engram loads`);
+          assert.equal(Object.hasOwn(agent, "tools"), false, `${profile} fixture must omit engram tools`);
+        } else {
+          assert.deepEqual(result.effectiveAllowlist ?? [], agent.tools ?? [], `${profile} ${selection.name} must preserve its reviewed tool contract without a custom Engram selector`);
+        }
         const expectedChildExtensions = (agent.subagentOnlyExtensions ?? [])
           .map((relativePath) => join(installedPackage, relativePath.replace(/^\.\.\//, "")));
         const extensions = expectedBashPolicy(selection.name) === "git-read"
           ? [join(installedPackage, "extensions", "git-read.ts")]
           : expectedChildExtensions;
-        assert.deepEqual(result.configuredExtensions, extensions, `${profile} ${selection.name} must preserve its child extension boundary`);
+        assert.deepEqual(result.configuredExtensions ?? [], extensions, `${profile} ${selection.name} must load without a package-local Engram shim`);
       }
 
       const defaultImplementer = results.find(({ requestedName }) => requestedName === "implementer");
@@ -293,7 +288,10 @@ test("the real tarball contains the closed runtime assets and audited dependency
       assert.ok(archive.has(`package/skills/${skill}/SKILL.md`), `tarball must retain the private skill entry selected by a runtime agent: ${skill}`);
     }
     assert.ok(archive.has("package/extensions/git-read.ts"), "tarball must contain the child-only provider referenced by git-read agents");
-    assert.ok(archive.has("package/extensions/engram-child.ts"), "tarball must contain the child-only provider referenced by the engram agent");
+    assert.equal(archive.has("package/extensions/engram-child.ts"), false, "tarball must not ship a package-local Engram child shim; gentle-engram loads ambiently");
+    const packedEngram = readPackedJson(archive, "package/contract/runtime-agents.v1.json").agents.find(({ name }) => name === "engram");
+    assert.equal(Object.hasOwn(packedEngram ?? {}, "subagentOnlyExtensions"), false, "packed contract must not require the Engram shim");
+    assert.equal(Object.hasOwn(packedEngram ?? {}, "tools"), false, "packed contract must omit tools so ambient gentle-engram loads; empty would emit --no-tools");
     assertAllBashPolicies(new Map(packedRuntimeFiles.map((path) => {
       const name = path.slice(path.lastIndexOf("/") + 1, -".md".length);
       return [name, { path, frontmatter: parseAgentDocument(archive.get(path).toString("utf8")).frontmatter }];
@@ -305,10 +303,16 @@ test("the real tarball contains the closed runtime assets and audited dependency
       .filter(([path]) => path.startsWith("package/node_modules/") && path.endsWith("/package.json"))
       .map(([, bytes]) => JSON.parse(bytes.toString("utf8")))
       .filter(({ name, version }) => typeof name === "string" && name.length > 0 && typeof version === "string" && version.length > 0);
-    for (const { packageName, file } of mcpEngramExpected.portableKeyringBindings) {
-      const bindingPath = `package/node_modules/${packageName}/${file}`;
-      assert.equal(archive.has(bindingPath), true, `portable MCP bundle must contain regular native binding ${bindingPath}`);
-    }
+    assert.equal(
+      [...archive.keys()].some((path) => path.includes("/node_modules/pi-mcp-adapter/")),
+      false,
+      "tarball must not bundle the retired official adapter copy",
+    );
+    assert.equal(
+      [...archive.keys()].some((path) => path.includes("/node_modules/@napi-rs/keyring-")),
+      false,
+      "tarball must not carry the retired adapter keyring bindings",
+    );
     assert.equal(
       [...archive.keys()].some((path) => path.includes("/node_modules/@napi-rs/keyring-freebsd-")),
       false,
@@ -351,7 +355,12 @@ function assertTranslatedAgent(sourcePath, targetPath, expectedAgent) {
   const target = parseAgentDocument(readFileSync(join(root, targetPath), "utf8"));
   assert.equal(target.frontmatter.name, source.frontmatter.name);
   assert.equal(target.frontmatter.description, source.frontmatter.description);
-  assert.deepEqual(splitList(target.frontmatter.tools), expectedAgent.tools, `${targetPath} tools must match the reviewed Pi translation`);
+  if (expectedAgent.name === "engram") {
+    assert.equal(Object.hasOwn(expectedAgent, "tools"), false, "fixture must omit engram tools; empty would emit --no-tools");
+    assert.equal(Object.hasOwn(target.frontmatter, "tools"), false, `${targetPath} must omit tools so normal extensions/tools including official gentle-engram load unchanged; empty would emit --no-tools`);
+  } else {
+    assert.deepEqual(splitList(target.frontmatter.tools), expectedAgent.tools, `${targetPath} tools must match the reviewed Pi translation`);
+  }
   assert.equal(target.frontmatter.systemPromptMode, "replace");
   assert.equal(target.frontmatter.inheritProjectContext, true);
   assert.equal(target.frontmatter.inheritSkills, false);
@@ -367,6 +376,7 @@ function assertTranslatedAgent(sourcePath, targetPath, expectedAgent) {
   else assert.equal(Object.hasOwn(target.frontmatter, "maxSubagentDepth"), false, `${targetPath} must retain default delegation depth`);
   if (expectedAgent.name === "engram") {
     assert.doesNotMatch(target.body, /\bmem_timeline\b/, `${targetPath} must translate unavailable runtime-specific Engram operations`);
+    assert.deepEqual(splitList(target.frontmatter.subagentOnlyExtensions), [], `${targetPath} must not reference a package-local Engram shim`);
   } else {
     assert.equal(target.body, source.body, `${targetPath} must preserve the canonical persona byte-for-byte after LF normalization`);
   }
@@ -462,13 +472,14 @@ function assertBashPolicy(frontmatter, name, path) {
   const bashPermission = frontmatter.permission?.bash;
   const childExtensions = splitList(frontmatter.subagentOnlyExtensions);
   if (policy === "none") {
-    assert.equal(tools.includes("bash"), false, `${path} must not expose the bash tool`);
-    assert.equal(tools.includes("git_read"), false, `${path} must not expose git_read`);
     assert.equal(bashPermission, undefined, `${path} must not add a bash permission map`);
     if (name === "engram") {
-      assert.deepEqual(childExtensions, ["../extensions/engram-child.ts"], `${path} must load only the reviewed child-only engram extension`);
+      assert.deepEqual(childExtensions, [], `${path} must not load a package-local Engram shim; gentle-engram loads ambiently`);
+      assert.equal(Object.hasOwn(frontmatter, "tools"), false, `${path} must omit tools so normal extensions/tools including official gentle-engram load unchanged; empty would emit --no-tools`);
       return;
     }
+    assert.equal(tools.includes("bash"), false, `${path} must not expose the bash tool`);
+    assert.equal(tools.includes("git_read"), false, `${path} must not expose git_read`);
     assert.deepEqual(childExtensions, [], `${path} must not load a child-only git extension`);
     return;
   }

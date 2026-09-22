@@ -26,6 +26,10 @@ const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "runner.expected.json"));
 const runnerEntry = join(root, expected.entrypoint);
 const packageVersion = readJson(join(root, "package.json")).version;
+// Post-setup fixture evidence: official setup owns exactly one global
+// gentle-engram@semver plus one global pi-mcp-adapter. Fixtures provide that
+// pair; versions are smoke evidence, not pins.
+const officialPair = ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"];
 const permissionConfigRelativePath = join("extensions", "pi-permission-system", "config.json");
 const permissionReceiptRelativePath = join("jorgex-pi", "permissions-lifecycle.v1.json");
 
@@ -88,6 +92,7 @@ test("the package exposes one versioned JSON-only runner contract", () => {
 test("status, models, doctor, and usage use the bounded machine envelope and stable exits", () => {
   assert.ok(existsSync(runnerEntry), "runner production is required before exercising its public process boundary");
   const sandbox = createSandbox("protocol");
+  writeJson(join(sandbox.agentDir, "settings.json"), { packages: [...officialPair] });
   try {
     const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
     assert.equal(status.status, expected.exitCodes.success);
@@ -158,7 +163,7 @@ test("runner expands a tilde Pi agent directory consistently across status, sync
   const settingsPath = join(resolvedAgentDir, "settings.json");
   const registration = `npm:jorgex-pi@${packageVersion}`;
   mkdirSync(resolvedAgentDir, { recursive: true });
-  writeJson(settingsPath, { packages: [registration], foreign: { keep: true } });
+  writeJson(settingsPath, { packages: [registration, ...officialPair], foreign: { keep: true } });
   const env = { ...sandbox.env, PI_CODING_AGENT_DIR: tildeAgentDir };
   try {
     const status = runRunner("status", env, sandbox.project, ["--json"]);
@@ -180,7 +185,7 @@ test("runner expands a tilde Pi agent directory consistently across status, sync
     const cleanup = runRunner("cleanup", env, sandbox.project, ["--json"]);
     assert.equal(cleanup.status, expected.exitCodes.success);
     assertEnvelope(cleanup, "cleanup");
-    assert.deepEqual(readJson(settingsPath), { packages: [registration], foreign: { keep: true } });
+    assert.deepEqual(readJson(settingsPath), { packages: [registration, ...officialPair], foreign: { keep: true } });
     assert.equal(existsSync(join(resolvedAgentDir, "models.json")), false);
     assert.equal(existsSync(join(sandbox.project, "~")), false, "tilde expansion must not create a literal relative directory");
   } finally {
@@ -193,6 +198,7 @@ test("experience defaults seed once, keep ownership separate from Sol, and prese
   const settingsPath = join(sandbox.agentDir, "settings.json");
   const modelsPath = join(sandbox.agentDir, "models.json");
   writeJson(settingsPath, {
+    packages: [...officialPair],
     defaultProvider: "openai-codex",
     defaultModel: "gpt-5.6-sol",
     defaultThinkingLevel: "high",
@@ -260,6 +266,7 @@ test("experience ownership preserves preexisting values and removes only owned e
   const preexistingSettingsPath = join(preexistingSandbox.agentDir, "settings.json");
   const preexistingModelsPath = join(preexistingSandbox.agentDir, "models.json");
   const preexisting = {
+    packages: [...officialPair],
     defaultProvider: "openai-codex",
     defaultModel: "gpt-5.6-sol",
     defaultThinkingLevel: "low",
@@ -283,6 +290,7 @@ test("experience ownership preserves preexisting values and removes only owned e
   const ownedSettingsPath = join(ownedSandbox.agentDir, "settings.json");
   const ownedModelsPath = join(ownedSandbox.agentDir, "models.json");
   writeJson(ownedSettingsPath, {
+    packages: [...officialPair],
     defaultProvider: "openai-codex",
     defaultModel: "gpt-5.6-sol",
     defaultThinkingLevel: "low",
@@ -324,6 +332,7 @@ test("experience ownership preserves preexisting values and removes only owned e
     assert.equal(cleanupWithoutOwnership.json.result.changed, true, "cleanup must remove the first-visit receipt it owns");
     assert.equal(existsSync(preexistingReceiptPath), false, "cleanup must remove its dedicated experience receipt");
     assert.deepEqual(readJson(preexistingSettingsPath).foreign, { keep: true }, "cleanup must preserve unrelated settings");
+    assert.deepEqual(readJson(preexistingSettingsPath).packages, [...officialPair], "cleanup must preserve the official setup pair");
 
     const ownedSync = runRunner("sync", ownedSandbox.env, ownedSandbox.project);
     assert.equal(ownedSync.status, expected.exitCodes.success);
@@ -361,6 +370,7 @@ test("experience ownership preserves preexisting values and removes only owned e
     assert.equal("hideThinkingBlock" in settingsAfterCleanup, false, "cleanup must remove an owned exact hideThinkingBlock leaf");
     assert.equal(settingsAfterCleanup.defaultThinkingLevel, "minimal", "cleanup must preserve defaultThinkingLevel");
     assert.deepEqual(settingsAfterCleanup.foreign, { keep: true });
+    assert.deepEqual(settingsAfterCleanup.packages, [...officialPair], "cleanup must preserve the official setup pair");
     assert.equal(
       existsSync(join(ownedSandbox.agentDir, "jorgex-pi", "experience-lifecycle.v1.json")),
       false,
@@ -385,6 +395,7 @@ test("experience sync seeds global defaults without overriding project settings"
     foreign: { keep: true },
   };
   writeJson(settingsPath, {
+    packages: [...officialPair],
     defaultProvider: "openai-codex",
     defaultModel: "gpt-5.6-sol",
     defaultThinkingLevel: "high",
@@ -418,18 +429,20 @@ test("experience sync seeds global defaults without overriding project settings"
   }
 });
 
-test("status diagnoses an external Pi MCP adapter before advertising Context7", () => {
-  const sandbox = createSandbox("context7-external-adapter");
+test("status diagnoses an incomplete official setup before advertising Context7", () => {
+  const sandbox = createSandbox("context7-incomplete-official-setup");
   const settingsPath = join(sandbox.agentDir, "settings.json");
+  // A lone adapter without its gentle-engram pair is incomplete official
+  // setup evidence; only the complete global pair owns the channel.
   const settingsBytes = `${JSON.stringify({ packages: ["npm:pi-mcp-adapter@2.27.0"], foreign: true }, null, 2)}\n`;
   writeFileSync(settingsPath, settingsBytes);
   try {
     const status = runRunner("status", sandbox.env, sandbox.project, ["--json"]);
     assert.equal(status.status, expected.exitCodes.unhealthy);
     assertEnvelope(status, "status");
-    assert.equal(status.json.result.context7.state, "conflict");
+    assert.equal(status.json.result.context7.state, "missing");
     assert.equal(status.json.result.context7.source, "pi-global-settings");
-    assert.equal(status.json.result.context7.code, "external-mcp-adapter");
+    assert.equal(status.json.result.context7.code, "missing-official-packages");
     assert.equal(readFileSync(settingsPath, "utf8"), settingsBytes);
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
@@ -469,7 +482,7 @@ test("status recognizes one exact Pi registration without mutating foreign setti
   const sandbox = createSandbox("registration");
   const settingsPath = join(sandbox.agentDir, "settings.json");
   const source = `npm:jorgex-pi@${packageVersion}`;
-  const bytes = `${JSON.stringify({ packages: ["npm:foreign@1.0.0", source], foreign: { keep: true } }, null, 2)}\n`;
+  const bytes = `${JSON.stringify({ packages: ["npm:foreign@1.0.0", source, ...officialPair], foreign: { keep: true } }, null, 2)}\n`;
   writeFileSync(settingsPath, bytes);
   try {
     const status = runRunner("status", sandbox.env, sandbox.project);
@@ -569,6 +582,7 @@ test("status resolves an absolute ENGRAM_BIN before an isolated PATH fallback wi
   const pathBin = join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram");
   createFakeExecutable(explicitBin);
   createFakeExecutable(pathBin);
+  writeJson(join(sandbox.agentDir, "settings.json"), { packages: [...officialPair] });
   try {
     const explicit = runRunner("status", { ...sandbox.env, ENGRAM_BIN: explicitBin }, sandbox.project, ["--json"]);
     assert.equal(explicit.status, expected.exitCodes.success);
@@ -594,7 +608,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
     const sandbox = createSolSandbox("sol-fresh");
     const settingsPath = join(sandbox.agentDir, "settings.json");
     const modelsPath = join(sandbox.agentDir, "models.json");
-    const foreignSettings = { packages: ["npm:foreign@1.0.0"], foreign: { keep: true } };
+    const foreignSettings = { packages: ["npm:foreign@1.0.0", ...officialPair], foreign: { keep: true } };
     const foreignModels = {
       providers: {
         "openai-codex": {
@@ -662,6 +676,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
     const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
     const permissionReceiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
     writeJson(settingsPath, {
+      packages: [...officialPair],
       defaultProvider: "openai-codex",
       defaultModel: "gpt-5.6-sol",
       foreign: { keep: true },
@@ -705,6 +720,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
       assert.equal(readFileSync(permissionPath, "utf8"), permissionBytes, "cleanup must preserve the preexisting permission config");
       assert.equal(existsSync(join(sandbox.agentDir, "jorgex-pi", "experience-lifecycle.v1.json")), false, "cleanup must remove the experience receipt it created");
       assert.deepEqual(readJson(settingsPath), {
+        packages: [...officialPair],
         defaultProvider: "openai-codex",
         defaultModel: "gpt-5.6-sol",
         foreign: { keep: true },
@@ -727,7 +743,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
         const sandbox = createSolSandbox("sol-foreign-half");
         const settingsPath = join(sandbox.agentDir, "settings.json");
         const modelsPath = join(sandbox.agentDir, "models.json");
-        writeJson(settingsPath, settings);
+        writeJson(settingsPath, { ...settings, packages: [...officialPair] });
         const before = digestRoots([sandbox.agentDir]);
         try {
           const sync = runRunner("sync", sandbox.env, sandbox.project);
@@ -757,7 +773,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
         const sandbox = createSolSandbox("sol-matching-half");
         const settingsPath = join(sandbox.agentDir, "settings.json");
         const modelsPath = join(sandbox.agentDir, "models.json");
-        writeJson(settingsPath, settings);
+        writeJson(settingsPath, { ...settings, packages: [...officialPair] });
         try {
           const sync = runRunner("sync", sandbox.env, sandbox.project);
           assert.equal(sync.status, expected.exitCodes.success);
@@ -765,6 +781,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
           assert.equal(sync.json.result.changed, true, "sync must complete a matching partial Sol pair");
           assert.deepEqual(readJson(settingsPath), {
             ...settings,
+            packages: [...officialPair],
             defaultProvider: "openai-codex",
             defaultModel: "gpt-5.6-sol",
             theme: "JorgeX",
@@ -785,7 +802,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
     const modelsPath = join(sandbox.agentDir, "models.json");
     const permissionPath = join(sandbox.agentDir, permissionConfigRelativePath);
     const permissionReceiptPath = join(sandbox.agentDir, permissionReceiptRelativePath);
-    writeJson(settingsPath, { foreign: { keep: true } });
+    writeJson(settingsPath, { packages: [...officialPair], foreign: { keep: true } });
     writeJson(modelsPath, { providers: { foreign: { keep: true } } });
     try {
       const sync = runRunner("sync", sandbox.env, sandbox.project);
@@ -816,6 +833,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
       assert.equal(settingsAfterCleanup.quietStartup, false, "cleanup must preserve a user replacement of quietStartup");
       assert.equal("hideThinkingBlock" in settingsAfterCleanup, false, "cleanup must remove an owned exact experience leaf");
       assert.deepEqual(settingsAfterCleanup.foreign, { keep: true });
+      assert.deepEqual(settingsAfterCleanup.packages, [...officialPair], "cleanup must preserve the official setup pair");
       assert.equal(
         modelsAfterCleanup.providers["openai-codex"].modelOverrides["gpt-5.6-sol"].contextWindow,
         64_000,
@@ -839,7 +857,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
     const sandbox = createSandbox("sol-active-lock");
     const settingsPath = join(sandbox.agentDir, "settings.json");
     const lockPath = `${settingsPath}.lock`;
-    writeJson(settingsPath, { foreign: { keep: true } });
+    writeJson(settingsPath, { packages: [...officialPair], foreign: { keep: true } });
     mkdirSync(lockPath);
     const before = digestRoots([sandbox.agentDir]);
     try {
@@ -872,6 +890,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
     await t.test("malformed models JSON leaves all files untouched", () => {
       const sandbox = createSandbox("sol-malformed-models");
       const modelsPath = join(sandbox.agentDir, "models.json");
+      writeJson(join(sandbox.agentDir, "settings.json"), { packages: [...officialPair] });
       writeFileSync(modelsPath, "{not-json\n");
       const before = digestRoots([sandbox.agentDir]);
       try {
@@ -893,6 +912,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
       const sandbox = createSandbox("sol-incompatible-models-parent");
       const modelsPath = join(sandbox.agentDir, "models.json");
       const incompatibleModels = { providers: [] };
+      writeJson(join(sandbox.agentDir, "settings.json"), { packages: [...officialPair] });
       writeJson(modelsPath, incompatibleModels);
       const before = digestRoots([sandbox.agentDir]);
       try {
@@ -910,6 +930,7 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
 
     await t.test("malformed receipt leaves owned config untouched", () => {
       const sandbox = createSandbox("sol-malformed-receipt");
+      writeJson(join(sandbox.agentDir, "settings.json"), { packages: [...officialPair] });
       try {
         const sync = runRunner("sync", sandbox.env, sandbox.project);
         assert.equal(sync.status, expected.exitCodes.success);
@@ -939,11 +960,13 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
     const modelsPath = join(sandbox.agentDir, "models.json");
     try {
       assert.deepEqual(readdirSync(sandbox.agentDir), []);
+      writeJson(settingsPath, { packages: [...officialPair] });
 
       const sync = runRunner("sync", sandbox.env, sandbox.project);
       assert.equal(sync.status, expected.exitCodes.success);
       assertEnvelope(sync, "sync");
       assert.deepEqual(readJson(settingsPath), {
+        packages: [...officialPair],
         defaultProvider: "openai-codex",
         defaultModel: "gpt-5.6-sol",
         theme: "JorgeX",
@@ -972,14 +995,14 @@ test("Sol lifecycle sync and cleanup preserve field-level ownership at the runne
           "models.providers.openai-codex.modelOverrides": true,
           "models.providers.openai-codex.modelOverrides.gpt-5.6-sol": true,
         },
-        files: { models: true, settings: true },
+        files: { models: true },
       });
 
       const cleanup = runRunner("cleanup", sandbox.env, sandbox.project);
       assert.equal(cleanup.status, expected.exitCodes.success);
       assertEnvelope(cleanup, "cleanup");
       assert.equal(cleanup.json.result.changed, true);
-      assert.equal(existsSync(join(sandbox.agentDir, "settings.json")), false, "cleanup must remove the owned settings file");
+      assert.deepEqual(readJson(join(sandbox.agentDir, "settings.json")), { packages: [...officialPair] }, "cleanup must preserve the pre-existing official setup pair while removing owned leaves");
       assert.equal(existsSync(join(sandbox.agentDir, "models.json")), false, "cleanup must remove the owned models file");
       assert.equal(existsSync(join(sandbox.agentDir, permissionConfigRelativePath)), false, "cleanup must remove the owned permission config");
       assert.equal(existsSync(join(sandbox.agentDir, permissionReceiptRelativePath)), false, "cleanup must remove the permission lifecycle receipt");
@@ -1002,7 +1025,7 @@ test("initialization diagnostics require first sync and preserve valid customiza
 
   function makeRegisteredSandbox(label) {
     const sandbox = createSandbox(label);
-    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
     return sandbox;
   }
@@ -1073,6 +1096,7 @@ test("initialization diagnostics require first sync and preserve valid customiza
   await t.test("unregistered pending preserves informative status", () => {
     const sandbox = createSandbox("init-unregistered-pending");
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [...officialPair] });
     const receiptPath = join(sandbox.agentDir, experienceRelative);
     try {
       const before = digestRoots([sandbox.agentDir]);
@@ -1102,7 +1126,7 @@ test("initialization diagnostics require first sync and preserve valid customiza
     const sandbox = makeRegisteredSandbox("init-healthy-custom");
     const settingsPath = join(sandbox.agentDir, "settings.json");
     writeJson(settingsPath, {
-      packages: [`npm:jorgex-pi@${packageVersion}`],
+      packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair],
       theme: "preexisting-theme",
       quietStartup: false,
       hideThinkingBlock: false,
@@ -1282,7 +1306,7 @@ test("initialization pending is isolated per component", async (t) => {
 
   function makeIsolatedSandbox(label) {
     const sandbox = createSandbox(label);
-    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
     return sandbox;
   }
@@ -1352,7 +1376,7 @@ test("experience receipt symlinks are rejected as invalid without sync repair", 
   for (const label of ["broken", "valid"]) {
     await t.test(label, (tt) => {
       const sandbox = createSandbox(`init-symlink-${label}`);
-      writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+      writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
       createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
       try {
         const sync = runRunner("sync", sandbox.env, sandbox.project);
@@ -1408,7 +1432,7 @@ test("experience receipt symlinks are rejected as invalid without sync repair", 
 test("doctor preserves Engram-before-Context7 and permissions-specific causes", async (t) => {
   await t.test("relative ENGRAM_BIN outranks Context7 conflict", () => {
     const sandbox = createSandbox("doctor-engram-before-context7");
-    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
     try {
       const sync = runRunner("sync", sandbox.env, sandbox.project);
@@ -1430,7 +1454,7 @@ test("doctor preserves Engram-before-Context7 and permissions-specific causes", 
 
   await t.test("invalid permission config returns permissions-specific remedy", () => {
     const sandbox = createSandbox("doctor-permissions-cause");
-    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`] });
+    writeJson(join(sandbox.agentDir, "settings.json"), { packages: [`npm:jorgex-pi@${packageVersion}`, ...officialPair] });
     createFakeExecutable(join(sandbox.env.PATH, process.platform === "win32" ? "engram.exe" : "engram"));
     try {
       const sync = runRunner("sync", sandbox.env, sandbox.project);

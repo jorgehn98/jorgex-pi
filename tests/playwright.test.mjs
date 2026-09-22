@@ -144,9 +144,8 @@ test("the default bootstrap resolver advertises only the verified temporary Play
         getPermissionsService: () => ({ ready: true }),
         detectWebAccessConflict: () => undefined,
         detectGoalConflict: () => undefined,
-        detectMcpAdapterConflict: () => undefined,
         readGoalConfig: () => ({ kind: "loaded" }),
-        installMcpEngram: async () => ({ state: "managed" }),
+        resolveMcpEngram: async () => ({ state: "managed" }),
         readSystemPromptAssets: readSystemPromptAssets,
       })(pi.api);
       const result = await pi.beforeAgentStart({ systemPrompt: "Existing prompt" }, { sessionId: "playwright-default" });

@@ -151,18 +151,7 @@
       "tier": "cheap",
       "status": "runnable",
       "requiredCapability": "engram-runtime-tools-v1",
-      "maxSubagentDepth": 0,
-      "subagentOnlyExtensions": [
-        "../extensions/engram-child.ts"
-      ],
-      "tools": [
-        "mem_search",
-        "mem_context",
-        "mem_get_observation",
-        "mem_suggest_topic_key",
-        "mem_current_project",
-        "mem_doctor"
-      ]
+      "maxSubagentDepth": 0
     },
     {
       "name": "implementer",

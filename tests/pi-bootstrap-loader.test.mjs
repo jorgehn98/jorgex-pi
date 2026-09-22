@@ -59,11 +59,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     assert.equal(loaded.settingsBytes, userSettings, "loading branding must preserve existing Pi settings byte-for-byte");
     assert.equal(loaded.guard?.block, true, "the real Pi runner must see the JorgeX guard before session health");
     assert.equal(loaded.guard?.terminate, true, "the pre-health guard must terminate the blocked tool batch");
-    assert.deepEqual(loaded.engramToolNames, [
-      "mem_compare", "mem_context", "mem_current_project", "mem_doctor", "mem_get_observation", "mem_judge", "mem_pin",
-      "mem_review", "mem_save", "mem_save_prompt", "mem_search", "mem_session_end", "mem_session_start",
-      "mem_session_summary", "mem_suggest_topic_key", "mem_unpin", "mem_update",
-    ], "the real Pi runner must register exactly the 17 reviewed direct Engram tools");
+    assert.deepEqual(loaded.engramToolNames, [], "the official package bundles no adapter: without the external gentle/adapter setup Pi registers zero mem tools");
     assert.equal(loaded.engramToolNames.includes("mem_capture_passive"), false);
     assert.equal(loaded.realGoal.commandNames.filter((name) => name === "goal").length, 1, "the real packaged companion must register exactly one /goal command");
     assert.equal(loaded.realGoal.commandNames.filter((name) => name === "jorgex:header").length, 1, "the real Pi loader must register the reversible JorgeX header command");
@@ -133,7 +129,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     assert.deepEqual(
       receiptLoaded.engramToolNames,
       loaded.engramToolNames,
-      "the real Pi loader must register the reviewed Engram tools from the exact Stack receipt without ENGRAM_BIN",
+      "the real Pi loader must resolve the same zero bundled tools from the exact Stack receipt without ENGRAM_BIN",
     );
 
     const missingRoot = join(sandbox, "missing-engram");

@@ -37,9 +37,6 @@ const agentSkills = new Map([
   ["translator", ["agent-delegation"]],
   ["type-design-analyzer", ["agent-delegation"]],
 ]);
-const engramTools = [
-  "mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key", "mem_current_project", "mem_doctor",
-];
 
 try {
   const names = readdirSync(join(root, "snapshot", "agents"))
@@ -99,9 +96,7 @@ function translateAgent(name) {
       targetPath,
       status,
       requiredCapability: "engram-runtime-tools-v1",
-      tools: engramTools,
       selectedSkills,
-      subagentOnlyExtensions: ["../extensions/engram-child.ts"],
     };
   }
   const tools = ["read", "grep", "find", "ls"];
@@ -139,7 +134,7 @@ function writeRuntimeAgent(agent) {
     "---",
     `name: ${agent.source.name}`,
     `description: ${agent.source.description}`,
-    `tools: ${agent.tools.join(", ")}`,
+    ...(agent.tools !== undefined && agent.tools.length > 0 ? [`tools: ${agent.tools.join(", ")}`] : []),
     "systemPromptMode: replace",
     "inheritProjectContext: true",
     "inheritSkills: false",
@@ -165,7 +160,7 @@ function contractEntry(agent) {
     ...(agent.source.spawn === "false" ? { maxSubagentDepth: 0 } : {}),
     ...(agent.source.bash === "git-read" ? { subagentOnlyExtensions: ["../extensions/git-read.ts"] } : {}),
     ...(Array.isArray(agent.subagentOnlyExtensions) && agent.subagentOnlyExtensions.length > 0 ? { subagentOnlyExtensions: [...agent.subagentOnlyExtensions] } : {}),
-    tools: agent.tools,
+    ...(agent.tools !== undefined && agent.tools.length > 0 ? { tools: agent.tools } : {}),
   };
 }
 

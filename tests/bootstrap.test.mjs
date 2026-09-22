@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = JSON.parse(readFileSync(join(testDir, "fixtures", "bootstrap.expected.json"), "utf8"));
-const mcpExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "mcp-engram.expected.json"), "utf8"));
 const capabilitiesExpected = JSON.parse(readFileSync(join(testDir, "fixtures", "quality-capabilities.expected.json"), "utf8"));
 const companionToolNames = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
@@ -29,10 +28,16 @@ test("Context7 guidance is exposed only after its managed HTTP server registrati
   const context7 = directInstallAsset("context7");
   const scenarios = [
     {
-      name: "registered",
-      context7State: { state: "registered" },
+      name: "managed available with definition",
+      context7State: { state: "available" },
       mcpConfig: { mcpServers: { engram: {}, context7: { url: "https://mcp.context7.com/mcp" } } },
       expected: true,
+    },
+    {
+      name: "stale registered without available",
+      context7State: { state: "registered" },
+      mcpConfig: { mcpServers: { engram: {}, context7: { url: "https://mcp.context7.com/mcp" } } },
+      expected: false,
     },
     {
       name: "homonymous user configuration",
@@ -523,9 +528,8 @@ test("unavailable or reserved prompt assets append one identical emergency polic
       getPermissionsService: () => ({ ready: true }),
       detectWebAccessConflict: () => undefined,
       detectGoalConflict: () => undefined,
-      detectMcpAdapterConflict: () => undefined,
       readGoalConfig: () => ({ kind: "loaded" }),
-      installMcpEngram: async () => ({ state: "managed" }),
+      resolveMcpEngram: async () => ({ state: "managed" }),
       readSystemPromptAssets: failure.readSystemPromptAssets ?? (() => failure.assets),
     })(pi.api);
 
@@ -584,12 +588,22 @@ test("direct-install preserves readable separation around a complete adjacent ma
 
 test("the active companions and their audited closure are exactly pinned and bundled", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  const packagedDependencies = [...expected.companions, mcpExpected.adapter];
-  const dependencies = Object.fromEntries(packagedDependencies.map(({ name, version }) => [name, version]).sort(([left], [right]) => left.localeCompare(right)));
+  const packagedDependencies = [...expected.companions];
+  const dependencies = Object.fromEntries(
+    [...packagedDependencies, ...expected.runtimeDependencies]
+      .map(({ name, version }) => [name, version])
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
   assert.deepEqual(manifest.dependencies, dependencies);
-  assert.deepEqual([...manifest.bundledDependencies].sort(), packagedDependencies.map(({ name }) => name).sort());
+  assert.deepEqual(
+    [...manifest.bundledDependencies].sort(),
+    [...packagedDependencies, ...expected.runtimeDependencies].map(({ name }) => name).sort(),
+  );
+  assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "official bridge must not bundle its own adapter copy");
+  assert.equal(manifest.dependencies?.["gentle-engram"], undefined, "official setup owns gentle-engram, not jorgex-pi");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8").replace(/\r\n/g, "\n");
-  for (const dependency of expected.bundledClosure) assertLockIntegrity(lock, dependency);
+  assert.doesNotMatch(lock, /pi-mcp-adapter@2\.27\.0/, "lock must not pin the retired bundled adapter");
+  for (const dependency of [...expected.bundledClosure, ...expected.runtimeDependencies]) assertLockIntegrity(lock, dependency);
 });
 
 test("healthy Pi bootstrap reports guidance and manual approval without external verification", async () => {
@@ -643,7 +657,6 @@ test("bootstrap transports observed permission health as local capabilities thro
     },
     detectWebAccessConflict: () => undefined,
     detectGoalConflict: () => undefined,
-    detectMcpAdapterConflict: () => undefined,
     readGoalConfig: () => ({ kind: "loaded" }),
   })(pi.api);
 
@@ -712,7 +725,6 @@ test("bootstrap capability transport degrades on failure and a throwing emitter 
     getPermissionsService: () => ({ ready: true }),
     detectWebAccessConflict: () => undefined,
     detectGoalConflict: () => undefined,
-    detectMcpAdapterConflict: () => undefined,
     readGoalConfig: () => ({ kind: "loaded" }),
   })(pi.api);
 
@@ -903,114 +915,6 @@ test("a selection changed after a pre-health prompt remains authoritative at fir
   assert.deepEqual(pi.activeTools(), withoutWebSearch, "first readiness must not restore a tool disabled after the pre-health hide");
 });
 
-for (const directInstall of [
-  { label: "global pinned string", scope: "global", entry: "npm:pi-web-access@0.24.1" },
-  { label: "project unpinned string", scope: "project", entry: "npm:pi-web-access" },
-  { label: "project object source", scope: "project", entry: { source: "npm:pi-web-access@0.24.1", extensions: ["index.ts"] } },
-]) {
-  test(`direct pi-web-access conflict fails closed for ${directInstall.label}`, async () => {
-    const { createBootstrap, detectWebAccessConflict } = await import("../extensions/bootstrap.ts");
-    assert.equal(typeof detectWebAccessConflict, "function", "bootstrap must export its production settings detector seam");
-    const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-web-conflict-"));
-    const globalSettingsPath = join(sandbox, "agent", "settings.json");
-    const projectSettingsPath = join(sandbox, "project", ".pi", "settings.json");
-    const globalBytes = JSON.stringify({ packages: [directInstall.scope === "global" ? directInstall.entry : "npm:foreign-global@1.0.0"], foreign: { keep: true } }, null, 2) + "\n";
-    const projectBytes = JSON.stringify({ packages: [directInstall.scope === "project" ? directInstall.entry : "npm:foreign-project@1.0.0"], local: { keep: true } }, null, 2) + "\n";
-    mkdirSync(dirname(globalSettingsPath), { recursive: true });
-    mkdirSync(dirname(projectSettingsPath), { recursive: true });
-    writeFileSync(globalSettingsPath, globalBytes);
-    writeFileSync(projectSettingsPath, projectBytes);
-
-    try {
-      const detector = () => detectWebAccessConflict({ globalSettingsPath, projectSettingsPath });
-      const conflict = detector();
-      assert.equal(conflict?.packageName, "pi-web-access");
-      assert.equal(conflict?.scope, directInstall.scope);
-
-      const pi = createPiHarness();
-      await createBootstrap({
-        loadCompanion: async (id) => companionFactory(id),
-        getPermissionsService: () => ({ ready: true }),
-        detectWebAccessConflict: detector,
-      })(pi.api);
-      const notifications = [];
-      const context = { sessionId: `conflict-${directInstall.scope}`, ui: { notify: (message, type) => notifications.push({ message, type }) } };
-      await pi.emitLifecycle("session_start", {}, context);
-      await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
-      await pi.emitLifecycle("before_agent_start", {}, context);
-      assert.deepEqual(pi.activeTools(), [], "a direct duplicate install must keep companion tools hidden even after permission readiness");
-      assertEarlyGuard(await pi.emitToolCall({ toolName: "web_search", input: { query: "must not run" } }, context));
-      assert.equal(notifications.length, 1, "the direct-install conflict must be diagnosed once");
-      assert.equal(notifications[0].type, "error");
-      assert.match(notifications[0].message, /direct|duplicate|settings/i);
-      assert.match(notifications[0].message, /pi-web-access/);
-      await pi.emitLifecycle("session_start", {}, context);
-      assert.equal(notifications.length, 1, "later session starts must not duplicate the conflict diagnostic");
-      assert.equal(readFileSync(globalSettingsPath, "utf8"), globalBytes, "conflict detection must not rewrite global settings");
-      assert.equal(readFileSync(projectSettingsPath, "utf8"), projectBytes, "conflict detection must not rewrite project settings");
-    } finally {
-      rmSync(sandbox, { recursive: true, force: true });
-    }
-  });
-}
-
-for (const directInstall of [
-  { label: "global pinned string", scope: "global", entry: "npm:pi-mcp-adapter@2.27.0" },
-  { label: "project unpinned string", scope: "project", entry: "npm:pi-mcp-adapter" },
-  { label: "project object source", scope: "project", entry: { source: "npm:pi-mcp-adapter@2.27.0", extensions: ["index.ts"] } },
-]) {
-  test(`direct pi-mcp-adapter conflict skips the bundled adapter and latches for ${directInstall.label}`, async () => {
-    const { createBootstrap, detectMcpAdapterConflict } = await import("../extensions/bootstrap.ts");
-    assert.equal(typeof detectMcpAdapterConflict, "function", "bootstrap must expose its production MCP adapter conflict detector");
-    const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-adapter-conflict-"));
-    const globalSettingsPath = join(sandbox, "agent", "settings.json");
-    const projectSettingsPath = join(sandbox, "project", ".pi", "settings.json");
-    const globalBytes = JSON.stringify({ packages: [directInstall.scope === "global" ? directInstall.entry : "npm:foreign-global@1.0.0"] }, null, 2) + "\n";
-    const projectBytes = JSON.stringify({ packages: [directInstall.scope === "project" ? directInstall.entry : "npm:foreign-project@1.0.0"] }, null, 2) + "\n";
-    mkdirSync(dirname(globalSettingsPath), { recursive: true });
-    mkdirSync(dirname(projectSettingsPath), { recursive: true });
-    writeFileSync(globalSettingsPath, globalBytes);
-    writeFileSync(projectSettingsPath, projectBytes);
-
-    try {
-      const detector = () => detectMcpAdapterConflict({ globalSettingsPath, projectSettingsPath });
-      const conflict = detector();
-      assert.equal(conflict?.packageName, "pi-mcp-adapter");
-      assert.equal(conflict?.scope, directInstall.scope);
-
-      let adapterFactoryCalls = 0;
-      const pi = createPiHarness();
-      await createBootstrap({
-        loadCompanion: async (id) => companionFactory(id),
-        getPermissionsService: () => ({ ready: true }),
-        detectMcpAdapterConflict: detector,
-        installMcpEngram: async () => {
-          adapterFactoryCalls += 1;
-          return { state: "managed" };
-        },
-      })(pi.api);
-      assert.equal(adapterFactoryCalls, 0, "duplicate detection must run before the bundled adapter factory");
-
-      const notifications = [];
-      const context = { sessionId: `mcp-conflict-${directInstall.scope}`, ui: { notify: (message, type) => notifications.push({ message, type }) } };
-      await pi.emitLifecycle("session_start", {}, context);
-      await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
-      await pi.emitLifecycle("before_agent_start", {}, context);
-      assert.deepEqual(pi.activeTools(), companionToolNames, "an MCP adapter collision must isolate Engram without disabling healthy companions");
-      assert.equal(notifications.length, 1, "the external unmanaged adapter must be diagnosed exactly once");
-      assert.match(notifications[0].message, /pi-mcp-adapter|adapter/i);
-      assert.match(notifications[0].message, /external|duplicate|unmanaged/i);
-
-      writeFileSync(directInstall.scope === "global" ? globalSettingsPath : projectSettingsPath, '{"packages":[]}\n');
-      await pi.emitLifecycle("session_start", {}, { ...context, sessionId: `${context.sessionId}-later` });
-      assert.equal(adapterFactoryCalls, 0, "cleaning settings in-process must not activate a second adapter before reload");
-      assert.equal(notifications.length, 1, "the latched collision must not duplicate its diagnostic");
-    } finally {
-      rmSync(sandbox, { recursive: true, force: true });
-    }
-  });
-}
-
 test("a detected direct-install conflict stays latched until the bootstrap is reloaded", async () => {
   const { createBootstrap, detectWebAccessConflict } = await import("../extensions/bootstrap.ts");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-web-conflict-latch-"));
@@ -1139,9 +1043,8 @@ async function composeDirectInstallPrompt({ systemPrompt, engramState, context7S
     getPermissionsService: () => ({ ready: true }),
     detectWebAccessConflict: () => undefined,
     detectGoalConflict: () => undefined,
-    detectMcpAdapterConflict: () => undefined,
     readGoalConfig: () => ({ kind: "loaded" }),
-    installMcpEngram: async () => ({
+    resolveMcpEngram: async () => ({
       state: engramState,
       ...(context7State === undefined ? {} : { context7: context7State }),
       ...(mcpConfig === undefined ? {} : { config: mcpConfig }),

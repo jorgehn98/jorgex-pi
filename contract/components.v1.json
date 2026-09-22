@@ -10,14 +10,6 @@
       "purpose": "Focused subagents and orchestration primitives."
     },
     {
-      "name": "pi-mcp-adapter",
-      "status": "active",
-      "version": "2.27.0",
-      "license": "MIT",
-      "integrity": "sha512-IM9dfGhou5Q5AJqwkm1kW1+WXyMsvL53GEO4JVYukzvTxNPHn2b+Zi49+JAnOhlaOpEq5vEodUSJXmpghik+lw==",
-      "purpose": "Pi-native MCP transport and tool exposure."
-    },
-    {
       "name": "@juicesharp/rpiv-ask-user-question",
       "status": "active",
       "version": "2.7.0",

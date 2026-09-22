@@ -89,7 +89,7 @@
     "pi-subagents",
     "pi-web-access",
     "@narumitw/pi-goal",
-    "pi-mcp-adapter"
+    "strip-json-comments"
   ],
   "packageManager": "pnpm@11.22.0",
   "devDependencies": {
@@ -100,8 +100,8 @@
     "@gotgenes/pi-permission-system": "27.0.0",
     "@juicesharp/rpiv-ask-user-question": "2.7.0",
     "@narumitw/pi-goal": "0.53.0",
-    "pi-mcp-adapter": "2.27.0",
     "pi-subagents": "0.54.0",
-    "pi-web-access": "0.24.1"
+    "pi-web-access": "0.24.1",
+    "strip-json-comments": "5.0.3"
   }
 }

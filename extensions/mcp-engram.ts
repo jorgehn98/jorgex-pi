@@ -1,10 +1,21 @@
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
-import { isAbsolute, posix, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildEngramChildSpec } from "./engram-mcp-wrapper.mjs";
-import { inspectContext7Config, resolvePiAgentDir } from "./context7-config.mjs";
+import { inspectContext7Config, inspectOfficialPackages, resolvePiAgentDir } from "./context7-config.mjs";
 
-const wrapperPath = fileURLToPath(new URL("./engram-mcp-wrapper.mjs", import.meta.url));
+// Synchronous runtime registration event published by the external
+// pi-mcp-adapter contract observed by the smoke harness (version 1):
+// { version: 1, name, definition }.
+// The adapter answers inline on request.result as
+// { ok: true, registration: { dispose } } with no top-level dispose or
+// snapshot; snapshots flow through the separate runtime-snapshot:v1 event
+// ({ version: 1, name } -> { ok, snapshot?, error? }).
+export const RUNTIME_REGISTER_EVENT = "pi-mcp-adapter:runtime-register:v1";
+export const RUNTIME_REGISTER_VERSION = 1;
+export const RUNTIME_SNAPSHOT_EVENT = "pi-mcp-adapter:runtime-snapshot:v1";
+export const RUNTIME_SNAPSHOT_VERSION = 1;
+export const CONTEXT7_URL = "https://mcp.context7.com/mcp";
+const OFFICIAL_ENGRAM_ARGS = ["mcp", "--tools=agent"];
 const DEVTOOLS_HANDOFF_RELATIVE_PATH = ["jorgex-pi", "devtools.v1.json"];
 const DEVTOOLS_HANDOFF_ARGS = [
   "dlx",
@@ -14,26 +25,60 @@ const DEVTOOLS_HANDOFF_ARGS = [
   "--no-performance-crux",
   "--no-usage-statistics",
 ];
-const recoveryInstruction = [
-  "FIRST ACTION REQUIRED after compaction: call mem_session_summary with the compacted session outcome.",
-  "Then call mem_context for the active project before continuing work.",
-].join(" ");
 
-export { buildEngramChildSpec };
-
+// The bridge never invokes setup or writes settings/MCP state. It inspects the
+// official external setup and reports the state; the bootstrap registers only
+// Context7 and DevTools over the runtime event bus.
 export async function resolveMcpEngramConfig({
   resolveEngramBinary,
-  nodePath = process.execPath,
-  wrapperPath: managedWrapperPath = wrapperPath,
   env = process.env,
   platform = process.platform,
   cwd = process.cwd(),
 } = {}) {
   const config = { mcpServers: {} };
   const context7 = inspectContext7Config({ env, platform, cwd });
+  const packages = inspectOfficialPackages({ env, platform, cwd });
+  // Official package ownership gates managed before any Context7 activation:
+  // missing/duplicate/invalid packages never resolve managed even when an
+  // independent Context7 conflict would otherwise hide the gate. Context7
+  // diagnosis is preserved via the context7 field. Unrelated MCP-scan
+  // invalidity remains scoped to the managed result with its diagnosis.
+  if (packages.state === "invalid"
+    && (packages.source === "pi-global-settings" || packages.source === "pi-project-settings")) {
+    return {
+      state: "failed",
+      config,
+      context7,
+      reason: `Invalid package-scope settings (${packages.source}: ${packages.code})`,
+    };
+  }
+  if (packages.state === "invalid") {
+    return {
+      state: "failed",
+      config,
+      context7,
+      reason: `Invalid official Engram setup (${packages.source}: ${packages.code}); run \`engram setup pi\` and reload Pi`,
+    };
+  }
+  if (packages.state === "conflict") {
+    return {
+      state: "failed",
+      config,
+      context7,
+      reason: `Duplicate official Engram packages (${packages.source}: ${packages.code}); remove the duplicate, run \`engram setup pi\` and reload Pi`,
+    };
+  }
+  if (packages.state === "missing") {
+    return {
+      state: "missing",
+      config,
+      context7,
+      reason: "official Engram MCP setup is missing; run `engram setup pi` and reload Pi",
+    };
+  }
   if (context7.state === "available") {
     config.mcpServers.context7 = {
-      url: "https://mcp.context7.com/mcp",
+      url: CONTEXT7_URL,
       auth: false,
       lifecycle: "lazy",
       directTools: false,
@@ -42,18 +87,19 @@ export async function resolveMcpEngramConfig({
   }
   try {
     const binary = await (resolveEngramBinary ?? (() => resolveConfiguredEngramBinary({ env, platform })))();
-    if (!binary) return { state: "missing", config, context7 };
-    if (!isAbsolute(nodePath) || !isAbsolute(managedWrapperPath) || !isAbsolute(binary)) {
-      throw new Error("Managed Engram command paths must be absolute");
+    const official = readOfficialEngramServer({ env, platform });
+    if (official.error) throw new Error(official.error);
+    // The official mcp.json server is mandatory: an executable binary never
+    // substitutes it. Absence fails closed as missing with the Context7
+    // diagnosis preserved and the official setup remedy; the configured
+    // binary only validates the official command.
+    if (!official.server) {
+      return { state: "missing", config, context7, reason: "official Engram MCP setup is missing; run `engram setup pi` and reload Pi" };
     }
-    config.mcpServers.engram = {
-      command: nodePath,
-      args: [managedWrapperPath, binary],
-      lifecycle: "lazy",
-      directTools: true,
-      toolPrefix: "none",
-      excludeTools: ["mem_capture_passive"],
-    };
+    if (binary !== undefined && official.server.command !== binary) {
+      throw new Error("Official mcp.json Engram command does not match the configured Engram binary; explicit configuration takes precedence");
+    }
+    config.mcpServers.engram = official.server;
     const devtools = readChromeDevToolsHandoff({ env, platform });
     if (devtools) {
       config.mcpServers["chrome-devtools"] = {
@@ -62,9 +108,6 @@ export async function resolveMcpEngramConfig({
         lifecycle: "lazy",
         directTools: false,
       };
-    }
-    if (env.PI_SUBAGENT_CHILD_AGENT === "engram") {
-      config.settings = { disableProxyTool: true, scriptMode: false };
     }
     return { state: "managed", config, binary, context7 };
   } catch (error) {
@@ -77,25 +120,58 @@ export async function resolveMcpEngramConfig({
   }
 }
 
-export async function installMcpEngram(pi, {
-  resolveEngramBinary,
-  env = process.env,
-  platform = process.platform,
-  cwd = process.cwd(),
-} = {}) {
-  const resolution = await resolveMcpEngramConfig({
-    resolveEngramBinary,
-    env,
-    platform,
-    cwd,
-  });
-  if (resolution.state !== "managed") return resolution;
-  const adapterEntry = import.meta.resolve("pi-mcp-adapter");
-  const { createMcpAdapter } = await import(adapterEntry);
-  createMcpAdapter({ config: resolution.config })(pi);
-  if (resolution.context7.state === "available") resolution.context7 = { state: "registered" };
-  registerEngramCompactionRecovery(pi, { isAvailable: () => resolution.state === "managed" });
-  return resolution;
+function readOfficialEngramServer({ env, platform }) {
+  const paths = platformPaths(platform);
+  const agentDir = resolvePiAgentDir({ env, platform });
+  const mcpPath = paths.join(agentDir, "mcp.json");
+  let raw;
+  try {
+    raw = readFileSync(mcpPath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return { found: false };
+    return { found: false, error: `Official Engram MCP configuration is unreadable at ${mcpPath}` };
+  }
+
+  let mcp;
+  try {
+    mcp = JSON.parse(raw);
+  } catch {
+    return { found: false, error: `Official Engram MCP configuration contains invalid JSON at ${mcpPath}` };
+  }
+
+  if (!isRecord(mcp)) return { found: false, error: `Official Engram MCP configuration must be an object at ${mcpPath}` };
+  const server = mcp.mcpServers?.engram;
+  if (server === undefined) return { found: false };
+  if (!isRecord(server)) return { found: false, error: `Official mcp.json Engram server must be an object at ${mcpPath}` };
+  if (typeof server.command !== "string" || !paths.isAbsolute(server.command)) {
+    return { found: false, error: `Official mcp.json Engram command must be an absolute path at ${mcpPath}` };
+  }
+  if (!isExecutable(server.command, platform)) {
+    return { found: false, error: `Official mcp.json Engram command is not executable at ${mcpPath}` };
+  }
+  if (!Array.isArray(server.args)
+    || server.args.length !== OFFICIAL_ENGRAM_ARGS.length
+    || server.args.some((arg, index) => arg !== OFFICIAL_ENGRAM_ARGS[index])) {
+    return { found: false, error: `Official mcp.json Engram server must use the exact official arguments at ${mcpPath}` };
+  }
+  if (server.lifecycle !== "lazy") {
+    return { found: false, error: `Official mcp.json Engram server must use lifecycle lazy at ${mcpPath}` };
+  }
+  if (server.directTools !== false) {
+    return { found: false, error: `Official mcp.json Engram server must disable direct tools at ${mcpPath}` };
+  }
+  return {
+    found: true,
+    server: {
+      ...server,
+      command: server.command,
+      args: [...server.args],
+      lifecycle: "lazy",
+      directTools: false,
+      toolPrefix: "none",
+      excludeTools: ["mem_capture_passive"],
+    },
+  };
 }
 
 function readChromeDevToolsHandoff({ env, platform }) {
@@ -139,29 +215,6 @@ function readChromeDevToolsHandoff({ env, platform }) {
   return { command: handoff.command, args: handoff.args };
 }
 
-export function registerEngramCompactionRecovery(pi, { isAvailable }) {
-  const pending = new Set();
-  pi.on("session_compact", (_event, ctx) => {
-    const sessionId = readSessionId(ctx);
-    if (sessionId && isAvailable()) pending.add(sessionId);
-  });
-  pi.on("before_agent_start", (event, ctx) => {
-    const sessionId = readSessionId(ctx);
-    const base = typeof event?.systemPrompt === "string" ? event.systemPrompt : "";
-    if (!sessionId || !pending.delete(sessionId)) return { systemPrompt: base };
-    return { systemPrompt: base ? `${base}\n\n${recoveryInstruction}` : recoveryInstruction };
-  });
-  pi.on("session_shutdown", (_event, ctx) => {
-    const sessionId = readSessionId(ctx);
-    if (sessionId) pending.delete(sessionId);
-  });
-}
-
-function readSessionId(ctx) {
-  const value = ctx?.sessionId ?? ctx?.sessionManager?.getSessionId?.();
-  return typeof value === "string" && value ? value : undefined;
-}
-
 export function resolveConfiguredEngramBinary({
   env = process.env,
   platform = process.platform,
@@ -172,7 +225,12 @@ export function resolveConfiguredEngramBinary({
     if (platform === "win32" && !/\.exe$/i.test(configured)) {
       throw new Error("ENGRAM_BIN must point to a native .exe executable on Windows");
     }
-    return isExecutable(configured, platform) ? configured : undefined;
+    // An explicitly set invalid binary is terminal: never fall through to the
+    // receipt or mask the configuration error; the bridge fails closed.
+    if (!isExecutable(configured, platform)) {
+      throw new Error(`ENGRAM_BIN is set but not executable: ${configured}`);
+    }
+    return configured;
   }
   return resolveStackReceiptEngramBinary({ env, platform });
 }

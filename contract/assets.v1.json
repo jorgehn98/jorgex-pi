@@ -123,7 +123,7 @@
       "relativePath": "pi-goal-state.json"
     },
     {
-      "owner": "pi-mcp-adapter",
+      "owner": "official-engram-setup",
       "root": "PI_CODING_AGENT_DIR",
       "relativePath": "mcp-cache.json"
     },
@@ -131,6 +131,26 @@
       "owner": "user",
       "root": "PI_CODING_AGENT_DIR",
       "relativePath": "mcp.json"
+    },
+    {
+      "owner": "official-engram-setup",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "npm/node_modules/gentle-engram"
+    },
+    {
+      "owner": "official-engram-setup",
+      "root": "PI_CODING_AGENT_DIR",
+      "relativePath": "npm/node_modules/pi-mcp-adapter"
+    },
+    {
+      "owner": "engram",
+      "root": "HOME",
+      "relativePath": ".local/bin/engram"
+    },
+    {
+      "owner": "engram",
+      "root": "HOME",
+      "relativePath": ".engram"
     }
   ]
 }
