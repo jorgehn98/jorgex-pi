@@ -17,9 +17,9 @@ export const RUNTIME_SNAPSHOT_VERSION = 1;
 export const CONTEXT7_URL = "https://mcp.context7.com/mcp";
 const OFFICIAL_ENGRAM_ARGS = ["mcp", "--tools=agent"];
 const DEVTOOLS_HANDOFF_RELATIVE_PATH = ["jorgex-pi", "devtools.v1.json"];
-const DEVTOOLS_HANDOFF_ARGS = [
-  "dlx",
-  "chrome-devtools-mcp@1.6.0",
+const DEVTOOLS_PACKAGE_PREFIX = "chrome-devtools-mcp@";
+const STABLE_EXACT_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const DEVTOOLS_FIXED_SUFFIX_ARGS = [
   "--isolated",
   "--redact-network-headers",
   "--no-performance-crux",
@@ -207,12 +207,25 @@ function readChromeDevToolsHandoff({ env, platform }) {
   if (!isExecutable(handoff.command, platform)) {
     throw new Error(`Chrome DevTools handoff command is not executable at ${handoffPath}`);
   }
-  if (!Array.isArray(handoff.args)
-    || handoff.args.length !== DEVTOOLS_HANDOFF_ARGS.length
-    || handoff.args.some((arg, index) => arg !== DEVTOOLS_HANDOFF_ARGS[index])) {
+  if (!isDevToolsArgs(handoff.args)) {
     throw new Error(`Chrome DevTools handoff has invalid arguments at ${handoffPath}`);
   }
   return { command: handoff.command, args: handoff.args };
+}
+
+function isDevToolsArgs(args) {
+  if (!Array.isArray(args) || args.length !== 6) return false;
+  if (args[0] !== "dlx" || !isDevToolsPackageArg(args[1])) return false;
+  return args.slice(2).every((arg, index) => arg === DEVTOOLS_FIXED_SUFFIX_ARGS[index]);
+}
+
+function isDevToolsPackageArg(arg) {
+  if (typeof arg !== "string" || !arg.startsWith(DEVTOOLS_PACKAGE_PREFIX)) return false;
+  return isStableExactVersion(arg.slice(DEVTOOLS_PACKAGE_PREFIX.length));
+}
+
+function isStableExactVersion(version) {
+  return typeof version === "string" && STABLE_EXACT_SEMVER.test(version);
 }
 
 export function resolveConfiguredEngramBinary({

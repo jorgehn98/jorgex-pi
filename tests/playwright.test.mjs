@@ -224,6 +224,49 @@ test("Windows handoff rejects control characters and shell metacharacters before
   }
 });
 
+test("Stack-observed Playwright 0.1.21 handoff resolves ready on exact reported match", async () => {
+  const { resolvePlaywrightCapability } = await resolverModule();
+  const OBSERVED_VERSION = "0.1.21";
+  for (const scenario of [
+    { label: "latest stays rejected", version: "latest", reported: OBSERVED_VERSION },
+    { label: "range stays rejected", version: "^0.1.21", reported: OBSERVED_VERSION },
+    { label: "missing version stays rejected", version: undefined, reported: OBSERVED_VERSION },
+    { label: "mismatched report stays rejected", version: OBSERVED_VERSION, reported: "0.1.18" },
+    { label: "extra key stays rejected", version: OBSERVED_VERSION, reported: OBSERVED_VERSION, extra: true },
+  ]) {
+    const fixture = createSandbox(scenario.reported);
+    try {
+      writeHandoff(fixture, validHandoff(fixture.command, { version: scenario.version, ...(scenario.extra ? { extra: true } : {}) }));
+      const capability = resolvePlaywrightCapability({ agentDir: fixture.agentDir });
+      assert.equal(capability.status, "hidden", scenario.label);
+      assert.equal(capability.commandPath, undefined, scenario.label);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  }
+  for (const label of ["relative command stays rejected", "missing executable stays rejected"]) {
+    const fixture = createSandbox(OBSERVED_VERSION);
+    try {
+      const command = label.startsWith("relative") ? "playwright-cli" : join(fixture.root, "missing-playwright-cli");
+      writeHandoff(fixture, validHandoff(command, { version: OBSERVED_VERSION }));
+      const capability = resolvePlaywrightCapability({ agentDir: fixture.agentDir });
+      assert.equal(capability.status, "hidden", label);
+      assert.equal(capability.commandPath, undefined, label);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  }
+  const observed = createSandbox(OBSERVED_VERSION);
+  try {
+    writeHandoff(observed, validHandoff(observed.command, { version: OBSERVED_VERSION }));
+    const capability = resolvePlaywrightCapability({ agentDir: observed.agentDir });
+    assert.equal(capability.status, "ready", "observed 0.1.21 exact reported-vs-handoff match must resolve ready");
+    assert.equal(capability.commandPath, observed.command);
+  } finally {
+    rmSync(observed.root, { recursive: true, force: true });
+  }
+});
+
 function createPiHarness() {
   const lifecycleHandlers = new Map();
   const eventHandlers = new Map();
