@@ -272,12 +272,9 @@ test("configured host loads the freshly installed JorgeX package and exposes its
       ]) {
         assert.ok(probeRecord.allTools.includes(name), `Pi ${hostVersion} (${depSummary}) must load companion tool ${name}`);
       }
-      // Provider wait-role rename without a version pin: the retired
-      // `subagent_wait` alias was replaced by `bg_wait`. Require the role, not
-      // the alias — never waive the actual tool requirement. Permission-gating
-      // of the renamed tools is pinned by the bootstrap regression test; this
-      // probe exposes a single post-start snapshot, so the smoke asserts role
-      // presence in allTools here.
+      // The provider renamed the wait role from `subagent_wait` to `bg_wait`.
+      // This post-start snapshot checks role presence only; bootstrap tests
+      // cover permission gating separately.
       assert.ok(
         probeRecord.allTools.includes("subagent_wait") || probeRecord.allTools.includes("bg_wait"),
         `Pi ${hostVersion} (${depSummary}) must load the subagents wait role via subagent_wait or bg_wait; got [${[...probeRecord.allTools].sort().join(", ")}]`,

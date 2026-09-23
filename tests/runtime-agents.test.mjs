@@ -312,11 +312,9 @@ test("the real tarball contains the closed runtime assets without a bundled node
     );
     assert.equal(packedManifest.pi.skills.some((path) => path.includes("pi-subagents")), false, "upstream skills must remain inactive at the root");
     assert.equal((packedManifest.pi.prompts ?? []).some((path) => path.includes("pi-subagents")), false, "upstream prompts must remain inactive at the root");
-    // No bundled closure: the packed non-bundled product carries no
-    // node_modules; the six companions resolve via npm at `pi install` time.
-    // The audited CI resolution stays covered by the lockfile integrity test
-    // above (bootstrap/dependency fixtures are observed history, not packed
-    // bytes); webAccessExpected.packedClosure count/identity are historical.
+    // The packed product carries no node_modules; the six companions resolve
+    // via npm at `pi install` time. Historical CI lock integrity remains
+    // covered by bootstrap.test.mjs, not by this packed-bytes assertion.
     assert.equal(
       [...archive.keys()].some((path) => path.startsWith("package/node_modules/")),
       false,

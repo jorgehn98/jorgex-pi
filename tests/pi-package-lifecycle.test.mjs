@@ -97,8 +97,8 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     NO_COLOR: "1",
   };
   // Dynamic "*" companions resolve via npm at `pi install` time, so the
-  // lifecycle must not force npm offline. PI_OFFLINE stays to keep Pi itself
-  // isolated while npm acquisition uses the registry cache above.
+  // lifecycle must not force npm offline. PI_OFFLINE still isolates Pi itself;
+  // npm acquisition uses only this sandbox's cache.
   assert.equal(
     isolatedEnv.PI_PACKAGE_DIR,
     undefined,
