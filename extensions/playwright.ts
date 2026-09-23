@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
 
 const HANDOFF_RELATIVE_PATH = ["jorgex-pi", "playwright.v1.json"];
-const PLAYWRIGHT_VERSION = "0.1.18";
+const STABLE_EXACT_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const VERSION_TIMEOUT_MS = 5_000;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const WINDOWS_CMD_METACHARACTERS = /[&|<>()^%!"\r\n]/;
@@ -35,7 +35,7 @@ export function resolvePlaywrightCapability({
       ...(invocation.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
       env: { ...env, NO_UPDATE_NOTIFIER: "1" },
     });
-    if (!isExpectedVersion(output)) return hiddenCapability();
+    if (!isExpectedVersion(output, handoff.version)) return hiddenCapability();
 
     return { status: "ready", commandPath: handoff.command };
   } catch {
@@ -60,10 +60,10 @@ function readHandoff(handoffPath, paths) {
   if (!isRecord(parsed)) return undefined;
   const keys = Object.keys(parsed).sort();
   if (keys.join("\0") !== ["command", "enabled", "schemaVersion", "version"].join("\0")) return undefined;
-  if (parsed.schemaVersion !== 1 || parsed.enabled !== true || parsed.version !== PLAYWRIGHT_VERSION) return undefined;
+  if (parsed.schemaVersion !== 1 || parsed.enabled !== true || !isStableExactVersion(parsed.version)) return undefined;
   if (typeof parsed.command !== "string" || CONTROL_CHARACTERS.test(parsed.command)) return undefined;
   if (!paths.isAbsolute(parsed.command)) return undefined;
-  return { command: parsed.command };
+  return { command: parsed.command, version: parsed.version };
 }
 
 function resolveDefaultAgentDir({ env, platform, paths }) {
@@ -97,8 +97,14 @@ function planExecutable(command, platform, env) {
   };
 }
 
-function isExpectedVersion(output) {
-  return /^(?:playwright-cli\s+)?0\.1\.18$/i.test(String(output).trim());
+function isExpectedVersion(output, version) {
+  const trimmed = String(output).trim();
+  const reported = /^playwright-cli\s+/i.test(trimmed) ? trimmed.replace(/^playwright-cli\s+/i, "") : trimmed;
+  return reported === version;
+}
+
+function isStableExactVersion(version) {
+  return typeof version === "string" && STABLE_EXACT_SEMVER.test(version);
 }
 
 function isExecutable(path, platform) {

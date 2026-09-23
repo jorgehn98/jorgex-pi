@@ -425,6 +425,66 @@ test("managed Engram adds the exact optional Pi Chrome DevTools handoff", async 
   }
 });
 
+test("Stack-observed chrome-devtools-mcp 1.10.1 handoff resolves managed with exact safe flags", async () => {
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-devtools-observed-"));
+  const agentDir = join(sandbox, "agent");
+  const handoffPath = join(agentDir, "jorgex-pi", "devtools.v1.json");
+  const fakeBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
+  const pnpmPath = join(sandbox, process.platform === "win32" ? "pnpm.cmd" : "pnpm");
+  const OBSERVED_ARGS = [
+    "dlx",
+    "chrome-devtools-mcp@1.10.1",
+    "--isolated",
+    "--redact-network-headers",
+    "--no-performance-crux",
+    "--no-usage-statistics",
+  ];
+  writeFileSync(fakeBin, "fake binary; never execute\n");
+  writeFileSync(pnpmPath, "fake pnpm; never execute\n");
+  chmodSync(fakeBin, 0o755);
+  chmodSync(pnpmPath, 0o755);
+  mkdirSync(dirname(handoffPath), { recursive: true });
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  try {
+    for (const [label, args, command] of [
+      ["latest stays rejected", ["dlx", "chrome-devtools-mcp@latest", "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"], undefined],
+      ["range stays rejected", ["dlx", "chrome-devtools-mcp@^1.10.1", "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"], undefined],
+      ["missing version stays rejected", ["dlx", "chrome-devtools-mcp", "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"], undefined],
+      ["leading-zero version stays rejected", ["dlx", "chrome-devtools-mcp@01.10.1", "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"], undefined],
+      ["whitespace version stays rejected", ["dlx", "chrome-devtools-mcp@1.10.1 ", "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"], undefined],
+      ["shell metacharacters stay rejected", ["dlx", "chrome-devtools-mcp@1.10.1;whoami", "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"], undefined],
+      ["unexpected source stays rejected", ["dlx", "evil-devtools-mcp@1.10.1", "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"], undefined],
+      ["extra args stay rejected", [...OBSERVED_ARGS, "--unexpected"], undefined],
+      ["relative command stays rejected", OBSERVED_ARGS, "pnpm"],
+      ["missing executable stays rejected", OBSERVED_ARGS, join(sandbox, "missing-pnpm")],
+    ]) {
+      writeFileSync(handoffPath, `${JSON.stringify({ schemaVersion: 1, enabled: true, command: command ?? pnpmPath, args })}\n`);
+      const rejected = await resolveMcpEngramConfig({
+        resolveEngramBinary: () => fakeBin,
+        env: { PI_CODING_AGENT_DIR: agentDir },
+      });
+      assert.equal(rejected.state, "failed", `${label} must fail closed`);
+      assert.equal(rejected.config.mcpServers["chrome-devtools"], undefined, label);
+    }
+    writeFileSync(handoffPath, `${JSON.stringify({ schemaVersion: 1, enabled: true, command: pnpmPath, args: OBSERVED_ARGS })}\n`);
+    const observed = await resolveMcpEngramConfig({
+      resolveEngramBinary: () => fakeBin,
+      env: { PI_CODING_AGENT_DIR: agentDir },
+    });
+    assert.equal(observed.state, "managed", "observed 1.10.1 exact handoff must resolve managed");
+    assert.deepEqual(observed.config.mcpServers["chrome-devtools"], {
+      command: pnpmPath,
+      args: OBSERVED_ARGS,
+      lifecycle: "lazy",
+      directTools: false,
+    });
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("an invalid Pi Chrome DevTools handoff fails closed with a diagnostic", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-devtools-invalid-"));
