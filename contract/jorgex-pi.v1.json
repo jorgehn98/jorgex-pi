@@ -7,10 +7,11 @@
   },
   "pi": {
     "minimumVersion": "0.84.2",
-    "maximumVersion": "0.85.1",
+    "maximumVersion": "0.87.1",
     "testedVersions": [
       "0.84.2",
-      "0.85.1"
+      "0.85.1",
+      "0.87.1"
     ]
   },
   "capabilities": [

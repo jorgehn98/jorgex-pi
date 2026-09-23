@@ -572,18 +572,20 @@ test("direct-install preserves readable separation around a complete adjacent ma
   assert.equal(repeated, result, "recomposing preserved unmanaged content must stay byte-stable");
 });
 
-test("the active companions and their audited closure are exactly pinned and bundled", () => {
+test("the active companions resolve dynamically without a bundled closure while the lock retains the audited CI integrity", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const packagedDependencies = [...expected.companions];
-  const dependencies = Object.fromEntries(
-    [...packagedDependencies, ...expected.runtimeDependencies]
-      .map(({ name, version }) => [name, version])
-      .sort(([left], [right]) => left.localeCompare(right)),
-  );
-  assert.deepEqual(manifest.dependencies, dependencies);
-  assert.deepEqual(
-    [...manifest.bundledDependencies].sort(),
-    [...packagedDependencies, ...expected.runtimeDependencies].map(({ name }) => name).sort(),
+  const expectedNames = [...packagedDependencies, ...expected.runtimeDependencies].map(({ name }) => name).sort();
+  assert.deepEqual(Object.keys(manifest.dependencies ?? {}).sort(), expectedNames);
+  // Selection is dynamic ("*"); fixture versions below are the observed CI
+  // resolution, not the selection. Actual install resolution is verified by
+  // the sandboxed direct `pi install` acquiring via npm.
+  for (const { name } of [...packagedDependencies, ...expected.runtimeDependencies]) {
+    assert.equal(manifest.dependencies?.[name], "*", `${name} selection must stay dynamic, not an exact pin`);
+  }
+  assert.ok(
+    manifest.bundledDependencies === undefined || manifest.bundledDependencies.length === 0,
+    `bundledDependencies must stay absent for npm acquisition, got ${JSON.stringify(manifest.bundledDependencies)}`,
   );
   assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "official bridge must not bundle its own adapter copy");
   assert.equal(manifest.dependencies?.["gentle-engram"], undefined, "official setup owns gentle-engram, not jorgex-pi");
@@ -901,12 +903,56 @@ test("a selection changed after a pre-health prompt remains authoritative at fir
   assert.deepEqual(pi.activeTools(), withoutWebSearch, "first readiness must not restore a tool disabled after the pre-health hide");
 });
 
+test("renamed subagents tools stay hidden after a pre-health prompt until explicitly reselected", async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  // Observed provider rename without a version pin: the wait role moved from
+  // the retired `subagent_wait` alias to `bg_wait`/`subagent_supervisor`.
+  // Retired-alias gating stays covered by the existing tests above as control.
+  // Per the authoritative invariant (never auto-restore after a pre-health
+  // hide; user selection stays authoritative), the renamed tools must hide
+  // with the rest, stay hidden at readiness, and return only via an explicit
+  // setActiveTools reselection.
+  const loadRenamedSubagents = async (id) => {
+    if (id === "subagents") {
+      return (pi) => {
+        pi.registerTool({ name: "subagent" });
+        pi.registerTool({ name: "bg_wait" });
+        pi.registerTool({ name: "subagent_supervisor" });
+      };
+    }
+    return companionFactory(id);
+  };
+  const pi = createPiHarness();
+  const services = new Map();
+  await createBootstrap({
+    loadCompanion: loadRenamedSubagents,
+    getPermissionsService: (sessionId) => services.get(sessionId),
+  })(pi.api);
+  const context = { hasUI: true, sessionId: "renamed-gated" };
+  await pi.emitLifecycle("session_start", {}, context);
+  await pi.emitLifecycle("before_agent_start", {}, context);
+  assert.equal(pi.activeTools().includes("bg_wait"), false, "the renamed wait tool must hide before permission health");
+  assert.equal(pi.activeTools().includes("subagent_supervisor"), false, "the renamed supervisor tool must hide before permission health");
+  services.set(context.sessionId, { ready: true });
+  await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
+  await pi.emitLifecycle("before_agent_start", {}, context);
+  assert.equal(pi.activeTools().includes("bg_wait"), false, "readiness after a pre-health prompt must not auto-restore the renamed wait tool");
+  assert.equal(pi.activeTools().includes("subagent_supervisor"), false, "readiness after a pre-health prompt must not auto-restore the renamed supervisor tool");
+  pi.api.setActiveTools([...pi.activeTools(), "bg_wait", "subagent_supervisor"]);
+  await pi.emitEvent("permissions:ready", { sessionId: context.sessionId });
+  await pi.emitLifecycle("before_agent_start", {}, context);
+  assert.equal(pi.activeTools().includes("bg_wait"), true, "an explicitly reselected wait tool must stay selected after readiness");
+  assert.equal(pi.activeTools().includes("subagent_supervisor"), true, "an explicitly reselected supervisor tool must stay selected after readiness");
+});
+
 test("a detected direct-install conflict stays latched until the bootstrap is reloaded", async () => {
   const { createBootstrap, detectWebAccessConflict } = await import("../extensions/bootstrap.ts");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-web-conflict-latch-"));
   const globalSettingsPath = join(sandbox, "agent", "settings.json");
   const projectSettingsPath = join(sandbox, "project", ".pi", "settings.json");
-  const conflictingBytes = JSON.stringify({ packages: ["npm:pi-web-access@0.24.1"] }, null, 2) + "\n";
+  // Observed CI version used only as an example foreign direct install, not as selection.
+  const observedWebAccess = expected.companions.find(({ name }) => name === "pi-web-access")?.version ?? "0.24.1";
+  const conflictingBytes = JSON.stringify({ packages: [`npm:pi-web-access@${observedWebAccess}`] }, null, 2) + "\n";
   const cleanBytes = JSON.stringify({ packages: ["npm:foreign-global@1.0.0"] }, null, 2) + "\n";
   mkdirSync(dirname(globalSettingsPath), { recursive: true });
   mkdirSync(dirname(projectSettingsPath), { recursive: true });
