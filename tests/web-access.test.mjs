@@ -8,10 +8,15 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "web-access.expected.json"));
 
-test("pi-web-access 0.24.1 is active, exactly pinned, bundled, and ownership-safe", () => {
+test("pi-web-access resolves dynamically without a bundled closure while staying ownership-safe", () => {
   const manifest = readJson(join(root, "package.json"));
-  assert.equal(manifest.dependencies?.[expected.companion.name], expected.companion.version);
-  assert.equal(manifest.bundledDependencies?.includes(expected.companion.name), true);
+  // Selection is dynamic ("*"); expected.companion.version is the observed CI
+  // resolution recorded in fixtures/components/lock, not the selection.
+  assert.equal(manifest.dependencies?.[expected.companion.name], "*");
+  assert.ok(
+    manifest.bundledDependencies === undefined || !manifest.bundledDependencies.includes(expected.companion.name),
+    "bundledDependencies must not claim the dynamically resolved companion",
+  );
 
   const inventory = readJson(join(root, "contract", "components.v1.json"));
   const component = inventory.components.find(({ name }) => name === expected.companion.name);

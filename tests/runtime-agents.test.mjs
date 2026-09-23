@@ -16,26 +16,27 @@ const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected
 const foundationExpected = readJson(join(testDir, "fixtures", "foundation-contract.expected.json"), "foundation contract fixture");
 const webAccessExpected = readJson(join(testDir, "fixtures", "web-access.expected.json"), "web access fixture");
 
-test("pi-subagents is pinned with its audited bundled closure", () => {
+test("pi-subagents resolves dynamically without a bundled closure (lock integrity stays authoritative in the bootstrap boundary)", () => {
   const manifest = readJson(join(root, "package.json"), "package manifest");
   const expectedDependencies = [...bootstrapExpected.companions];
-  assert.deepEqual(
-    manifest.dependencies,
-    Object.fromEntries(
-      [...expectedDependencies, ...bootstrapExpected.runtimeDependencies]
-        .map(({ name, version }) => [name, version])
-        .sort(([left], [right]) => left.localeCompare(right)),
-    ),
-  );
-  assert.deepEqual(
-    [...manifest.bundledDependencies].sort(),
-    [...expectedDependencies, ...bootstrapExpected.runtimeDependencies].map(({ name }) => name).sort(),
+  const expectedNames = [...expectedDependencies, ...bootstrapExpected.runtimeDependencies].map(({ name }) => name).sort();
+  assert.deepEqual(Object.keys(manifest.dependencies ?? {}).sort(), expectedNames);
+  // Selection is dynamic ("*"); fixture versions are the observed CI
+  // resolution recorded in lock/components, not the selection. Actual install
+  // resolution is verified by the sandboxed direct `pi install` via npm.
+  for (const { name } of [...expectedDependencies, ...bootstrapExpected.runtimeDependencies]) {
+    assert.equal(manifest.dependencies?.[name], "*", `${name} selection must stay dynamic, not an exact pin`);
+  }
+  assert.ok(
+    manifest.bundledDependencies === undefined || manifest.bundledDependencies.length === 0,
+    `bundledDependencies must stay absent for npm acquisition, got ${JSON.stringify(manifest.bundledDependencies)}`,
   );
   assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "official bridge must not bundle its own adapter copy");
   assert.deepEqual(manifest["pi-subagents"], { agents: ["./agents"] }, "only the 13 runnable package agents may be discoverable by pi-subagents");
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
   assert.doesNotMatch(lock, /pi-mcp-adapter@2\.27\.0/, "lock must not pin the retired bundled adapter");
-  for (const dependency of [...expected.dependency.bundledClosure, ...bootstrapExpected.runtimeDependencies]) assertLockIntegrity(lock, dependency);
+  // Historical CI lock integrity stays authoritative in tests/bootstrap.test.mjs;
+  // the generated runtime contract no longer carries a bundled closure to check here.
 });
 
 test("the Engram child uses the ambient official provider without a JorgeX selector", () => {
@@ -60,7 +61,7 @@ test("Engram agent instructions mention only tools present in its active profile
   }
 });
 
-test("pi-subagents 0.54.0 discovers all thirteen runnable package agents without diagnostics", () => {
+test("pi-subagents discovers all thirteen runnable package agents without diagnostics (observed CI 0.54.0, selection stays dynamic)", () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-agent-discovery-"));
   try {
     const agentDir = join(sandbox, "agent");
@@ -195,7 +196,7 @@ test("the runtime contract translates one primary and thirteen canonical subagen
   const packageSkills = manifest.pi.skills.map((path) => path.replace(/^\.\/skills\//, ""));
   assert.deepEqual(Object.keys(contract).sort(), ["agents", "dependency", "primary", "schemaVersion", "skillSelections", "skills"]);
   assert.equal(contract.schemaVersion, expected.schemaVersion);
-  assert.deepEqual(contract.dependency, expected.dependency);
+  assert.deepEqual(contract.dependency, expected.dependency, "runtime dependency stays name-only; resolution happens via npm at install");
   assert.deepEqual(contract.primary, expected.primary);
   assert.deepEqual(contract.skillSelections, expected.skillSelections, "runtime contract must retain the reviewed private skill selection by role");
   assert.deepEqual(contract.skills, expected.skills, "runtime skill allowlist must match its reviewed fixture");
@@ -259,7 +260,7 @@ test("the real translator is deterministic and writes only inside its package co
   }
 });
 
-test("the real tarball contains the closed runtime assets and audited dependency closure", () => {
+test("the real tarball contains the closed runtime assets without a bundled node_modules closure", () => {
   const packDir = mkdtempSync(join(tmpdir(), "jorgex-pi-runtime-pack-"));
   try {
     const packageManager = resolvePnpm();
@@ -269,7 +270,7 @@ test("the real tarball contains the closed runtime assets and audited dependency
     const archive = readTgz(join(packDir, tarballs[0]));
     const packedManifest = readPackedJson(archive, "package/package.json");
     const packedContract = readPackedJson(archive, `package/${expected.contractPath}`);
-    assert.deepEqual(packedContract.dependency, expected.dependency);
+    assert.deepEqual(packedContract.dependency, expected.dependency, "packed runtime dependency stays name-only; resolution happens via npm at install");
     assert.deepEqual(packedManifest["pi-subagents"], { agents: ["./agents"] });
     assert.deepEqual(packedManifest.pi, {
       extensions: bootstrapExpected.extensions,
@@ -300,46 +301,40 @@ test("the real tarball contains the closed runtime assets and audited dependency
     assert.equal([...archive.keys()].some((path) => path.endsWith(".chain.md")), false, "legacy chains must not ship");
     assert.equal(archive.has(`package/${expected.generatorPath}`), false, "translation tooling must stay outside the published artifact");
 
-    const dependencyManifests = [...archive.entries()]
-      .filter(([path]) => path.startsWith("package/node_modules/") && path.endsWith("/package.json"))
-      .map(([, bytes]) => JSON.parse(bytes.toString("utf8")))
-      .filter(({ name, version }) => typeof name === "string" && name.length > 0 && typeof version === "string" && version.length > 0);
-    assert.equal(
-      [...archive.keys()].some((path) => path.includes("/node_modules/pi-mcp-adapter/")),
-      false,
-      "tarball must not bundle the retired official adapter copy",
+    const packedManifestDeps = packedManifest.dependencies ?? {};
+    assert.deepEqual(Object.keys(packedManifestDeps).sort(), [...bootstrapExpected.companions, ...bootstrapExpected.runtimeDependencies].map(({ name }) => name).sort());
+    for (const { name } of [...bootstrapExpected.companions, ...bootstrapExpected.runtimeDependencies]) {
+      assert.equal(packedManifestDeps[name], "*", `packed selection for ${name} must stay dynamic, not an exact pin`);
+    }
+    assert.ok(
+      packedManifest.bundledDependencies === undefined || packedManifest.bundledDependencies.length === 0,
+      `packed manifest must not claim a bundled closure, got ${JSON.stringify(packedManifest.bundledDependencies)}`,
     );
-    assert.equal(
-      [...archive.keys()].some((path) => path.includes("/node_modules/@napi-rs/keyring-")),
-      false,
-      "tarball must not carry the retired adapter keyring bindings",
-    );
-    assert.equal(
-      [...archive.keys()].some((path) => path.includes("/node_modules/@napi-rs/keyring-freebsd-")),
-      false,
-      "the supported portability matrix must not silently expand to an unaudited FreeBSD binding",
-    );
-    const packedClosure = dependencyManifests
-      .map(({ name, version }) => ({ name, version }))
-      .sort((left, right) => left.name.localeCompare(right.name) || left.version.localeCompare(right.version));
-    assert.equal(packedClosure.length, webAccessExpected.packedClosure.count, "tarball bundled closure count must match the audited active-companion resolution");
-    assert.equal(
-      sha256(Buffer.from(packedClosure.map(({ name, version }) => `${name}@${version}`).join("\n"))),
-      webAccessExpected.packedClosure.identitySha256,
-      "tarball bundled package identities must match the audited active-companion resolution",
-    );
-    const upstreamManifest = dependencyManifests.find(({ name }) => name === "pi-subagents");
-    assert.ok(upstreamManifest.pi?.skills?.length > 0 && upstreamManifest.pi?.prompts?.length > 0, "the audited upstream resources must be physically bundled");
     assert.equal(packedManifest.pi.skills.some((path) => path.includes("pi-subagents")), false, "upstream skills must remain inactive at the root");
     assert.equal((packedManifest.pi.prompts ?? []).some((path) => path.includes("pi-subagents")), false, "upstream prompts must remain inactive at the root");
+    // No bundled closure: the packed non-bundled product carries no
+    // node_modules; the six companions resolve via npm at `pi install` time.
+    // The audited CI resolution stays covered by the lockfile integrity test
+    // above (bootstrap/dependency fixtures are observed history, not packed
+    // bytes); webAccessExpected.packedClosure count/identity are historical.
+    assert.equal(
+      [...archive.keys()].some((path) => path.startsWith("package/node_modules/")),
+      false,
+      "tarball must not bundle a node_modules closure; companions resolve via npm at install",
+    );
     for (const companion of bootstrapExpected.companions) {
-      assert.ok(
+      assert.equal(
         [...archive.keys()].some((path) => path.includes(`/node_modules/${companion.name}/`) && path.endsWith(`/${companion.entryPath}`)),
-        `tarball must contain audited entry ${companion.name}/${companion.entryPath}`,
+        false,
+        `tarball must not bundle audited entry ${companion.name}/${companion.entryPath}; it resolves via npm at install`,
       );
     }
     for (const suffix of bootstrapExpected.wasmSuffixes) {
-      assert.ok([...archive.keys()].some((path) => path.startsWith("package/node_modules/") && path.endsWith(suffix)), `tarball must contain ${suffix}`);
+      assert.equal(
+        [...archive.keys()].some((path) => path.startsWith("package/node_modules/") && path.endsWith(suffix)),
+        false,
+        `tarball must not bundle ${suffix}; companion wasm resolves via npm at install`,
+      );
     }
 
     const assets = readPackedJson(archive, "package/contract/assets.v1.json");
@@ -496,13 +491,6 @@ function assertBashPolicy(frontmatter, name, path) {
   assert.equal(tools.includes("git_read"), false, `${path} must not add the constrained git tool to full access`);
   assert.equal(bashPermission, undefined, `${path} must not add a per-agent bash restriction for full access`);
   assert.deepEqual(childExtensions, [], `${path} must not load a child-only git extension for full access`);
-}
-
-function assertLockIntegrity(lock, dependency) {
-  const escaped = `${dependency.name}@${dependency.version}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const block = new RegExp(`^  ['\"]?${escaped}['\"]?:\\n([\\s\\S]*?)(?=^  \\S|^snapshots:)`, "m").exec(lock)?.[1];
-  assert.ok(block, `pnpm lock must contain ${dependency.name}@${dependency.version}`);
-  assert.ok(block.includes(`integrity: ${dependency.integrity}`), `${dependency.name}@${dependency.version} lock integrity must match the audited registry artifact`);
 }
 
 function readJson(path, label) {

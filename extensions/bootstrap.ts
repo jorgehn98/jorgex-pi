@@ -233,7 +233,9 @@ export function createBootstrap({
             ? createWebAccessApi(pi, companionTools, readWebAccessConfig)
             : companion === "goal"
               ? createGoalApi(pi, companionTools, (ctx) => goalAvailability(ctx))
-              : pi;
+              : companion === "subagents"
+                ? createSubagentsApi(pi, companionTools)
+                : pi;
           factory(companionApi);
         } catch (error) {
           throw { phase: "factory", companion, error };
@@ -463,6 +465,21 @@ function selectedCompanionTools(pi, companionTools) {
 function reconcileCompanionSelection(pi, companionTools, selection) {
   const captured = new Set(selection);
   pi.setActiveTools(pi.getActiveTools().filter((name) => !companionTools.has(name) || captured.has(name)));
+}
+
+function createSubagentsApi(pi, companionTools) {
+  return new Proxy(pi, {
+    get(target, property, receiver) {
+      if (property === "registerTool") {
+        return (tool) => {
+          companionTools.add(tool.name);
+          target.registerTool(tool);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 function createWebAccessApi(pi, companionTools, readWebAccessConfig) {

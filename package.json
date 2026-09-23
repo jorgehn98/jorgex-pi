@@ -83,25 +83,17 @@
       "./agents"
     ]
   },
-  "bundledDependencies": [
-    "@gotgenes/pi-permission-system",
-    "@juicesharp/rpiv-ask-user-question",
-    "pi-subagents",
-    "pi-web-access",
-    "@narumitw/pi-goal",
-    "strip-json-comments"
-  ],
   "packageManager": "pnpm@11.22.0",
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.84.2",
     "fast-check": "4.9.0"
   },
   "dependencies": {
-    "@gotgenes/pi-permission-system": "27.0.0",
-    "@juicesharp/rpiv-ask-user-question": "2.7.0",
-    "@narumitw/pi-goal": "0.53.0",
-    "pi-subagents": "0.54.0",
-    "pi-web-access": "0.24.1",
-    "strip-json-comments": "5.0.3"
+    "@gotgenes/pi-permission-system": "*",
+    "@juicesharp/rpiv-ask-user-question": "*",
+    "@narumitw/pi-goal": "*",
+    "pi-subagents": "*",
+    "pi-web-access": "*",
+    "strip-json-comments": "*"
   }
 }

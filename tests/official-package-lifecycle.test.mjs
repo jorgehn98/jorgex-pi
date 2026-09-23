@@ -15,9 +15,8 @@ test("package claims no bundled pi-mcp-adapter and no own gentle/adapter depende
   const manifest = readJson(join(root, "package.json"));
   assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "jorgex-pi must not depend on its own pi-mcp-adapter copy");
   assert.equal(manifest.dependencies?.["gentle-engram"], undefined, "jorgex-pi must not bundle gentle-engram; setup owns it");
-  assert.equal(
-    manifest.bundledDependencies?.includes("pi-mcp-adapter"),
-    false,
+  assert.ok(
+    manifest.bundledDependencies === undefined || !manifest.bundledDependencies.includes("pi-mcp-adapter"),
     "bundledDependencies must not claim the external adapter",
   );
   const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");

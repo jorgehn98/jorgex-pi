@@ -22,7 +22,10 @@ test("the official bridge owns no bundled adapter and verifies over the external
   const names = inventory.components.map(({ name }) => name);
   assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined, "jorgex-pi must not depend on its own adapter copy");
   assert.equal(manifest.dependencies?.["gentle-engram"], undefined, "jorgex-pi must not bundle gentle-engram; setup owns it");
-  assert.equal(manifest.bundledDependencies?.includes("pi-mcp-adapter"), false, "bundledDependencies must not claim the external adapter");
+  assert.ok(
+    manifest.bundledDependencies === undefined || !manifest.bundledDependencies.includes("pi-mcp-adapter"),
+    "bundledDependencies must not claim the external adapter",
+  );
   assert.equal(names.includes("pi-mcp-adapter"), false, "components must not list the external adapter as owned");
   assert.equal(names.includes("gentle-engram"), false, "components must not claim gentle-engram as owned");
   assert.ok(contract.capabilities.includes(expected.bridge.capability), "contract must declare the official bridge capability");
