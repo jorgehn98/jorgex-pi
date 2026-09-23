@@ -274,7 +274,10 @@ test("official smoke: isolated single pair resolves managed bridge with gentle p
     const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
     assert.equal(manifest.dependencies?.["pi-mcp-adapter"], undefined);
     assert.equal(manifest.dependencies?.["gentle-engram"], undefined);
-    assert.equal(manifest.bundledDependencies?.includes("pi-mcp-adapter"), false);
+    assert.ok(
+      manifest.bundledDependencies === undefined || !manifest.bundledDependencies.includes("pi-mcp-adapter"),
+      "bundledDependencies must not claim the external adapter",
+    );
     const lock = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
     assert.doesNotMatch(lock, /pi-mcp-adapter@2\.27\.0/);
     const inventory = JSON.parse(readFileSync(join(root, "contract", "components.v1.json"), "utf8"));

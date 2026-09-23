@@ -9,22 +9,22 @@ importers:
   .:
     dependencies:
       '@gotgenes/pi-permission-system':
-        specifier: 27.0.0
+        specifier: '*'
         version: 27.0.0(@earendil-works/pi-coding-agent@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-tui@0.84.2)
       '@juicesharp/rpiv-ask-user-question':
-        specifier: 2.7.0
+        specifier: '*'
         version: 2.7.0(@earendil-works/pi-coding-agent@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-tui@0.84.2)
       '@narumitw/pi-goal':
-        specifier: 0.53.0
+        specifier: '*'
         version: 0.53.0(@earendil-works/pi-ai@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-tui@0.84.2)(typebox@1.3.7)
       pi-subagents:
-        specifier: 0.54.0
+        specifier: '*'
         version: 0.54.0(@earendil-works/pi-agent-core@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-ai@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-tui@0.84.2)
       pi-web-access:
-        specifier: 0.24.1
+        specifier: '*'
         version: 0.24.1(@earendil-works/pi-ai@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.84.2(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-tui@0.84.2)
       strip-json-comments:
-        specifier: 5.0.3
+        specifier: '*'
         version: 5.0.3
     devDependencies:
       '@earendil-works/pi-coding-agent':

@@ -10,10 +10,15 @@ const root = resolve(testDir, "..");
 const expected = readJson(join(testDir, "fixtures", "goal.expected.json"));
 const foundationTools = ["ask_user_question", "fetch_content", "get_search_content", "source_check", "subagent", "subagent_wait", "web_search"];
 
-test("pi-goal 0.53.0 is the exact active bundled companion with its audited four-package closure", () => {
+test("pi-goal resolves dynamically without a bundled closure while the lock retains the audited CI integrity", () => {
   const manifest = readJson(join(root, "package.json"));
-  assert.equal(manifest.dependencies?.[expected.companion.name], expected.companion.version);
-  assert.equal(manifest.bundledDependencies?.includes(expected.companion.name), true);
+  // Selection is dynamic ("*"); expected.companion.version is the observed CI
+  // resolution recorded in fixtures/components/lock, not the selection.
+  assert.equal(manifest.dependencies?.[expected.companion.name], "*");
+  assert.ok(
+    manifest.bundledDependencies === undefined || !manifest.bundledDependencies.includes(expected.companion.name),
+    "bundledDependencies must not claim the dynamically resolved companion",
+  );
 
   const component = readJson(join(root, "contract", "components.v1.json")).components
     .find(({ name }) => name === expected.companion.name);
@@ -65,7 +70,8 @@ test("a direct pi-goal install conflict is latched and cannot release a second c
   const projectSettingsPath = join(sandbox, "project", ".pi", "settings.json");
   mkdirSync(dirname(globalSettingsPath), { recursive: true });
   mkdirSync(dirname(projectSettingsPath), { recursive: true });
-  const conflicting = '{"packages":["npm:@narumitw/pi-goal@0.53.0"],"foreign":true}\n';
+  // Observed CI version used only as an example foreign direct install, not as selection.
+  const conflicting = `{"packages":["npm:@narumitw/pi-goal@${expected.companion.version}"],"foreign":true}\n`;
   writeFileSync(globalSettingsPath, conflicting);
   writeFileSync(projectSettingsPath, '{"packages":[]}\n');
   try {

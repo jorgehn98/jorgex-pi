@@ -9,15 +9,6 @@ let generationError;
 let preserveStage = false;
 const dependency = {
   name: "pi-subagents",
-  version: "0.54.0",
-  integrity: "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww==",
-  bundledClosure: [
-    { name: "acorn", version: "8.18.0", integrity: "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==" },
-    { name: "jiti", version: "2.7.0", integrity: "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==" },
-    { name: "pi-subagents", version: "0.54.0", integrity: "sha512-U0RYNQQjtjOKtsMuZXXX+tOxbz+FNdMim0c4HHgGzXgplQqQhTiXzd1EVYdPY98cWfowHGHvf2kQxMLwKcCtww==" },
-    { name: "typebox", version: "1.1.38", integrity: "sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA==" },
-    { name: "yaml", version: "2.8.3", integrity: "sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==" },
-  ],
 };
 const skills = [
   "agent-delegation", "deploy-to-vercel", "diagnose", "find-skills", "lean-code", "mcp-builder", "orchestrator", "react-doctor",

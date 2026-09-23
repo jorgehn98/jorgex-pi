@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   readFileSync,
   rmSync,
@@ -19,23 +20,17 @@ import test from "node:test";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const configuredPi = process.env.JORGEX_PI_BIN?.trim();
-const configuredPackage = process.env.JORGEX_PI_PACKAGE_DIR?.trim() || root;
-const skipReason = configuredPi && configuredPackage
+const skipReason = configuredPi
   ? false
-  : "requires JORGEX_PI_BIN for the real Pi 0.85.1 smoke; set JORGEX_PI_PACKAGE_DIR to use an extracted published package";
+  : "requires JORGEX_PI_BIN for the real Pi host smoke (tested in this execution only; not a claim for all future versions)";
+// NOTE: JORGEX_PI_PACKAGE_DIR is intentionally ignored here. This smoke always
+// packs the worktree root fresh and installs the tarball via the configured
+// host binary into the test's own isolated agentDir, so the RPC runs against
+// freshly npm-resolved companions instead of the worktree's frozen CI deps.
 
-test("experience settings use the native contract in Pi 0.84.2 and Pi 0.85.1", { skip: skipReason }, async () => {
+test("experience settings use the native contract in local control and configured host (tested in this execution only)", { skip: skipReason }, async () => {
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-settings-compat-"));
-  const versions = [
-    {
-      name: "0.84.2",
-      sdk: await import("@earendil-works/pi-coding-agent"),
-    },
-    {
-      name: "0.85.1",
-      sdk: await import(pathToFileURL(resolveSdkModule(configuredPi, "core/settings-manager.js")).href),
-    },
-  ];
+  const localSdk = await import("@earendil-works/pi-coding-agent");
 
   try {
     const packageManifest = readJson(join(root, "package.json"));
@@ -57,7 +52,15 @@ test("experience settings use the native contract in Pi 0.84.2 and Pi 0.85.1", {
       versionEnvironment.XDG_DATA_HOME,
       versionEnvironment.TMPDIR,
     ]) mkdirSync(path, { recursive: true });
-    assert.equal(readPiVersion(configuredPi, versionEnvironment), "0.85.1");
+    const hostVersion = readPiVersion(configuredPi, versionEnvironment);
+    assert.match(hostVersion, /^\d+\.\d+\.\d+/, "configured host must report a semver version (tested in this execution only)");
+    const versions = [
+      { name: "0.84.2", sdk: localSdk },
+      {
+        name: hostVersion,
+        sdk: await import(pathToFileURL(resolveSdkModule(configuredPi, "core/settings-manager.js")).href),
+      },
+    ];
 
     for (const { name, sdk } of versions) {
       const agentDir = join(sandbox, name, "agent");
@@ -96,8 +99,8 @@ test("experience settings use the native contract in Pi 0.84.2 and Pi 0.85.1", {
   }
 });
 
-test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC contract", { skip: skipReason }, async () => {
-  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-085-compat-"));
+test("configured host loads the freshly installed JorgeX package and exposes its real RPC contract (tested in this execution only)", { skip: skipReason }, async () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-host-compat-"));
   const home = join(sandbox, "home");
   const agentDir = join(sandbox, "agent");
   const cwd = join(sandbox, "workspace");
@@ -105,22 +108,75 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
   const xdgCache = join(sandbox, "xdg-cache");
   const xdgData = join(sandbox, "xdg-data");
   const tempDir = join(sandbox, "temp");
+  const npmCache = join(sandbox, "npm-cache");
+  const packDir = join(sandbox, "pack");
   const markers = join(sandbox, "markers.jsonl");
   const fakeEngram = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
   const probe = join(testDir, "fixtures", "pi-sdk-compatibility-probe.mjs");
 
-  for (const path of [home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir]) {
+  for (const path of [home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir, npmCache, packDir]) {
     mkdirSync(path, { recursive: true });
   }
+  writeJson(join(agentDir, "settings.json"), { packages: [] });
 
   try {
     assert.ok(existsSync(configuredPi), `configured Pi binary must exist: ${configuredPi}`);
-    assert.ok(existsSync(configuredPackage), `configured JorgeX package must exist: ${configuredPackage}`);
-    const packageManifest = readJson(join(configuredPackage, "package.json"));
-    assert.equal(packageManifest.name, "jorgex-pi", "the real smoke must load the JorgeX Pi package");
+    const hostVersion = readPiVersion(configuredPi, isolatedEnv({ home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir }));
+    assert.match(hostVersion, /^\d+\.\d+\.\d+/, "configured host must report a semver version (tested in this execution only)");
+    const rootManifest = readJson(join(root, "package.json"));
+    assert.equal(rootManifest.name, "jorgex-pi", "the real smoke must load the JorgeX Pi package");
     const rootContract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
-    assert.equal(packageManifest.version, rootContract.package?.version, "the smoke package must match the root contract version");
-    assert.equal(readPiVersion(configuredPi, isolatedEnv({ home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir })), "0.85.1");
+    assert.equal(rootManifest.version, rootContract.package?.version, "the smoke package must match the root contract version");
+
+    // Fresh product: pack the worktree root with pnpm (never npm/npx) and let
+    // the configured host resolve companions via its native npm acquisition
+    // into this sandbox's isolated agentDir. NEVER the personal ~/.pi.
+    const tarball = packTarball(packDir);
+    const installEnv = {
+      ...allowedHostEnv(),
+      HOME: home,
+      TEMP: sandbox,
+      TMP: sandbox,
+      TMPDIR: sandbox,
+      XDG_CACHE_HOME: xdgCache,
+      XDG_CONFIG_HOME: xdgConfig,
+      XDG_DATA_HOME: xdgData,
+      PI_CODING_AGENT_DIR: agentDir,
+      PI_TELEMETRY: "0",
+      NPM_CONFIG_AUDIT: "false",
+      NPM_CONFIG_CACHE: npmCache,
+      NPM_CONFIG_FUND: "false",
+      NPM_CONFIG_UPDATE_NOTIFIER: "false",
+      NO_COLOR: "1",
+    };
+    execFileSync(configuredPi, ["install", `npm:jorgex-pi@file:${tarball}`, "--no-approve"], {
+      cwd,
+      env: installEnv,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: process.platform === "win32" ? 180_000 : 120_000,
+    });
+    const npmRoot = join(agentDir, "npm", "node_modules");
+    const installedDir = join(npmRoot, "jorgex-pi");
+    const installedManifest = readJson(join(installedDir, "package.json"));
+    assert.equal(installedManifest.name, "jorgex-pi", `host ${hostVersion} install must produce the JorgeX Pi package`);
+    assert.equal(installedManifest.version, rootManifest.version, `host ${hostVersion} installed version must match the packed root version`);
+    assert.equal(installedManifest.version, rootContract.package?.version, `host ${hostVersion} installed version must match the root contract version`);
+    const installedVersions = {};
+    for (const name of Object.keys(rootManifest.dependencies ?? {})) {
+      const depManifestPath = join(npmRoot, name, "package.json");
+      assert.ok(existsSync(depManifestPath), `host ${hostVersion} npm-installed dep must exist at hoisted resolver path: ${name}`);
+      const dep = readJson(depManifestPath);
+      assert.equal(dep.name, name, `host ${hostVersion} hoisted dep name must match manifest: ${name}`);
+      assert.match(String(dep.version), /^\d+\.\d+\.\d+/, `host ${hostVersion} installed version for ${name} must be readable without asserting an exact value`);
+      installedVersions[name] = dep.version;
+      assert.equal(
+        existsSync(join(installedDir, "node_modules", name)),
+        false,
+        `host ${hostVersion} installed jorgex-pi must not contain nested bundled closure: ${name}`,
+      );
+    }
+    const depSummary = `host ${hostVersion} with ${Object.entries(installedVersions).map(([name, version]) => `${name}@${version}`).join(", ")}`;
 
     const fakeServer = readFileSync(join(testDir, "fixtures", "fake-engram-mcp.mjs"), "utf8");
     writeFileSync(fakeEngram, `#!${process.execPath}\n${fakeServer}`);
@@ -132,7 +188,7 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
     }
 
     writeJson(join(agentDir, "settings.json"), {
-      packages: [configuredPackage],
+      packages: [installedDir],
     });
     const metadataCachePath = join(agentDir, "mcp-cache.json");
     if (!existsSync(metadataCachePath)) writeJson(metadataCachePath, { version: 1, servers: {} });
@@ -180,13 +236,13 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
     try {
       const state = await requestRpc(child, records, "get_state");
       if (rpcParseError) throw rpcParseError;
-      assert.equal(state.success, true, `Pi 0.85.1 get_state failed: ${stderr}`);
+      assert.equal(state.success, true, `Pi ${hostVersion} (${depSummary}) get_state failed: ${stderr}`);
       assert.equal(state.command, "get_state");
       assert.equal(typeof state.data.sessionId, "string");
       assert.equal(state.data.isStreaming, false);
 
       const commandsResponse = await requestRpc(child, records, "get_commands");
-      assert.equal(commandsResponse.success, true, `Pi 0.85.1 get_commands failed: ${stderr}`);
+      assert.equal(commandsResponse.success, true, `Pi ${hostVersion} (${depSummary}) get_commands failed: ${stderr}`);
       const commands = commandsResponse.data.commands;
       const commandNames = commands.map((command) => command.name);
       assert.equal(new Set(commandNames).size, commandNames.length, "Pi must not duplicate slash commands across loaded companions");
@@ -195,27 +251,34 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
       // bundled-era names must be absent; the official bridge capability below
       // replaces them instead of a bundled tool surface.
       for (const retired of ["mcp", "pi-mcp", "mcp-auth"]) {
-        assert.equal(commandNames.includes(retired), false, `Pi 0.85.1 must not expose retired bundled command ${retired}`);
+        assert.equal(commandNames.includes(retired), false, `Pi ${hostVersion} must not expose retired bundled command ${retired}`);
       }
       assert.ok(commandNames.length >= 42, "the current JorgeX package must expose at least the reviewed 42-command surface (45 minus 3 retired bundled commands)");
       for (const name of [
         "jx-compat-probe", "permission-system", "subagents", "goal",
         "jorgex:header", "websearch", "curator", "google-account", "search", "lean-audit",
       ]) {
-        assert.ok(commandNames.includes(name), `Pi 0.85.1 must expose command ${name}`);
+        assert.ok(commandNames.includes(name), `Pi ${hostVersion} (${depSummary}) must expose command ${name}`);
       }
       assert.ok(commands.every((command) => ["extension", "prompt", "skill"].includes(command.source)));
 
       const promptResponse = await requestRpc(child, records, "prompt", { message: "/jx-compat-probe" });
-      assert.equal(promptResponse.success, true, `Pi 0.85.1 extension prompt failed: ${stderr}`);
+      assert.equal(promptResponse.success, true, `Pi ${hostVersion} (${depSummary}) extension prompt failed: ${stderr}`);
       const probeRecord = await waitForMarker(markers, (entry) => entry.event === "probe");
-      assert.ok(probeRecord.activeTools.includes("bash"), "the probe must read active tools through Pi 0.85.1");
+      assert.ok(probeRecord.activeTools.includes("bash"), `the probe must read active tools through Pi ${hostVersion} (${depSummary})`);
       for (const name of [
-        "ask_user_question", "subagent", "subagent_wait", "web_search", "fetch_content",
+        "ask_user_question", "subagent", "web_search", "fetch_content",
         "goal_blocked", "goal_complete", "goal_wait",
       ]) {
-        assert.ok(probeRecord.allTools.includes(name), `Pi 0.85.1 must load companion tool ${name}`);
+        assert.ok(probeRecord.allTools.includes(name), `Pi ${hostVersion} (${depSummary}) must load companion tool ${name}`);
       }
+      // The provider renamed the wait role from `subagent_wait` to `bg_wait`.
+      // This post-start snapshot checks role presence only; bootstrap tests
+      // cover permission gating separately.
+      assert.ok(
+        probeRecord.allTools.includes("subagent_wait") || probeRecord.allTools.includes("bg_wait"),
+        `Pi ${hostVersion} (${depSummary}) must load the subagents wait role via subagent_wait or bg_wait; got [${[...probeRecord.allTools].sort().join(", ")}]`,
+      );
       const actualEngramTools = probeRecord.allTools.filter((name) => name.startsWith("mem_")).sort();
       // External-bridge contract: Engram tools arrive only through the
       // provider-owned packages, never from the jorgex-pi bundle. This env
@@ -237,7 +300,7 @@ test("Pi 0.85.1 loads the published JorgeX package and exposes its real RPC cont
       }
       const lifecycle = readMarkers(markers).map((entry) => entry.event);
       assert.ok(lifecycle.includes("session_start"), "Pi must emit session_start before serving RPC");
-      assert.ok(lifecycle.includes("session_shutdown"), "Pi 0.85.1 must run session_shutdown during SIGTERM teardown");
+      assert.ok(lifecycle.includes("session_shutdown"), `Pi ${hostVersion} must run session_shutdown during SIGTERM teardown`);
       assert.equal(rpcParseError, undefined, `Pi emitted non-JSON RPC output: ${rpcParseError?.message ?? rpcParseError}`);
       const extensionErrors = records.filter((record) => record.type === "extension_error");
       assert.deepEqual(extensionErrors, [], `Pi emitted extension_error: ${JSON.stringify(extensionErrors)}`);
@@ -291,6 +354,30 @@ function resolveSdkModule(piBinary, modulePath) {
     directory = dirname(directory);
   }
   throw new Error(`Unable to resolve Pi SDK module ${modulePath} from ${piBinary}`);
+}
+
+function packTarball(packDir) {
+  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
+  const pm = existsSync(corepackEntry)
+    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
+    : { command: "pnpm", args: [] };
+  execFileSync(pm.command, [...pm.args, "pack", "--pack-destination", packDir], {
+    cwd: root,
+    env: { ...process.env, NO_COLOR: "1" },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
+  assert.equal(tarballs.length, 1);
+  return join(packDir, tarballs[0]);
+}
+
+function allowedHostEnv() {
+  const allowed = {};
+  for (const key of ["PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec", "WINDIR", "windir"]) {
+    if (process.env[key] !== undefined) allowed[key] = process.env[key];
+  }
+  return allowed;
 }
 
 function requestRpc(child, records, type, extra = {}) {
