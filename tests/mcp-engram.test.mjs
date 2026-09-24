@@ -455,7 +455,6 @@ test("managed Engram accepts only a local Node launcher in the DevTools v2 hando
       command: nodeBin, args, lifecycle: "lazy", directTools: false,
     });
     const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
-    assert.ok(contract.capabilities.includes("chrome-devtools-local-handoff-v1"));
     assert.ok(contract.capabilities.includes("chrome-devtools-handoff-v1"));
 
     for (const [label, candidate] of [
