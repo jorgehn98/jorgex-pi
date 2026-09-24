@@ -1,4 +1,4 @@
-import { accessSync, constants, readFileSync, statSync } from "node:fs";
+import { accessSync, constants, lstatSync, readFileSync, statSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectContext7Config, inspectOfficialPackages, resolvePiAgentDir } from "./context7-config.mjs";
@@ -25,6 +25,7 @@ const DEVTOOLS_FIXED_SUFFIX_ARGS = [
   "--no-performance-crux",
   "--no-usage-statistics",
 ];
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
 // The bridge never invokes setup or writes settings/MCP state. It inspects the
 // official external setup and reports the state; the bootstrap registers only
@@ -198,16 +199,16 @@ function readChromeDevToolsHandoff({ env, platform }) {
   if (keys.join("\0") !== ["args", "command", "enabled", "schemaVersion"].join("\0")) {
     throw new Error(`Chrome DevTools handoff has an invalid schema at ${handoffPath}`);
   }
-  if (handoff.schemaVersion !== 1 || handoff.enabled !== true) {
+  if ((handoff.schemaVersion !== 1 && handoff.schemaVersion !== 2) || handoff.enabled !== true) {
     throw new Error(`Chrome DevTools handoff has an unsupported schema at ${handoffPath}`);
   }
-  if (typeof handoff.command !== "string" || !paths.isAbsolute(handoff.command)) {
+  if (typeof handoff.command !== "string" || CONTROL_CHARACTERS.test(handoff.command) || !paths.isAbsolute(handoff.command)) {
     throw new Error(`Chrome DevTools handoff command must be an absolute path at ${handoffPath}`);
   }
   if (!isExecutable(handoff.command, platform)) {
     throw new Error(`Chrome DevTools handoff command is not executable at ${handoffPath}`);
   }
-  if (!isDevToolsArgs(handoff.args)) {
+  if (handoff.schemaVersion === 1 ? !isDevToolsArgs(handoff.args) : !isLocalDevToolsArgs(handoff.args, paths)) {
     throw new Error(`Chrome DevTools handoff has invalid arguments at ${handoffPath}`);
   }
   return { command: handoff.command, args: handoff.args };
@@ -217,6 +218,19 @@ function isDevToolsArgs(args) {
   if (!Array.isArray(args) || args.length !== 6) return false;
   if (args[0] !== "dlx" || !isDevToolsPackageArg(args[1])) return false;
   return args.slice(2).every((arg, index) => arg === DEVTOOLS_FIXED_SUFFIX_ARGS[index]);
+}
+
+function isLocalDevToolsArgs(args, paths) {
+  if (!Array.isArray(args) || args.length !== DEVTOOLS_FIXED_SUFFIX_ARGS.length + 1) return false;
+  const entry = args[0];
+  if (typeof entry !== "string" || CONTROL_CHARACTERS.test(entry) || !paths.isAbsolute(entry)
+    || ![".js", ".mjs"].includes(paths.extname(entry).toLowerCase())) return false;
+  try {
+    if (!lstatSync(entry).isFile()) return false;
+  } catch {
+    return false;
+  }
+  return args.slice(1).every((arg, index) => arg === DEVTOOLS_FIXED_SUFFIX_ARGS[index]);
 }
 
 function isDevToolsPackageArg(arg) {
