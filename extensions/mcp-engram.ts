@@ -1,4 +1,4 @@
-import { accessSync, constants, lstatSync, readFileSync, statSync } from "node:fs";
+import { accessSync, constants, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectContext7Config, inspectOfficialPackages, resolvePiAgentDir } from "./context7-config.mjs";
@@ -208,6 +208,9 @@ function readChromeDevToolsHandoff({ env, platform }) {
   if (!isExecutable(handoff.command, platform)) {
     throw new Error(`Chrome DevTools handoff command is not executable at ${handoffPath}`);
   }
+  if (handoff.schemaVersion === 2 && !isCurrentNode(handoff.command, paths, platform)) {
+    throw new Error(`Chrome DevTools handoff command must be this Pi runtime's Node executable at ${handoffPath}`);
+  }
   if (handoff.schemaVersion === 1 ? !isDevToolsArgs(handoff.args) : !isLocalDevToolsArgs(handoff.args, paths)) {
     throw new Error(`Chrome DevTools handoff has invalid arguments at ${handoffPath}`);
   }
@@ -231,6 +234,14 @@ function isLocalDevToolsArgs(args, paths) {
     return false;
   }
   return args.slice(1).every((arg, index) => arg === DEVTOOLS_FIXED_SUFFIX_ARGS[index]);
+}
+
+function isCurrentNode(command, paths, platform) {
+  try {
+    return samePath(realpathSync(command), realpathSync(process.execPath), paths, platform);
+  } catch {
+    return false;
+  }
 }
 
 function isDevToolsPackageArg(arg) {
