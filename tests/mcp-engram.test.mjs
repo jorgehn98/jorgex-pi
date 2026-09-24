@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve, win32 } from "node:path";
 import test from "node:test";
@@ -423,6 +423,65 @@ test("managed Engram adds the exact optional Pi Chrome DevTools handoff", async 
       directTools: false,
     });
     assert.deepEqual(Object.keys(result.config.mcpServers).sort(), ["chrome-devtools", "context7", "engram"]);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("managed Engram accepts only a local Node launcher in the DevTools v2 handoff", async () => {
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-devtools-local-"));
+  const agentDir = join(sandbox, "agent");
+  const handoffPath = join(agentDir, "jorgex-pi", "devtools.v1.json");
+  const engramBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
+  const nodeBin = process.execPath;
+  const otherBin = join(sandbox, process.platform === "win32" ? "not-node.exe" : "not-node");
+  const launcher = join(sandbox, "managed-devtools.mjs");
+  const args = [launcher, "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"];
+  writeFileSync(engramBin, "fake binary; never execute\n");
+  chmodSync(engramBin, 0o755);
+  writeFileSync(otherBin, "not Node; never execute\n");
+  chmodSync(otherBin, 0o755);
+  writeFileSync(launcher, "// local fixture; never execute\n");
+  mkdirSync(dirname(handoffPath), { recursive: true });
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: {
+    engram: { command: engramBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false },
+  } }));
+  const input = { schemaVersion: 2, enabled: true, command: nodeBin, args };
+  const resolve = () => resolveMcpEngramConfig({ resolveEngramBinary: () => engramBin, env: { PI_CODING_AGENT_DIR: agentDir } });
+  try {
+    writeFileSync(handoffPath, `${JSON.stringify(input)}\n`);
+    const accepted = await resolve();
+    assert.equal(accepted.state, "managed");
+    assert.deepEqual(accepted.config.mcpServers["chrome-devtools"], {
+      command: nodeBin, args, lifecycle: "lazy", directTools: false,
+    });
+    const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
+    assert.ok(contract.capabilities.includes("chrome-devtools-handoff-v1"));
+
+    const rejectedCases = [
+      ["registry invocation", { ...input, args: ["dlx", "chrome-devtools-mcp@1.10.1", ...args.slice(1)] }],
+      ["non-Node executable", { ...input, command: otherBin }],
+      ["missing local script", { ...input, args: [join(sandbox, "absent.mjs"), ...args.slice(1)] }],
+      ["relative local script", { ...input, args: ["managed-devtools.mjs", ...args.slice(1)] }],
+      ["missing privacy flag", { ...input, args: args.slice(0, -1) }],
+      ["extra privacy flag", { ...input, args: [...args, "--unsafe"] }],
+      ["extra field", { ...input, integrity: "untrusted" }],
+      ["unknown schema", { ...input, schemaVersion: 3 }],
+    ];
+    if (process.platform !== "win32") {
+      const linked = join(sandbox, "linked-devtools.mjs");
+      symlinkSync(launcher, linked);
+      rejectedCases.push(["symlinked script", { ...input, args: [linked, ...args.slice(1)] }]);
+    }
+    for (const [label, candidate] of rejectedCases) {
+      writeFileSync(handoffPath, `${JSON.stringify(candidate)}\n`);
+      const rejected = await resolve();
+      assert.equal(rejected.state, "failed", `${label} must fail closed`);
+      assert.equal(rejected.config.mcpServers["chrome-devtools"], undefined);
+      assert.match(rejected.reason ?? "", /devtools|handoff|invalid|absolute|schema/i);
+    }
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
   }
