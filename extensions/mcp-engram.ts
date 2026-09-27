@@ -1,4 +1,18 @@
-import { accessSync, constants, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  opendirSync,
+  readFileSync,
+  readlinkSync,
+  readSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectContext7Config, inspectOfficialPackages, resolvePiAgentDir } from "./context7-config.mjs";
@@ -26,6 +40,14 @@ const DEVTOOLS_FIXED_SUFFIX_ARGS = [
   "--no-usage-statistics",
 ];
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+const DEVTOOLS_DIGEST = /^[0-9a-f]{64}$/;
+const DEVTOOLS_MAX_LAUNCHER_BYTES = 4 * 1024 * 1024;
+const DEVTOOLS_MAX_TREE_BYTES = 512 * 1024 * 1024;
+const DEVTOOLS_MAX_TREE_ENTRIES = 100_000;
+const DEVTOOLS_MAX_TREE_METADATA_BYTES = 32 * 1024 * 1024;
+const DEVTOOLS_MAX_PATH_BYTES = 16 * 1024;
+const DEVTOOLS_MAX_SYMLINK_BYTES = 16 * 1024;
+const DEVTOOLS_HASH_CHUNK_BYTES = 1024 * 1024;
 
 // The bridge never invokes setup or writes settings/MCP state. It inspects the
 // official external setup and reports the state; the bootstrap registers only
@@ -196,6 +218,9 @@ function readChromeDevToolsHandoff({ env, platform }) {
 
   if (!isRecord(handoff)) throw new Error(`Chrome DevTools handoff must be an object at ${handoffPath}`);
   const keys = Object.keys(handoff).sort();
+  if (handoff.schemaVersion === 3) {
+    return readTrustedChromeDevToolsHandoff(handoff, handoffPath, paths, platform);
+  }
   if (keys.join("\0") !== ["args", "command", "enabled", "schemaVersion"].join("\0")) {
     throw new Error(`Chrome DevTools handoff has an invalid schema at ${handoffPath}`);
   }
@@ -215,6 +240,757 @@ function readChromeDevToolsHandoff({ env, platform }) {
     throw new Error(`Chrome DevTools handoff has invalid arguments at ${handoffPath}`);
   }
   return { command: handoff.command, args: handoff.args };
+}
+
+function readTrustedChromeDevToolsHandoff(handoff, handoffPath, paths, platform) {
+  const expectedKeys = [
+    "args",
+    "command",
+    "enabled",
+    "entryPath",
+    "launcherPath",
+    "launcherSha256",
+    "rootPath",
+    "schemaVersion",
+    "treePath",
+    "treeSha256",
+  ];
+  if (Object.keys(handoff).sort().join("\0") !== expectedKeys.join("\0")) {
+    throw new Error(`Chrome DevTools handoff has an invalid schema at ${handoffPath}`);
+  }
+  if (handoff.schemaVersion !== 3 || handoff.enabled !== true) {
+    throw new Error(`Chrome DevTools handoff has an unsupported schema at ${handoffPath}`);
+  }
+  if (typeof handoff.command !== "string"
+    || CONTROL_CHARACTERS.test(handoff.command)
+    || !paths.isAbsolute(handoff.command)
+    || !isCurrentNode(handoff.command, paths, platform)
+    || !isExecutable(handoff.command, platform)) {
+    throw new Error(`Chrome DevTools handoff command must be this Pi runtime's Node executable at ${handoffPath}`);
+  }
+  if (!Array.isArray(handoff.args)
+    || handoff.args.length !== DEVTOOLS_FIXED_SUFFIX_ARGS.length + 1
+    || handoff.args.some((arg) => typeof arg !== "string" || CONTROL_CHARACTERS.test(arg))) {
+    throw new Error(`Chrome DevTools handoff has invalid arguments at ${handoffPath}`);
+  }
+  const pathsToValidate = [
+    ["root", handoff.rootPath],
+    ["tree", handoff.treePath],
+    ["launcher", handoff.launcherPath],
+    ["entry", handoff.entryPath],
+  ];
+  for (const [label, value] of pathsToValidate) {
+    assertTrustedAbsolutePath(value, label, paths, handoffPath);
+  }
+  if (handoff.args[0] !== handoff.launcherPath
+    || !handoff.args.slice(1).every((arg, index) => arg === DEVTOOLS_FIXED_SUFFIX_ARGS[index])) {
+    throw new Error(`Chrome DevTools handoff has invalid arguments at ${handoffPath}`);
+  }
+  if (!DEVTOOLS_DIGEST.test(handoff.launcherSha256) || !DEVTOOLS_DIGEST.test(handoff.treeSha256)) {
+    throw new Error(`Chrome DevTools handoff has invalid digests at ${handoffPath}`);
+  }
+
+  assertTrustedRealPath(handoff.rootPath, "root", paths, platform, handoffPath);
+  assertTrustedRealPath(handoff.treePath, "tree", paths, platform, handoffPath);
+  assertTrustedRealPath(handoff.launcherPath, "launcher", paths, platform, handoffPath);
+  assertTrustedRealPath(handoff.entryPath, "entry", paths, platform, handoffPath);
+  if (!isContainedPath(handoff.rootPath, handoff.treePath, paths, false)
+    || !isContainedPath(handoff.rootPath, handoff.launcherPath, paths, false)
+    || !isContainedPath(handoff.treePath, handoff.entryPath, paths, false)) {
+    throw new Error(`Chrome DevTools handoff paths must be contained at ${handoffPath}`);
+  }
+  assertTrustedDirectory(handoff.rootPath, "root", handoffPath);
+  assertTrustedDirectory(handoff.treePath, "tree", handoffPath);
+  assertTrustedRegularFile(handoff.launcherPath, "launcher", handoffPath);
+  assertTrustedRegularFile(handoff.entryPath, "entry", handoffPath);
+
+  const launcherBytes = readBoundedRegularFile(
+    handoff.launcherPath,
+    DEVTOOLS_MAX_LAUNCHER_BYTES,
+    "Chrome DevTools launcher",
+  );
+  if (sha256Hex(launcherBytes) !== handoff.launcherSha256) {
+    throw new Error(`Chrome DevTools launcher digest does not match at ${handoffPath}`);
+  }
+  if (decodeUtf8(launcherBytes) === undefined) {
+    throw new Error(`Chrome DevTools launcher is not valid UTF-8 at ${handoffPath}`);
+  }
+  if (browserTreeSha256(handoff.treePath, platform) !== handoff.treeSha256) {
+    throw new Error(`Chrome DevTools tree digest does not match at ${handoffPath}`);
+  }
+  return {
+    command: process.execPath,
+    args: [
+      "--input-type=module",
+      "--eval",
+      buildTrustedDevToolsGuard({
+        entryPath: handoff.entryPath,
+        launcherPath: handoff.launcherPath,
+        launcherSha256: handoff.launcherSha256,
+        rootPath: handoff.rootPath,
+        treePath: handoff.treePath,
+        treeSha256: handoff.treeSha256,
+      }, platform),
+      handoff.launcherPath,
+      ...DEVTOOLS_FIXED_SUFFIX_ARGS,
+    ],
+  };
+}
+
+function assertTrustedAbsolutePath(value, label, paths, handoffPath) {
+  if (typeof value !== "string"
+    || CONTROL_CHARACTERS.test(value)
+    || !paths.isAbsolute(value)
+    || paths.resolve(value) !== value
+    || Buffer.byteLength(value, "utf8") > DEVTOOLS_MAX_PATH_BYTES) {
+    throw new Error(`Chrome DevTools ${label} path must be a canonical contained absolute path at ${handoffPath}`);
+  }
+}
+
+function assertTrustedRealPath(value, label, paths, platform, handoffPath) {
+  let resolved;
+  try {
+    resolved = realpathSync(value);
+  } catch (error) {
+    throw new Error(`Chrome DevTools ${label} path is unreadable or symlinked: ${filesystemDiagnostic(`${label} realpath`, value, error).message}`);
+  }
+  if (!samePath(resolved, value, paths, platform)) {
+    throw new Error(`Chrome DevTools ${label} path is unreadable or symlinked at ${handoffPath}`);
+  }
+}
+
+function assertTrustedDirectory(value, label, handoffPath) {
+  let stat;
+  try {
+    stat = lstatSync(value);
+  } catch (error) {
+    throw new Error(`Chrome DevTools ${label} path must be a regular directory: ${filesystemDiagnostic(`${label} lstat`, value, error).message}`);
+  }
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error(`Chrome DevTools ${label} path must be a regular directory at ${handoffPath}`);
+  }
+}
+
+function assertTrustedRegularFile(value, label, handoffPath) {
+  let stat;
+  try {
+    stat = lstatSync(value);
+  } catch (error) {
+    throw new Error(`Chrome DevTools ${label} path must be a regular file: ${filesystemDiagnostic(`${label} lstat`, value, error).message}`);
+  }
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`Chrome DevTools ${label} path must be a regular file at ${handoffPath}`);
+  }
+}
+
+function isContainedPath(parent, child, paths, allowEqual) {
+  const relativePath = paths.relative(paths.resolve(parent), paths.resolve(child));
+  if (relativePath === "") return allowEqual;
+  return relativePath !== ".."
+    && !relativePath.startsWith(`..${paths.sep}`)
+    && !paths.isAbsolute(relativePath);
+}
+
+function diagnosticPath(value) {
+  const path = typeof value === "string" ? value : "<unknown>";
+  return path.length <= 512 ? path : `${path.slice(0, 512)}…`;
+}
+
+function diagnosticCode(error) {
+  const code = typeof error?.code === "string" ? error.code : "UNKNOWN";
+  return /^[A-Z0-9_]{1,32}$/.test(code) ? code : "UNKNOWN";
+}
+
+function filesystemDiagnostic(operation, value, error) {
+  const title = operation.startsWith("Chrome DevTools ") ? operation : `Chrome DevTools ${operation}`;
+  return new Error(`${title} failed for ${diagnosticPath(value)} (${diagnosticCode(error)})`);
+}
+
+function sha256Hex(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function decodeUtf8(bytes) {
+  const source = bytes.toString("utf8");
+  return Buffer.from(source, "utf8").equals(bytes) ? source : undefined;
+}
+
+function openTrustedRegularFile(filePath, label) {
+  const flags = constants.O_RDONLY
+    | (constants.O_NONBLOCK ?? 0)
+    | (constants.O_NOFOLLOW ?? 0);
+  let fd;
+  try {
+    fd = openSync(filePath, flags);
+  } catch (error) {
+    throw filesystemDiagnostic(`${label} open`, filePath, error);
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || !Number.isSafeInteger(stat.size) || stat.size < 0) {
+      throw new Error(`${label} is not a regular file`);
+    }
+    return { fd, size: stat.size };
+  } catch (error) {
+    try {
+      closeSync(fd);
+    } catch {
+      // Preserve the primary filesystem error.
+    }
+    if (error?.code) throw filesystemDiagnostic(`${label} fstat`, filePath, error);
+    throw error;
+  }
+}
+
+function readBoundedRegularFile(filePath, maxBytes, label) {
+  const opened = openTrustedRegularFile(filePath, label);
+  let primary;
+  try {
+    if (opened.size > maxBytes) throw new Error(`${label} exceeds its size bound`);
+    const chunks = [];
+    const buffer = Buffer.allocUnsafe(Math.min(DEVTOOLS_HASH_CHUNK_BYTES, maxBytes || 1));
+    let total = 0;
+    for (;;) {
+      let read;
+      try {
+        read = readSync(opened.fd, buffer, 0, buffer.length, null);
+      } catch (error) {
+        throw filesystemDiagnostic(`${label} read`, filePath, error);
+      }
+      if (read === 0) break;
+      total += read;
+      if (total > maxBytes) throw new Error(`${label} exceeds its size bound`);
+      chunks.push(Buffer.from(buffer.subarray(0, read)));
+    }
+    let finalStat;
+    try {
+      finalStat = fstatSync(opened.fd);
+    } catch (error) {
+      throw filesystemDiagnostic(`${label} fstat`, filePath, error);
+    }
+    if (!finalStat.isFile() || finalStat.size !== total) {
+      throw new Error(`${label} changed while it was being verified`);
+    }
+    return Buffer.concat(chunks, total);
+  } catch (error) {
+    primary = error;
+    throw error;
+  } finally {
+    try {
+      closeSync(opened.fd);
+    } catch (error) {
+      if (!primary) throw filesystemDiagnostic(`${label} close`, filePath, error);
+    }
+  }
+}
+
+function readContainedSymlinkTarget(linkPath, root, paths, platform) {
+  let targetBytes;
+  try {
+    targetBytes = readlinkSync(linkPath, "buffer");
+  } catch (error) {
+    throw filesystemDiagnostic("symlink readlink", linkPath, error);
+  }
+  const target = targetBytes.toString("utf8");
+  if (!Buffer.from(target, "utf8").equals(targetBytes)
+    || target === ""
+    || CONTROL_CHARACTERS.test(target)
+    || targetBytes.length > DEVTOOLS_MAX_SYMLINK_BYTES
+    || paths.isAbsolute(target)
+    || (platform === "win32" && /^[a-zA-Z]:/.test(target))) {
+    throw new Error(`Chrome DevTools symlink must be an internal relative UTF-8 target: ${linkPath}`);
+  }
+  const separator = platform === "win32" ? /[\\/]+/ : /\/+/;
+  const parts = target.split(separator).filter((part) => part !== "" && part !== ".");
+  if (parts.length === 0) throw new Error(`Chrome DevTools symlink target is empty: ${linkPath}`);
+  let current = paths.dirname(paths.resolve(linkPath));
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    const last = index === parts.length - 1;
+    current = part === ".." ? paths.dirname(current) : paths.join(current, part);
+    if (!isContainedPath(root, current, paths, true)) {
+      throw new Error(`Chrome DevTools symlink escapes its tree: ${linkPath}`);
+    }
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch (error) {
+      throw filesystemDiagnostic("symlink target lstat", current, error);
+    }
+    if (stat.isSymbolicLink()) throw new Error(`Chrome DevTools symlink chain is not allowed: ${linkPath}`);
+    if (last) {
+      if (!stat.isFile() && !stat.isDirectory()) {
+        throw new Error(`Chrome DevTools symlink target is not a file or directory: ${linkPath}`);
+      }
+    } else if (!stat.isDirectory()) {
+      throw new Error(`Chrome DevTools symlink target traverses a non-directory: ${linkPath}`);
+    }
+  }
+  return target;
+}
+
+function readDirectoryEntries(directoryPath, label, remainingEntries, root, paths, metadata) {
+  let directory;
+  try {
+    directory = opendirSync(directoryPath);
+  } catch (error) {
+    throw filesystemDiagnostic(`${label} open directory`, directoryPath, error);
+  }
+  const entries = [];
+  let primary;
+  try {
+    for (;;) {
+      const entry = directory.readSync();
+      if (entry === null) break;
+      if (entries.length >= remainingEntries) {
+        throw new Error(`${label} exceeds its entry bound`);
+      }
+      const full = paths.join(directoryPath, entry.name);
+      const relativePath = paths.relative(paths.resolve(root), full).split(paths.sep).join("/");
+      const pathBytes = Buffer.byteLength(relativePath, "utf8");
+      if (metadata.bytes + pathBytes > DEVTOOLS_MAX_TREE_METADATA_BYTES) {
+        throw new Error(`${label} exceeds its metadata bound`);
+      }
+      metadata.bytes += pathBytes;
+      entries.push({ dirent: entry, full, relativePath });
+    }
+  } catch (error) {
+    primary = error;
+    if (error instanceof Error
+      && (error.message === `${label} exceeds its entry bound`
+        || error.message === `${label} exceeds its metadata bound`)) {
+      throw error;
+    }
+    throw filesystemDiagnostic(`${label} read directory`, directoryPath, error);
+  } finally {
+    try {
+      directory.closeSync();
+    } catch (error) {
+      if (!primary) throw filesystemDiagnostic(`${label} close directory`, directoryPath, error);
+    }
+  }
+  return entries;
+}
+
+function browserTreeSha256(root, platform = process.platform) {
+  const paths = platformPaths(platform);
+  const resolvedRoot = paths.resolve(root);
+  const entries = [];
+  const pending = [resolvedRoot];
+  const metadata = { bytes: 0 };
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const item of readDirectoryEntries(
+      directory,
+      "Chrome DevTools tree",
+      DEVTOOLS_MAX_TREE_ENTRIES - entries.length,
+      resolvedRoot,
+      paths,
+      metadata,
+    )) {
+      const { full, relativePath } = item;
+      if (relativePath === ""
+        || CONTROL_CHARACTERS.test(relativePath)
+        || Buffer.byteLength(relativePath, "utf8") > DEVTOOLS_MAX_PATH_BYTES) {
+        throw new Error(`Chrome DevTools tree contains an invalid path: ${full}`);
+      }
+      if (entries.length >= DEVTOOLS_MAX_TREE_ENTRIES) {
+        throw new Error("Chrome DevTools tree exceeds its entry bound");
+      }
+      let stat;
+      try {
+        stat = lstatSync(full);
+      } catch (error) {
+        throw filesystemDiagnostic("tree entry lstat", full, error);
+      }
+      if (stat.isSymbolicLink()) {
+        const target = readContainedSymlinkTarget(full, resolvedRoot, paths, platform);
+        const targetBytes = Buffer.byteLength(target, "utf8");
+        if (metadata.bytes + targetBytes > DEVTOOLS_MAX_TREE_METADATA_BYTES) {
+          throw new Error("Chrome DevTools tree exceeds its metadata bound");
+        }
+        metadata.bytes += targetBytes;
+        entries.push({ kind: "symlink", rel: relativePath, target });
+      } else if (stat.isDirectory()) {
+        entries.push({ kind: "dir", rel: relativePath });
+        pending.push(full);
+      } else if (stat.isFile()) {
+        entries.push({ kind: "file", rel: relativePath, full });
+      } else {
+        throw new Error(`Chrome DevTools tree contains an unsupported entry: ${full}`);
+      }
+    }
+  }
+  entries.sort((left, right) => left.rel < right.rel ? -1 : left.rel > right.rel ? 1 : 0);
+  const hash = createHash("sha256");
+  hash.update("browser-v2\0", "utf8");
+  const total = { bytes: 0 };
+  for (const entry of entries) {
+    hash.update(`${entry.kind}\0${entry.rel}\0`, "utf8");
+    if (entry.kind === "symlink") {
+      const payload = Buffer.from(entry.target, "utf8");
+      const length = Buffer.alloc(8);
+      length.writeBigUInt64BE(BigInt(payload.length));
+      hash.update(length);
+      hash.update(payload);
+      total.bytes += payload.length;
+      if (total.bytes > DEVTOOLS_MAX_TREE_BYTES) throw new Error("Chrome DevTools tree exceeds its byte bound");
+    } else if (entry.kind === "dir") {
+      hash.update(Buffer.alloc(8));
+    } else {
+      hashRegularFilePayload(hash, entry.full, total);
+    }
+  }
+  return hash.digest("hex");
+}
+
+function hashRegularFilePayload(hash, filePath, total) {
+  const opened = openTrustedRegularFile(filePath, "Chrome DevTools tree file");
+  let primary;
+  try {
+    if (opened.size > DEVTOOLS_MAX_TREE_BYTES || total.bytes + opened.size > DEVTOOLS_MAX_TREE_BYTES) {
+      throw new Error("Chrome DevTools tree exceeds its byte bound");
+    }
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(opened.size));
+    hash.update(length);
+    const buffer = Buffer.allocUnsafe(DEVTOOLS_HASH_CHUNK_BYTES);
+    let readTotal = 0;
+    for (;;) {
+      let read;
+      try {
+        read = readSync(opened.fd, buffer, 0, buffer.length, null);
+      } catch (error) {
+        throw filesystemDiagnostic("tree file read", filePath, error);
+      }
+      if (read === 0) break;
+      readTotal += read;
+      if (readTotal > opened.size || total.bytes + readTotal > DEVTOOLS_MAX_TREE_BYTES) {
+        throw new Error("Chrome DevTools tree file changed or exceeds its byte bound");
+      }
+      hash.update(buffer.subarray(0, read));
+    }
+    let finalStat;
+    try {
+      finalStat = fstatSync(opened.fd);
+    } catch (error) {
+      throw filesystemDiagnostic("tree file fstat", filePath, error);
+    }
+    if (!finalStat.isFile() || finalStat.size !== readTotal || readTotal !== opened.size) {
+      throw new Error(`Chrome DevTools tree file changed while it was being verified: ${filePath}`);
+    }
+    total.bytes += readTotal;
+  } catch (error) {
+    primary = error;
+    throw error;
+  } finally {
+    try {
+      closeSync(opened.fd);
+    } catch (error) {
+      if (!primary) throw filesystemDiagnostic("tree file close", filePath, error);
+    }
+  }
+}
+
+function buildTrustedDevToolsGuard(expected, platform) {
+  const guardExpected = JSON.stringify({ ...expected, platform });
+  return `(${runTrustedDevToolsGuard.toString()})(${guardExpected})`;
+}
+
+// This function is serialized into the registered Node --eval command. Keep
+// every dependency local: the launcher and its tree are mutable, while this
+// function comes from the already-loaded Pi module and is the trust boundary.
+async function runTrustedDevToolsGuard(expected) {
+  const crypto = await import("node:crypto");
+  const fs = await import("node:fs");
+  const paths = expected.platform === "win32" ? await import("node:path").then(({ win32 }) => win32) : await import("node:path").then(({ posix }) => posix);
+  const fixedFlags = [
+    "--isolated",
+    "--redact-network-headers",
+    "--no-performance-crux",
+    "--no-usage-statistics",
+  ];
+  const maxLauncherBytes = 4 * 1024 * 1024;
+  const maxTreeBytes = 512 * 1024 * 1024;
+  const maxTreeEntries = 100_000;
+  const maxTreeMetadataBytes = 32 * 1024 * 1024;
+  const maxPathBytes = 16 * 1024;
+  const maxSymlinkBytes = 16 * 1024;
+  const chunkBytes = 1024 * 1024;
+  const controlCharacters = /[\u0000-\u001f\u007f]/;
+  const fail = (message) => { throw new Error(`trusted DevTools guard: ${message}`); };
+  const diagnosticPath = (value) => {
+    const path = typeof value === "string" ? value : "<unknown>";
+    return path.length <= 512 ? path : `${path.slice(0, 512)}…`;
+  };
+  const diagnosticCode = (error) => {
+    const code = typeof error?.code === "string" ? error.code : "UNKNOWN";
+    return /^[A-Z0-9_]{1,32}$/.test(code) ? code : "UNKNOWN";
+  };
+  const failFilesystem = (operation, value, error) => {
+    fail(`${operation} failed for ${diagnosticPath(value)} (${diagnosticCode(error)})`);
+  };
+  const contained = (parent, child, allowEqual) => {
+    const relativePath = paths.relative(paths.resolve(parent), paths.resolve(child));
+    if (relativePath === "") return allowEqual;
+    return relativePath !== ".."
+      && !relativePath.startsWith(`..${paths.sep}`)
+      && !paths.isAbsolute(relativePath);
+  };
+  const samePath = (left, right) => {
+    const resolvedLeft = paths.resolve(left);
+    const resolvedRight = paths.resolve(right);
+    return expected.platform === "win32"
+      ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+      : resolvedLeft === resolvedRight;
+  };
+  const openRegular = (filePath, label) => {
+    const flags = fs.constants.O_RDONLY
+      | (fs.constants.O_NONBLOCK ?? 0)
+      | (fs.constants.O_NOFOLLOW ?? 0);
+    let fd;
+    try {
+      fd = fs.openSync(filePath, flags);
+    } catch (error) {
+      failFilesystem(`${label} open`, filePath, error);
+    }
+    let stat;
+    try {
+      stat = fs.fstatSync(fd);
+    } catch (error) {
+      try { fs.closeSync(fd); } catch { /* Preserve the primary error. */ }
+      failFilesystem(`${label} fstat`, filePath, error);
+    }
+    if (!stat.isFile() || !Number.isSafeInteger(stat.size) || stat.size < 0) fail(`${label} is not a regular file`);
+    return { fd, size: stat.size };
+  };
+  const readBounded = (filePath, maxBytes, label) => {
+    const opened = openRegular(filePath, label);
+    let primary;
+    try {
+      if (opened.size > maxBytes) fail(`${label} exceeds its size bound`);
+      const buffer = Buffer.allocUnsafe(Math.min(chunkBytes, maxBytes || 1));
+      const chunks = [];
+      let total = 0;
+      for (;;) {
+        let read;
+        try {
+          read = fs.readSync(opened.fd, buffer, 0, buffer.length, null);
+        } catch (error) {
+          failFilesystem(`${label} read`, filePath, error);
+        }
+        if (read === 0) break;
+        total += read;
+        if (total > maxBytes) fail(`${label} exceeds its size bound`);
+        chunks.push(Buffer.from(buffer.subarray(0, read)));
+      }
+      let stat;
+      try {
+        stat = fs.fstatSync(opened.fd);
+      } catch (error) {
+        failFilesystem(`${label} fstat`, filePath, error);
+      }
+      if (!stat.isFile() || stat.size !== total) fail(`${label} changed while it was being verified`);
+      return Buffer.concat(chunks, total);
+    } catch (error) {
+      primary = error;
+      throw error;
+    } finally {
+      try { fs.closeSync(opened.fd); } catch (error) { if (!primary) failFilesystem(`${label} close`, filePath, error); }
+    }
+  };
+  const containedSymlinkTarget = (linkPath, root) => {
+    let targetBytes;
+    try { targetBytes = fs.readlinkSync(linkPath, "buffer"); } catch (error) { failFilesystem("symlink readlink", linkPath, error); }
+    const target = targetBytes.toString("utf8");
+    if (!Buffer.from(target, "utf8").equals(targetBytes)
+      || target === ""
+      || controlCharacters.test(target)
+      || targetBytes.length > maxSymlinkBytes
+      || paths.isAbsolute(target)
+      || (expected.platform === "win32" && /^[a-zA-Z]:/.test(target))) {
+      fail(`symlink must be an internal relative UTF-8 target: ${linkPath}`);
+    }
+    const separator = expected.platform === "win32" ? /[\\/]+/ : /\/+/;
+    const parts = target.split(separator).filter((part) => part !== "" && part !== ".");
+    if (parts.length === 0) fail(`symlink target is empty: ${linkPath}`);
+    let current = paths.dirname(paths.resolve(linkPath));
+    for (let index = 0; index < parts.length; index += 1) {
+      const part = parts[index];
+      const last = index === parts.length - 1;
+      current = part === ".." ? paths.dirname(current) : paths.join(current, part);
+      if (!contained(root, current, true)) fail(`symlink escapes its tree: ${linkPath}`);
+      let stat;
+      try { stat = fs.lstatSync(current); } catch (error) { failFilesystem("symlink target lstat", current, error); }
+      if (stat.isSymbolicLink()) fail(`symlink chain is not allowed: ${linkPath}`);
+      if (last) {
+        if (!stat.isFile() && !stat.isDirectory()) fail(`symlink target is not a file or directory: ${linkPath}`);
+      } else if (!stat.isDirectory()) {
+        fail(`symlink target traverses a non-directory: ${linkPath}`);
+      }
+    }
+    return target;
+  };
+  const readDirectory = (directoryPath, remainingEntries, root, metadata) => {
+    let directory;
+    try { directory = fs.opendirSync(directoryPath); } catch (error) { failFilesystem("tree open directory", directoryPath, error); }
+    const entries = [];
+    let primary;
+    try {
+      for (;;) {
+        const entry = directory.readSync();
+        if (entry === null) break;
+        if (entries.length >= remainingEntries) fail("tree exceeds its entry bound");
+        const full = paths.join(directoryPath, entry.name);
+        const rel = paths.relative(paths.resolve(root), full).split(paths.sep).join("/");
+        const pathBytes = Buffer.byteLength(rel, "utf8");
+        if (metadata.bytes + pathBytes > maxTreeMetadataBytes) fail("tree exceeds its metadata bound");
+        metadata.bytes += pathBytes;
+        entries.push({ full, rel });
+      }
+    } catch (error) {
+      primary = true;
+      if (error?.message === "trusted DevTools guard: tree exceeds its entry bound"
+        || error?.message === "trusted DevTools guard: tree exceeds its metadata bound") throw error;
+      if (error?.message?.startsWith("trusted DevTools guard:")) throw error;
+      failFilesystem("tree read directory", directoryPath, error);
+    } finally {
+      try { directory.closeSync(); } catch (error) { if (!primary) failFilesystem("tree close directory", directoryPath, error); }
+    }
+    return entries;
+  };
+  const hashFilePayload = (hash, filePath, total) => {
+    const opened = openRegular(filePath, "tree file");
+    let primary;
+    try {
+      if (opened.size > maxTreeBytes || total.bytes + opened.size > maxTreeBytes) fail("tree exceeds its byte bound");
+      const length = Buffer.alloc(8);
+      length.writeBigUInt64BE(BigInt(opened.size));
+      hash.update(length);
+      const buffer = Buffer.allocUnsafe(chunkBytes);
+      let readTotal = 0;
+      for (;;) {
+        let read;
+        try {
+          read = fs.readSync(opened.fd, buffer, 0, buffer.length, null);
+        } catch (error) {
+          failFilesystem("tree file read", filePath, error);
+        }
+        if (read === 0) break;
+        readTotal += read;
+        if (readTotal > opened.size || total.bytes + readTotal > maxTreeBytes) fail("tree file changed or exceeds its byte bound");
+        hash.update(buffer.subarray(0, read));
+      }
+      let stat;
+      try {
+        stat = fs.fstatSync(opened.fd);
+      } catch (error) {
+        failFilesystem("tree file fstat", filePath, error);
+      }
+      if (!stat.isFile() || stat.size !== readTotal || readTotal !== opened.size) fail(`tree file changed while it was being verified: ${filePath}`);
+      total.bytes += readTotal;
+    } catch (error) {
+      primary = error;
+      throw error;
+    } finally {
+      try { fs.closeSync(opened.fd); } catch (error) { if (!primary) failFilesystem("tree file close", filePath, error); }
+    }
+  };
+  const treeDigest = (root) => {
+    const resolvedRoot = paths.resolve(root);
+    const entries = [];
+    const pending = [resolvedRoot];
+    const metadata = { bytes: 0 };
+    while (pending.length > 0) {
+      const directory = pending.pop();
+      for (const item of readDirectory(directory, maxTreeEntries - entries.length, resolvedRoot, metadata)) {
+        const { full, rel } = item;
+        if (rel === "" || controlCharacters.test(rel) || Buffer.byteLength(rel, "utf8") > maxPathBytes) fail(`tree contains an invalid path: ${full}`);
+        if (entries.length >= maxTreeEntries) fail("tree exceeds its entry bound");
+        let stat;
+        try { stat = fs.lstatSync(full); } catch (error) { failFilesystem("tree entry lstat", full, error); }
+        if (stat.isSymbolicLink()) {
+          const target = containedSymlinkTarget(full, resolvedRoot);
+          const targetBytes = Buffer.byteLength(target, "utf8");
+          if (metadata.bytes + targetBytes > maxTreeMetadataBytes) fail("tree exceeds its metadata bound");
+          metadata.bytes += targetBytes;
+          entries.push({ kind: "symlink", rel, target });
+        }
+        else if (stat.isDirectory()) { entries.push({ kind: "dir", rel }); pending.push(full); }
+        else if (stat.isFile()) entries.push({ kind: "file", rel, full });
+        else fail(`tree contains an unsupported entry: ${full}`);
+      }
+    }
+    entries.sort((left, right) => left.rel < right.rel ? -1 : left.rel > right.rel ? 1 : 0);
+    const hash = crypto.createHash("sha256");
+    hash.update("browser-v2\0", "utf8");
+    const total = { bytes: 0 };
+    for (const entry of entries) {
+      hash.update(`${entry.kind}\0${entry.rel}\0`, "utf8");
+      if (entry.kind === "symlink") {
+        const payload = Buffer.from(entry.target, "utf8");
+        const length = Buffer.alloc(8);
+        length.writeBigUInt64BE(BigInt(payload.length));
+        hash.update(length);
+        hash.update(payload);
+        total.bytes += payload.length;
+        if (total.bytes > maxTreeBytes) fail("tree exceeds its byte bound");
+      } else if (entry.kind === "dir") hash.update(Buffer.alloc(8));
+      else hashFilePayload(hash, entry.full, total);
+    }
+    return hash.digest("hex");
+  };
+  try {
+    if (process.argv[1] !== expected.launcherPath) fail("launcher argv path changed");
+    if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(fixedFlags)) fail("privacy flags changed");
+    const lstatTrusted = (label, trustedPath) => {
+      try {
+        return fs.lstatSync(trustedPath);
+      } catch (error) {
+        failFilesystem(`${label} lstat`, trustedPath, error);
+      }
+    };
+    const rootStat = lstatTrusted("root", expected.rootPath);
+    const treeStat = lstatTrusted("tree", expected.treePath);
+    const launcherStat = lstatTrusted("launcher", expected.launcherPath);
+    const entryStat = lstatTrusted("entry", expected.entryPath);
+    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()
+      || !treeStat.isDirectory() || treeStat.isSymbolicLink()
+      || !launcherStat.isFile() || launcherStat.isSymbolicLink()
+      || !entryStat.isFile() || entryStat.isSymbolicLink()) fail("trusted paths changed kind");
+    try {
+      for (const [label, trustedPath] of [
+        ["root", expected.rootPath],
+        ["tree", expected.treePath],
+        ["launcher", expected.launcherPath],
+        ["entry", expected.entryPath],
+      ]) {
+        let realPath;
+        try {
+          realPath = fs.realpathSync(trustedPath);
+        } catch (error) {
+          failFilesystem(`${label} realpath`, trustedPath, error);
+        }
+        if (!samePath(realPath, trustedPath)) fail(`trusted ${label} path resolves through a symlink`);
+      }
+    } catch (error) {
+      if (error?.message?.startsWith("trusted DevTools guard:")) throw error;
+      fail("trusted paths are unreadable");
+    }
+    if (!contained(expected.rootPath, expected.treePath, false)
+      || !contained(expected.rootPath, expected.launcherPath, false)
+      || !contained(expected.treePath, expected.entryPath, false)) fail("trusted paths escaped");
+    const launcherBytes = readBounded(expected.launcherPath, maxLauncherBytes, "launcher");
+    if (crypto.createHash("sha256").update(launcherBytes).digest("hex") !== expected.launcherSha256) fail("launcher digest changed");
+    const source = launcherBytes.toString("utf8");
+    if (!Buffer.from(source, "utf8").equals(launcherBytes)) fail("launcher is not valid UTF-8");
+    if (treeDigest(expected.treePath) !== expected.treeSha256) fail("tree digest changed");
+    await eval(`(async () => {\n${source}\n})()`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`trusted DevTools guard: ${message}\n`);
+    process.exitCode = 1;
+  }
 }
 
 function isDevToolsArgs(args) {
