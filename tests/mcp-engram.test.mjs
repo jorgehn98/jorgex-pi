@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve, win32 } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -487,6 +503,294 @@ test("managed Engram accepts only a local Node launcher in the DevTools v2 hando
   }
 });
 
+test("T28 schema v3 registers an inline guard and blocks launcher/tree tamper before the marker", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the positive internal symlink fixture requires a platform that permits test symlinks");
+    return;
+  }
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const fixture = createT28Fixture(resolveMcpEngramConfig);
+  try {
+    const handoff = createT28Handoff(fixture);
+    writeT28Handoff(fixture, handoff);
+
+    const resolved = await fixture.resolve();
+    assert.equal(resolved.state, "managed", `a valid schema v3 handoff must register (${resolved.reason ?? "no diagnostic"})`);
+    const server = resolved.config.mcpServers["chrome-devtools"];
+    assert.equal(server?.command, process.execPath, "the registered command must be this Pi runtime's Node");
+    assert.deepEqual(server?.args?.slice(0, 2), ["--input-type=module", "--eval"]);
+    assert.equal(server?.lifecycle, "lazy");
+    assert.equal(server?.directTools, false);
+    assert.notDeepEqual(server?.args, handoff.args, "registration must not retain the mutable launcher as its command");
+
+    const runRegistered = () => spawnSync(server.command, server.args, {
+      cwd: fixture.sandbox,
+      env: { ...process.env, T28_MARKER: fixture.markerPath },
+      encoding: "utf8",
+    });
+    const valid = runRegistered();
+    assert.equal(valid.status, 0, `valid guarded launcher failed:\n${valid.stderr}\n${valid.stdout}`);
+    assert.equal(existsSync(fixture.markerPath), true, "the valid launcher must reach the marker");
+    unlinkSync(fixture.markerPath);
+
+    writeFileSync(fixture.launcherPath, `${fixture.launcherBytes}\n// tampered launcher\n`);
+    const launcherTampered = runRegistered();
+    assert.notEqual(launcherTampered.status, 0, "launcher tamper must fail before spawn");
+    assert.equal(existsSync(fixture.markerPath), false, "launcher tamper must not reach the marker");
+
+    writeFileSync(fixture.launcherPath, fixture.launcherBytes);
+    writeFileSync(fixture.entryPath, `${fixture.entryBytes}\n// tampered tree entry\n`);
+    const treeTampered = runRegistered();
+    assert.notEqual(treeTampered.status, 0, "tree tamper must fail before spawn");
+    assert.equal(existsSync(fixture.markerPath), false, "tree tamper must not reach the marker");
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
+test("T28 schema v3 rejects malformed handoffs without exposing a DevTools server", async () => {
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const fixture = createT28Fixture(resolveMcpEngramConfig);
+  try {
+    const valid = createT28Handoff(fixture);
+    const otherNodePath = join(fixture.sandbox, process.platform === "win32" ? "not-node.exe" : "not-node");
+    writeFileSync(otherNodePath, "not Node; never execute\n");
+    chmodSync(otherNodePath, 0o755);
+    const rejectedCases = [
+      ["invalid launcher digest", { launcherSha256: "not-a-sha256" }, /invalid digests/i],
+      ["invalid tree digest", { treeSha256: "ABC" }, /invalid digests/i],
+      ["escaped entry", { entryPath: join(fixture.sandbox, "outside-entry.mjs") }, /entry path is unreadable or symlinked/i],
+      ["symlinked entry", { entryPath: fixture.linkPath }, /entry path is unreadable or symlinked/i],
+      ["extra key", { unexpected: true }, /invalid schema/i],
+      ["wrong current Node", { command: otherNodePath }, /must be this Pi runtime's Node executable/i],
+      ["changed launcher argv", { args: [fixture.entryPath, ...fixture.fixedFlags] }, /invalid arguments/i],
+      ["changed privacy flag", { args: [fixture.launcherPath, ...fixture.fixedFlags.slice(0, -1), "--unsafe"] }, /invalid arguments/i],
+    ];
+    if (process.platform !== "win32") {
+      const symlinkRootPath = join(fixture.sandbox, "root-link");
+      const symlinkTreePath = join(fixture.sandbox, "tree-link");
+      const symlinkLauncherPath = join(fixture.sandbox, "launcher-link.mjs");
+      symlinkSync(fixture.rootPath, symlinkRootPath);
+      symlinkSync(fixture.treePath, symlinkTreePath);
+      symlinkSync(fixture.launcherPath, symlinkLauncherPath);
+      rejectedCases.push(
+        ["symlinked root", { rootPath: symlinkRootPath }, /root path is unreadable or symlinked/i],
+        ["symlinked tree", { treePath: symlinkTreePath }, /tree path is unreadable or symlinked/i],
+        [
+          "symlinked launcher",
+          { launcherPath: symlinkLauncherPath, args: [symlinkLauncherPath, ...fixture.fixedFlags] },
+          /launcher path is unreadable or symlinked/i,
+        ],
+      );
+    }
+    for (const [label, mutation, diagnostic] of rejectedCases) {
+      writeT28Handoff(fixture, { ...valid, ...mutation });
+      const result = await fixture.resolve();
+      assert.equal(result.state, "failed", `${label} must fail closed`);
+      assert.equal(result.config.mcpServers["chrome-devtools"], undefined, label);
+      assert.match(result.reason ?? "", diagnostic, label);
+    }
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
+const T31_LITERAL_BROWSER_V2_TREE_SHA256 = "6112ab88918efe40ce95f4b1dcf42725fe5dcef152e173e831e766c93d57883a";
+
+test("T31 schema v3 accepts an independent browser-v2 tree vector through registration and the inline guard", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the positive internal symlink fixture requires a platform that permits test symlinks");
+    return;
+  }
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const fixture = createT28Fixture(resolveMcpEngramConfig);
+  try {
+    // This value is a fixed producer/consumer vector, not a digest generated by
+    // the test helper. It covers the directory, file and internal symlink
+    // entries created by createT28Fixture under the browser-v2 framing.
+    const handoff = {
+      ...createT28Handoff(fixture),
+      treeSha256: T31_LITERAL_BROWSER_V2_TREE_SHA256,
+    };
+    writeT28Handoff(fixture, handoff);
+
+    const resolved = await fixture.resolve();
+    assert.equal(resolved.state, "managed", `the literal browser-v2 vector must register (${resolved.reason ?? "no diagnostic"})`);
+    const server = resolved.config.mcpServers["chrome-devtools"];
+    assert.equal(server?.command, process.execPath);
+
+    const runRegistered = () => spawnSync(server.command, server.args, {
+      cwd: fixture.sandbox,
+      env: { ...process.env, T28_MARKER: fixture.markerPath },
+      encoding: "utf8",
+    });
+    const valid = runRegistered();
+    assert.equal(valid.status, 0, `the inline guard rejected the literal vector:\n${valid.stderr}\n${valid.stdout}`);
+    assert.equal(existsSync(fixture.markerPath), true, "the literal vector must reach the marker after guard verification");
+    const marker = readJson(fixture.markerPath);
+    assert.equal(marker.launcherPath, fixture.launcherPath, "the verified launcher path must remain argv[1]");
+    assert.deepEqual(marker.args, fixture.fixedFlags, "the inline guard must preserve the exact four privacy flags");
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
+test("T31 inline guard rejects unsafe symlink topology mutated after registration", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the positive internal symlink fixture requires a platform that permits test symlinks");
+    return;
+  }
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const fixture = createT28Fixture(resolveMcpEngramConfig);
+  try {
+    writeT28Handoff(fixture, createT28Handoff(fixture));
+    const resolved = await fixture.resolve();
+    assert.equal(resolved.state, "managed", resolved.reason ?? "valid fixture must register before mutation");
+    const server = resolved.config.mcpServers["chrome-devtools"];
+    const runRegistered = () => spawnSync(server.command, server.args, {
+      cwd: fixture.sandbox,
+      env: { ...process.env, T28_MARKER: fixture.markerPath },
+      encoding: "utf8",
+    });
+
+    // Registration has already embedded the original tree digest. Replacing
+    // the safe internal link with an absolute target must be rejected by the
+    // guard's symlink policy, before the launcher can write the marker.
+    unlinkSync(fixture.linkPath);
+    symlinkSync(join(fixture.sandbox, "outside-browser-entry.mjs"), fixture.linkPath);
+    const rejected = runRegistered();
+    assert.notEqual(rejected.status, 0, "post-registration symlink topology tamper must fail closed");
+    assert.match(rejected.stderr, /symlink must be an internal relative UTF-8 target/i);
+    assert.equal(existsSync(fixture.markerPath), false, "unsafe post-registration topology must not reach the marker");
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
+test("T31 inline guard reports the missing registered launcher with filesystem diagnostics", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the trusted DevTools process fixture is exercised on the POSIX candidate host");
+    return;
+  }
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const fixture = createT28Fixture(resolveMcpEngramConfig);
+  try {
+    writeT28Handoff(fixture, createT28Handoff(fixture));
+    const resolved = await fixture.resolve();
+    assert.equal(resolved.state, "managed", resolved.reason ?? "valid fixture must register before launcher removal");
+    const server = resolved.config.mcpServers["chrome-devtools"];
+    unlinkSync(fixture.launcherPath);
+
+    const rejected = spawnSync(server.command, server.args, {
+      cwd: fixture.sandbox,
+      env: { ...process.env, T28_MARKER: fixture.markerPath },
+      encoding: "utf8",
+    });
+    assert.notEqual(rejected.status, 0, "a removed registered launcher must fail closed");
+    assert.equal(existsSync(fixture.markerPath), false, "a missing launcher must not reach the marker");
+    assert.ok(rejected.stderr.includes(fixture.launcherPath), "diagnostic must identify the missing launcher path");
+    assert.match(rejected.stderr, /launcher lstat failed for .*\(ENOENT\)/i);
+    assert.doesNotMatch(rejected.stderr, /trusted paths are unreadable/i);
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
+test("T31 refreshes tree evidence to isolate absolute, escaping and chained symlink policy failures", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the positive internal symlink fixture requires a platform that permits test symlinks");
+    return;
+  }
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const fixture = createT28Fixture(resolveMcpEngramConfig);
+  const chainTarget = join(fixture.treePath, "node_modules", "browser", "bin", "chain-target.mjs");
+  const removeLink = () => {
+    try {
+      unlinkSync(fixture.linkPath);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    rmSync(chainTarget, { force: true });
+  };
+  try {
+    const mutations = [
+      ["absolute target", () => symlinkSync(join(fixture.sandbox, "outside-browser-entry.mjs"), fixture.linkPath), /symlink must be an internal relative UTF-8 target/i],
+      ["lexical escape", () => symlinkSync("../../../outside-browser-entry.mjs", fixture.linkPath), /symlink escapes its tree/i],
+      ["symlink chain", () => {
+        symlinkSync("entry.mjs", chainTarget);
+        symlinkSync("../browser/bin/chain-target.mjs", fixture.linkPath);
+      }, /symlink chain is not allowed/i],
+    ];
+    for (const [label, mutate, diagnostic] of mutations) {
+      removeLink();
+      mutate();
+      // Recompute only the handoff evidence so a failure here identifies the
+      // topology policy, not a stale-digest mismatch. The policy itself is
+      // exercised by production's inventory reader.
+      writeT28Handoff(fixture, createT28Handoff(fixture));
+      const rejected = await fixture.resolve();
+      assert.equal(rejected.state, "failed", `${label} must fail closed`);
+      assert.match(rejected.reason ?? "", diagnostic, `${label} must report its policy failure`);
+      assert.equal(rejected.config.mcpServers["chrome-devtools"], undefined, `${label} must not expose a server`);
+    }
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
+test("T31 enforces launcher and tree byte bounds at registration and in the inline guard", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the positive internal symlink fixture requires a platform that permits test symlinks");
+    return;
+  }
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const fixture = createT28Fixture(resolveMcpEngramConfig);
+  const maxLauncherBytes = 4 * 1024 * 1024;
+  const maxTreeBytes = 512 * 1024 * 1024;
+  try {
+    const validHandoff = createT28Handoff(fixture);
+    writeT28Handoff(fixture, validHandoff);
+    const registered = await fixture.resolve();
+    assert.equal(registered.state, "managed", registered.reason ?? "valid fixture must register before bound checks");
+    const server = registered.config.mcpServers["chrome-devtools"];
+    const runRegistered = () => spawnSync(server.command, server.args, {
+      cwd: fixture.sandbox,
+      env: { ...process.env, T28_MARKER: fixture.markerPath },
+      encoding: "utf8",
+    });
+
+    truncateSync(fixture.entryPath, maxTreeBytes + 1);
+    const inlineTreeBound = runRegistered();
+    assert.notEqual(inlineTreeBound.status, 0, "the inline guard must reject an oversized tree file");
+    assert.match(inlineTreeBound.stderr, /tree exceeds its byte bound/i);
+    assert.equal(existsSync(fixture.markerPath), false, "an oversized tree must not reach the marker");
+
+    writeFileSync(fixture.entryPath, fixture.entryBytes);
+    writeT28Handoff(fixture, { ...validHandoff, treeSha256: "0".repeat(64) });
+    truncateSync(fixture.entryPath, maxTreeBytes + 1);
+    const hostTreeBound = await fixture.resolve();
+    assert.equal(hostTreeBound.state, "failed", "registration must reject an oversized tree file");
+    assert.match(hostTreeBound.reason ?? "", /tree exceeds its byte bound/i);
+
+    writeFileSync(fixture.entryPath, fixture.entryBytes);
+    writeFileSync(fixture.launcherPath, Buffer.alloc(maxLauncherBytes + 1, 0x61));
+    const inlineLauncherBound = runRegistered();
+    assert.notEqual(inlineLauncherBound.status, 0, "the inline guard must reject an oversized launcher");
+    assert.match(inlineLauncherBound.stderr, /launcher exceeds its size bound/i);
+    assert.equal(existsSync(fixture.markerPath), false, "an oversized launcher must not reach the marker");
+
+    writeT28Handoff(fixture, {
+      ...validHandoff,
+      launcherSha256: sha256File(fixture.launcherPath),
+    });
+    const hostLauncherBound = await fixture.resolve();
+    assert.equal(hostLauncherBound.state, "failed", "registration must reject an oversized launcher");
+    assert.match(hostLauncherBound.reason ?? "", /launcher exceeds its size bound/i);
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
 test("Stack-observed chrome-devtools-mcp 1.10.1 handoff resolves managed with exact safe flags", async () => {
   const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-mcp-devtools-observed-"));
@@ -808,6 +1112,132 @@ test("executable ENGRAM_BIN without official mcp.json server must not resolve ma
     rmSync(sandbox, { recursive: true, force: true });
   }
 });
+
+function createT28Fixture(resolveMcpEngramConfig) {
+  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-t28-trusted-devtools-"));
+  const agentDir = join(sandbox, "agent");
+  const handoffPath = join(agentDir, "jorgex-pi", "devtools.v1.json");
+  const engramBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
+  const rootPath = join(sandbox, "managed-browser");
+  const treePath = join(rootPath, "tree");
+  const launcherPath = join(rootPath, "launcher.mjs");
+  const entryPath = join(treePath, "node_modules", "browser", "bin", "entry.mjs");
+  const linkPath = join(treePath, "node_modules", ".bin", "browser");
+  const markerPath = join(sandbox, "marker.json");
+  const fixedFlags = [
+    "--isolated",
+    "--redact-network-headers",
+    "--no-performance-crux",
+    "--no-usage-statistics",
+  ];
+  const env = { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir };
+
+  mkdirSync(dirname(handoffPath), { recursive: true });
+  mkdirSync(dirname(entryPath), { recursive: true });
+  mkdirSync(dirname(linkPath), { recursive: true });
+  writeFileSync(engramBin, "fake Engram binary; never execute\n");
+  chmodSync(engramBin, 0o755);
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({
+    packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"],
+  }));
+  writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({
+    mcpServers: {
+      engram: {
+        command: engramBin,
+        args: ["mcp", "--tools=agent"],
+        lifecycle: "lazy",
+        directTools: false,
+      },
+    },
+  }, null, 2)}\n`);
+
+  const entryBytes = `import { writeFileSync } from "node:fs";
+const expectedFlags = ${JSON.stringify(fixedFlags)};
+if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(expectedFlags)) process.exit(41);
+if (!process.env.T28_MARKER) process.exit(42);
+writeFileSync(process.env.T28_MARKER, JSON.stringify({ launcherPath: process.argv[1], args: process.argv.slice(2) }));
+`;
+  const launcherBytes = `await import(${JSON.stringify(entryPath)});\n`;
+  writeFileSync(entryPath, entryBytes);
+  writeFileSync(launcherPath, launcherBytes);
+  if (process.platform !== "win32") symlinkSync("../browser/bin/entry.mjs", linkPath);
+
+  return {
+    sandbox,
+    env,
+    resolve: () => resolveMcpEngramConfig({ resolveEngramBinary: () => engramBin, env }),
+    handoffPath,
+    rootPath,
+    treePath,
+    launcherPath,
+    entryPath,
+    linkPath,
+    markerPath,
+    fixedFlags,
+    launcherBytes,
+    entryBytes,
+  };
+}
+
+function createT28Handoff(fixture) {
+  return {
+    args: [fixture.launcherPath, ...fixture.fixedFlags],
+    command: process.execPath,
+    enabled: true,
+    entryPath: fixture.entryPath,
+    launcherPath: fixture.launcherPath,
+    launcherSha256: sha256File(fixture.launcherPath),
+    rootPath: fixture.rootPath,
+    schemaVersion: 3,
+    treePath: fixture.treePath,
+    treeSha256: deterministicTreeSha256(fixture.treePath),
+  };
+}
+
+function writeT28Handoff(fixture, handoff) {
+  writeFileSync(fixture.handoffPath, `${JSON.stringify(handoff)}\n`);
+}
+
+function sha256File(path) {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+function deterministicTreeSha256(root) {
+  const entries = [];
+  const visit = (directory) => {
+    for (const dirent of readdirSync(directory, { withFileTypes: true })) {
+      const full = join(directory, dirent.name);
+      const rel = relative(root, full).split(sep).join("/");
+      if (dirent.isSymbolicLink()) {
+        entries.push({ kind: "symlink", rel, target: readlinkSync(full) });
+      } else if (dirent.isDirectory()) {
+        entries.push({ kind: "dir", rel });
+        visit(full);
+      } else if (dirent.isFile()) {
+        entries.push({ kind: "file", rel });
+      } else {
+        throw new Error(`unsupported T28 fixture entry: ${full}`);
+      }
+    }
+  };
+  visit(root);
+  entries.sort((left, right) => left.rel < right.rel ? -1 : left.rel > right.rel ? 1 : 0);
+  const hash = createHash("sha256");
+  hash.update("browser-v2\0", "utf8");
+  for (const entry of entries) {
+    const payload = entry.kind === "symlink"
+      ? Buffer.from(entry.target, "utf8")
+      : entry.kind === "file"
+        ? readFileSync(join(root, ...entry.rel.split("/")))
+        : Buffer.alloc(0);
+    hash.update(`${entry.kind}\0${entry.rel}\0`, "utf8");
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(payload.length));
+    hash.update(length);
+    hash.update(payload);
+  }
+  return hash.digest("hex");
+}
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
