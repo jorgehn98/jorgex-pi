@@ -553,19 +553,42 @@ test("T28 schema v3 rejects malformed handoffs without exposing a DevTools serve
   const fixture = createT28Fixture(resolveMcpEngramConfig);
   try {
     const valid = createT28Handoff(fixture);
+    const otherNodePath = join(fixture.sandbox, process.platform === "win32" ? "not-node.exe" : "not-node");
+    writeFileSync(otherNodePath, "not Node; never execute\n");
+    chmodSync(otherNodePath, 0o755);
     const rejectedCases = [
-      ["invalid launcher digest", { launcherSha256: "not-a-sha256" }],
-      ["invalid tree digest", { treeSha256: "ABC" }],
-      ["escaped entry", { entryPath: join(fixture.sandbox, "outside-entry.mjs") }],
-      ["symlinked entry", { entryPath: fixture.linkPath }],
-      ["extra key", { unexpected: true }],
+      ["invalid launcher digest", { launcherSha256: "not-a-sha256" }, /invalid digests/i],
+      ["invalid tree digest", { treeSha256: "ABC" }, /invalid digests/i],
+      ["escaped entry", { entryPath: join(fixture.sandbox, "outside-entry.mjs") }, /entry path is unreadable or symlinked/i],
+      ["symlinked entry", { entryPath: fixture.linkPath }, /entry path is unreadable or symlinked/i],
+      ["extra key", { unexpected: true }, /invalid schema/i],
+      ["wrong current Node", { command: otherNodePath }, /must be this Pi runtime's Node executable/i],
+      ["changed launcher argv", { args: [fixture.entryPath, ...fixture.fixedFlags] }, /invalid arguments/i],
+      ["changed privacy flag", { args: [fixture.launcherPath, ...fixture.fixedFlags.slice(0, -1), "--unsafe"] }, /invalid arguments/i],
     ];
-    for (const [label, mutation] of rejectedCases) {
+    if (process.platform !== "win32") {
+      const symlinkRootPath = join(fixture.sandbox, "root-link");
+      const symlinkTreePath = join(fixture.sandbox, "tree-link");
+      const symlinkLauncherPath = join(fixture.sandbox, "launcher-link.mjs");
+      symlinkSync(fixture.rootPath, symlinkRootPath);
+      symlinkSync(fixture.treePath, symlinkTreePath);
+      symlinkSync(fixture.launcherPath, symlinkLauncherPath);
+      rejectedCases.push(
+        ["symlinked root", { rootPath: symlinkRootPath }, /root path is unreadable or symlinked/i],
+        ["symlinked tree", { treePath: symlinkTreePath }, /tree path is unreadable or symlinked/i],
+        [
+          "symlinked launcher",
+          { launcherPath: symlinkLauncherPath, args: [symlinkLauncherPath, ...fixture.fixedFlags] },
+          /launcher path is unreadable or symlinked/i,
+        ],
+      );
+    }
+    for (const [label, mutation, diagnostic] of rejectedCases) {
       writeT28Handoff(fixture, { ...valid, ...mutation });
       const result = await fixture.resolve();
       assert.equal(result.state, "failed", `${label} must fail closed`);
       assert.equal(result.config.mcpServers["chrome-devtools"], undefined, label);
-      assert.match(result.reason ?? "", /devtools|handoff|invalid|absolute|schema|digest|path/i, label);
+      assert.match(result.reason ?? "", diagnostic, label);
     }
   } finally {
     rmSync(fixture.sandbox, { recursive: true, force: true });
@@ -604,6 +627,9 @@ test("T31 schema v3 accepts an independent browser-v2 tree vector through regist
     const valid = runRegistered();
     assert.equal(valid.status, 0, `the inline guard rejected the literal vector:\n${valid.stderr}\n${valid.stdout}`);
     assert.equal(existsSync(fixture.markerPath), true, "the literal vector must reach the marker after guard verification");
+    const marker = readJson(fixture.markerPath);
+    assert.equal(marker.launcherPath, fixture.launcherPath, "the verified launcher path must remain argv[1]");
+    assert.deepEqual(marker.args, fixture.fixedFlags, "the inline guard must preserve the exact four privacy flags");
   } finally {
     rmSync(fixture.sandbox, { recursive: true, force: true });
   }
@@ -636,6 +662,35 @@ test("T31 inline guard rejects unsafe symlink topology mutated after registratio
     assert.notEqual(rejected.status, 0, "post-registration symlink topology tamper must fail closed");
     assert.match(rejected.stderr, /symlink must be an internal relative UTF-8 target/i);
     assert.equal(existsSync(fixture.markerPath), false, "unsafe post-registration topology must not reach the marker");
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
+test("T31 inline guard reports the missing registered launcher with filesystem diagnostics", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the trusted DevTools process fixture is exercised on the POSIX candidate host");
+    return;
+  }
+  const { resolveMcpEngramConfig } = await import("../extensions/mcp-engram.ts");
+  const fixture = createT28Fixture(resolveMcpEngramConfig);
+  try {
+    writeT28Handoff(fixture, createT28Handoff(fixture));
+    const resolved = await fixture.resolve();
+    assert.equal(resolved.state, "managed", resolved.reason ?? "valid fixture must register before launcher removal");
+    const server = resolved.config.mcpServers["chrome-devtools"];
+    unlinkSync(fixture.launcherPath);
+
+    const rejected = spawnSync(server.command, server.args, {
+      cwd: fixture.sandbox,
+      env: { ...process.env, T28_MARKER: fixture.markerPath },
+      encoding: "utf8",
+    });
+    assert.notEqual(rejected.status, 0, "a removed registered launcher must fail closed");
+    assert.equal(existsSync(fixture.markerPath), false, "a missing launcher must not reach the marker");
+    assert.ok(rejected.stderr.includes(fixture.launcherPath), "diagnostic must identify the missing launcher path");
+    assert.match(rejected.stderr, /launcher lstat failed for .*\(ENOENT\)/i);
+    assert.doesNotMatch(rejected.stderr, /trusted paths are unreadable/i);
   } finally {
     rmSync(fixture.sandbox, { recursive: true, force: true });
   }
