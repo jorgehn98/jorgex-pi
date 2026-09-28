@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep, win32 } from "node:path";
 import test from "node:test";
@@ -277,6 +278,11 @@ test("T34 RED: trusted Playwright v2 routing names the Stack dispatcher instead 
   const fixture = trustedFixture();
   const pi = createPiHarness();
   try {
+    const dangerous = join(fixture.root, "stack'$(touch injected)");
+    renameSync(fixture.command, dangerous);
+    fixture.command = dangerous;
+    fixture.handoff.command = dangerous;
+    fixture.handoff.commandSha256 = createHash("sha256").update(readFileSync(dangerous)).digest("hex");
     writeHandoff(fixture, fixture.handoff);
     await withAgentDir(fixture.agentDir, async () => {
       await createBootstrap({
@@ -290,9 +296,12 @@ test("T34 RED: trusted Playwright v2 routing names the Stack dispatcher instead 
       })(pi.api);
       const result = await pi.beforeAgentStart({ systemPrompt: "Existing prompt" }, { sessionId: "playwright-v2" });
       const block = extractManagedBlock(result.systemPrompt, "jorgex:playwright");
-      assert.ok(block?.includes(fixture.command));
+      const quoted = `'${fixture.command.replace(/'/g, "'\\''")}'`;
+      assert.ok(block?.includes(quoted), "v2 path must be shell-quoted even with metacharacters");
       assert.match(block, /Run only the verified Stack dispatcher/i);
       assert.match(block, /not.*global.*playwright-cli|global.*playwright-cli.*not/i);
+      assert.match(execFileSync("sh", ["-c", `${quoted} --version`], { cwd: fixture.root, encoding: "utf8" }), /0\.1\.21/);
+      assert.equal(existsSync(join(fixture.root, "injected")), false);
     });
   } finally { rmSync(fixture.root, { recursive: true, force: true }); }
 });
