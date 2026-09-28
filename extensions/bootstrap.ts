@@ -721,9 +721,13 @@ function browserRouting(assets, resolvePlaywrightCapability, hasDevtools) {
     capability = { status: "hidden" };
   }
   if (capability?.status === "ready" && typeof capability.commandPath === "string") {
+    const command = formatPlaywrightCommandPath(capability.commandPath);
+    const routing = capability.trusted === true
+      ? `Run only the verified Stack dispatcher at ${command} for the commands above. Do not use a global playwright-cli or pnpm dlx.`
+      : `Use Playwright at ${command} for the commands above.`;
     sections.push({
       marker: playwrightMarker,
-      contents: `${assets.playwright.trimEnd()}\n\nUse Playwright at ${formatPlaywrightCommandPath(capability.commandPath)} for the commands above.`,
+      contents: `${assets.playwright.trimEnd()}\n\n${routing}`,
     });
   }
   if (hasDevtools) sections.push({ marker: devtoolsMarker, contents: assets.devtools });
