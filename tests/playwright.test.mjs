@@ -358,6 +358,60 @@ test("T36 trusted Playwright v2 Windows verifies dispatcher and tree before cmd 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("T38 trusted Playwright v2 Windows runs the authenticated JS dispatcher through Node", { skip: process.platform !== "win32" }, async () => {
+  const { resolvePlaywrightCapability } = await resolverModule();
+  const root = mkdtempSync(join(tmpdir(), "jorgex-pi-playwright-v2-js-win-"));
+  try {
+    const agentDir = join(root, "agent");
+    const handoffPath = join(agentDir, "jorgex-pi", "playwright.v1.json");
+    const rootPath = join(root, "managed-release");
+    const treePath = join(rootPath, "node_modules");
+    const packagePath = join(treePath, "@playwright", "cli");
+    const entryPath = join(packagePath, "entry.js");
+    const launcherPath = join(rootPath, "launcher.mjs");
+    const command = join(root, "browser-playwright.js");
+    const marker = join(root, "version-probe.marker");
+    mkdirSync(join(agentDir, "jorgex-pi"), { recursive: true });
+    mkdirSync(packagePath, { recursive: true });
+    writeFileSync(join(packagePath, "package.json"), '{"name":"@playwright/cli","version":"0.1.21"}\n');
+    writeFileSync(entryPath, "export {};\n");
+    writeFileSync(launcherPath, "await import('./node_modules/@playwright/cli/entry.js');\n");
+    writeFileSync(command, `const fs = require("node:fs");\nif (process.argv[2] !== "--version") process.exit(64);\nfs.writeFileSync(${JSON.stringify(marker)}, "ran\\n");\nprocess.stdout.write("playwright-cli 0.1.21\\n");\n`);
+    const sha = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+    const handoff = {
+      schemaVersion: 2, enabled: true, command, version: "0.1.21", commandSha256: sha(command),
+      rootPath, treePath, entryPath, launcherPath, launcherSha256: sha(launcherPath),
+      treeSha256: browserTreeDigest(treePath),
+    };
+    writeFileSync(handoffPath, `${JSON.stringify(handoff)}\n`);
+    const ready = resolvePlaywrightCapability({ agentDir, platform: "win32" });
+    assert.equal(ready.status, "ready", "the verified JS must run via Node, not file association");
+    assert.equal(readFileSync(marker, "utf8"), "ran\n");
+    const { createBootstrap } = await import("../extensions/bootstrap.ts");
+    const pi = createPiHarness();
+    await createBootstrap({
+      loadCompanion: async () => () => {},
+      getPermissionsService: () => ({ ready: true }),
+      detectWebAccessConflict: () => undefined,
+      detectGoalConflict: () => undefined,
+      readGoalConfig: () => ({ kind: "loaded" }),
+      resolveMcpEngram: async () => ({ state: "managed" }),
+      readSystemPromptAssets,
+      resolvePlaywrightCapability: () => ready,
+    })(pi.api);
+    const prompt = await pi.beforeAgentStart({ systemPrompt: "Existing prompt" }, { sessionId: "playwright-v2-js-win" });
+    const block = extractManagedBlock(prompt.systemPrompt, "jorgex:playwright");
+    const quotedNode = `'${process.execPath.replace(/'/g, "''")}'`;
+    const quotedCommand = `'${command.replace(/'/g, "''")}'`;
+    assert.ok(block?.includes(`& ${quotedNode} ${quotedCommand} open`), "trusted Windows guidance must launch the hashed JS with Node");
+    assert.equal(block.includes(`& ${quotedCommand} open`), false, "direct JS execution is not a Windows invocation");
+    unlinkSync(marker);
+    writeFileSync(command, "mutated dispatcher\n");
+    assert.equal(resolvePlaywrightCapability({ agentDir, platform: "win32" }).status, "hidden");
+    assert.equal(existsSync(marker), false, "tamper must block before Node starts the dispatcher");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("Windows .cmd handoff uses an explicit quoted ComSpec invocation", { skip: process.platform === "win32" ? "the fixture uses POSIX temporary filenames to simulate Windows paths" : false }, async () => {
   const { resolvePlaywrightCapability } = await resolverModule();
   const fixture = createWindowsSandbox();

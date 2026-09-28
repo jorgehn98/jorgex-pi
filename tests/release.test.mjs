@@ -285,7 +285,7 @@ test("pull requests execute the reviewed actions in a non-privileged quality gat
   assertCrossRepoParityGate(workflowJobBlock(workflow, "verify"), "quality");
   const windows = workflowJobBlock(workflow, "playwright-windows");
   assert.match(windows, /runs-on:\s*windows-latest/);
-  assert.match(windows, /node --test --test-name-pattern="T36 trusted Playwright v2 Windows" tests\/playwright\.test\.mjs/);
+  assert.match(windows, /node --test --test-name-pattern="T3\[68\] trusted Playwright v2 Windows" tests\/playwright\.test\.mjs/);
 });
 
 test("the publish workflow publishes the exact deterministic tarball created by pnpm pack", () => {
