@@ -369,7 +369,7 @@ test("T38 trusted Playwright v2 Windows runs the authenticated JS dispatcher thr
     const packagePath = join(treePath, "@playwright", "cli");
     const entryPath = join(packagePath, "entry.js");
     const launcherPath = join(rootPath, "launcher.mjs");
-    const command = join(root, "browser-playwright.js");
+    const command = join(root, "browser-playwright'&echo-injected.js");
     const marker = join(root, "version-probe.marker");
     mkdirSync(join(agentDir, "jorgex-pi"), { recursive: true });
     mkdirSync(packagePath, { recursive: true });
