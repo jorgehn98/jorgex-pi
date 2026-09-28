@@ -195,6 +195,7 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     const requiredPaths = new Set([
       "package/package.json",
       `package/${expected.contractPath}`,
+      "package/contract/browser-handoffs.v1.json",
       `package/${expected.componentInventoryPath}`,
       `package/${expected.assetManifestPath}`,
       ...expected.parityV2.requiredPackagePaths.map((path) => `package/${normalizePackagePath(path)}`),
@@ -204,6 +205,11 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
       ),
     ]);
     for (const path of requiredPaths) assertTarPath(entries, path);
+    assert.deepEqual(
+      archive.get("package/contract/browser-handoffs.v1.json"),
+      readFileSync(join(root, "contract", "browser-handoffs.v1.json")),
+      "packed browser handoff contract must match the tested source bytes",
+    );
     assertPackedParityTargets(archive, entries, parity);
     for (const path of expected.forbiddenTarPaths) {
       assert.equal(entries.has(path), false, `packed artifact must exclude build-only path ${path}`);
