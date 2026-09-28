@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, win32 } from "node:path";
+import { join, relative, sep, win32 } from "node:path";
 import test from "node:test";
 
 const EXPECTED_VERSION = "0.1.18";
@@ -52,6 +53,103 @@ async function withAgentDir(agentDir, callback) {
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previous;
   }
+}
+
+function browserTreeDigest(root) {
+  const entries = [];
+  const visit = (directory) => {
+    for (const item of readdirSync(directory, { withFileTypes: true })) {
+      const full = join(directory, item.name);
+      const rel = relative(root, full).split(sep).join("/");
+      if (item.isDirectory()) { entries.push({ kind: "dir", rel }); visit(full); }
+      else if (item.isSymbolicLink()) entries.push({ kind: "symlink", rel, target: readlinkSync(full) });
+      else if (item.isFile()) entries.push({ kind: "file", rel });
+      else throw new Error(`unsupported test entry: ${full}`);
+    }
+  };
+  visit(root);
+  entries.sort((a, b) => a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0);
+  const hash = createHash("sha256").update("browser-v2\0");
+  for (const item of entries) {
+    const bytes = item.kind === "symlink" ? Buffer.from(item.target)
+      : item.kind === "file" ? readFileSync(join(root, ...item.rel.split("/"))) : Buffer.alloc(0);
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(bytes.length));
+    hash.update(`${item.kind}\0${item.rel}\0`).update(length).update(bytes);
+  }
+  return hash.digest("hex");
+}
+
+function trustedFixture() {
+  const fixture = createSandbox("0.1.21");
+  const rootPath = join(fixture.root, "managed-release");
+  const treePath = join(rootPath, "node_modules");
+  const packagePath = join(treePath, "@playwright", "cli");
+  const entryPath = join(packagePath, "entry.js");
+  const launcherPath = join(rootPath, "launcher.mjs");
+  const marker = join(fixture.root, "version-probe.marker");
+  mkdirSync(packagePath, { recursive: true });
+  writeFileSync(join(packagePath, "package.json"), '{"name":"@playwright/cli","version":"0.1.21"}\n');
+  writeFileSync(entryPath, "export {};\n");
+  symlinkSync("entry.js", join(packagePath, "runtime-link"));
+  writeFileSync(launcherPath, "await import('./node_modules/@playwright/cli/entry.js');\n");
+  writeFileSync(fixture.command, `#!/bin/sh\nif [ "$1" != "--version" ]; then exit 64; fi\nprintf 'ran\\n' > '${marker}'\nprintf 'playwright-cli 0.1.21\\n'\n`);
+  chmodSync(fixture.command, 0o755);
+  const sha = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+  const handoff = {
+    schemaVersion: 2, enabled: true, command: fixture.command, version: "0.1.21",
+    commandSha256: sha(fixture.command), rootPath, treePath, entryPath,
+    launcherPath, launcherSha256: sha(launcherPath), treeSha256: browserTreeDigest(treePath),
+  };
+  return { ...fixture, marker, handoff, entryPath, launcherPath, treePath };
+}
+
+test("T33 RED: trusted Playwright v2 accepts safe relative links and validates before version spawn", { skip: process.platform === "win32" }, async () => {
+  const { resolvePlaywrightCapability } = await resolverModule();
+  const fixture = trustedFixture();
+  try {
+    writeHandoff(fixture, fixture.handoff);
+    const ready = resolvePlaywrightCapability({ agentDir: fixture.agentDir });
+    assert.equal(ready.status, "ready", "v2 evidence must be accepted after validation");
+    assert.equal(ready.commandPath, fixture.command);
+    assert.equal(readFileSync(fixture.marker, "utf8"), "ran\n");
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("T33 RED: Playwright v2 tamper and foreign command block before the version marker", { skip: process.platform === "win32" }, async () => {
+  const { resolvePlaywrightCapability } = await resolverModule();
+  for (const [name, change] of [
+    ["launcher drift", (f) => writeFileSync(f.launcherPath, "mutated launcher\n")],
+    ["tree drift", (f) => writeFileSync(f.entryPath, "mutated entry\n")],
+    ["foreign command", (f) => { f.handoff.command = join(f.root, "other-command"); writeFileSync(f.handoff.command, "#!/bin/sh\nexit 0\n"); chmodSync(f.handoff.command, 0o755); }],
+    ["command digest drift", (f) => { f.handoff.commandSha256 = "0".repeat(64); }],
+    ["absolute symlink with matching tree digest", (f) => {
+      const link = join(f.treePath, "@playwright", "cli", "runtime-link");
+      unlinkSync(link);
+      symlinkSync(f.command, link);
+      f.handoff.treeSha256 = browserTreeDigest(f.treePath);
+    }],
+    ["symlink chain with matching tree digest", (f) => {
+      const dir = join(f.treePath, "@playwright", "cli");
+      unlinkSync(join(dir, "runtime-link"));
+      symlinkSync("entry.js", join(dir, "other-link"));
+      symlinkSync("other-link", join(dir, "runtime-link"));
+      f.handoff.treeSha256 = browserTreeDigest(f.treePath);
+    }],
+    ["extra key", (f) => { f.handoff.extra = true; }],
+  ]) {
+    const fixture = trustedFixture();
+    try {
+      change(fixture);
+      writeHandoff(fixture, fixture.handoff);
+      assert.equal(resolvePlaywrightCapability({ agentDir: fixture.agentDir }).status, "hidden", name);
+      assert.equal(fsExists(fixture.marker), false, `${name} must block before --version`);
+    } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+  }
+});
+
+function fsExists(file) {
+  try { readFileSync(file); return true; } catch { return false; }
 }
 
 test("the default Playwright resolver accepts only an exact handoff and a real matching executable", async () => {
