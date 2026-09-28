@@ -47,7 +47,7 @@ export function resolvePlaywrightCapability({
     });
     if (!isExpectedVersion(output, handoff.version)) return hiddenCapability();
 
-    return { status: "ready", commandPath: handoff.command };
+    return { status: "ready", commandPath: handoff.command, ...(handoff.trusted ? { trusted: true } : {}) };
   } catch {
     return hiddenCapability();
   }
@@ -102,7 +102,7 @@ function readTrustedHandoff(handoff, keys, paths, platform) {
   if (!Buffer.from(launcher.toString("utf8"), "utf8").equals(launcher)) return undefined;
   if (sha256(dispatcher) !== handoff.commandSha256 || sha256(launcher) !== handoff.launcherSha256) return undefined;
   if (browserTreeSha256(handoff.treePath, platform) !== handoff.treeSha256) return undefined;
-  return { command: handoff.command, version: handoff.version };
+  return { command: handoff.command, version: handoff.version, trusted: true };
 }
 
 function trustedPath(value, directory, paths) {
