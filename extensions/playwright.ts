@@ -1,13 +1,23 @@
 import { execFileSync as nodeExecFileSync } from "node:child_process";
-import { accessSync, constants, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { accessSync, constants, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
+import { browserTreeSha256, readBoundedRegularFile } from "./mcp-engram.ts";
 
 const HANDOFF_RELATIVE_PATH = ["jorgex-pi", "playwright.v1.json"];
 const STABLE_EXACT_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const VERSION_TIMEOUT_MS = 5_000;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const WINDOWS_CMD_METACHARACTERS = /[&|<>()^%!"\r\n]/;
+const DIGEST = /^[0-9a-f]{64}$/;
+const MAX_PATH_BYTES = 16 * 1024;
+const MAX_DISPATCHER_BYTES = 4 * 1024 * 1024;
+const MAX_LAUNCHER_BYTES = 4 * 1024 * 1024;
+const TRUSTED_KEYS = [
+  "command", "commandSha256", "enabled", "entryPath", "launcherPath", "launcherSha256",
+  "rootPath", "schemaVersion", "treePath", "treeSha256", "version",
+];
 
 export function resolvePlaywrightCapability({
   agentDir,
@@ -21,7 +31,7 @@ export function resolvePlaywrightCapability({
       ? resolveDefaultAgentDir({ env, platform, paths })
       : validateAbsolutePath(agentDir, paths, "agentDir");
     const handoffPath = paths.join(resolvedAgentDir, ...HANDOFF_RELATIVE_PATH);
-    const handoff = readHandoff(handoffPath, paths);
+    const handoff = readHandoff(handoffPath, paths, platform);
     if (!handoff) return hiddenCapability();
 
     const invocation = planExecutable(handoff.command, platform, env);
@@ -43,7 +53,7 @@ export function resolvePlaywrightCapability({
   }
 }
 
-function readHandoff(handoffPath, paths) {
+function readHandoff(handoffPath, paths, platform) {
   let raw;
   try {
     raw = readFileSync(handoffPath, "utf8");
@@ -59,11 +69,59 @@ function readHandoff(handoffPath, paths) {
   }
   if (!isRecord(parsed)) return undefined;
   const keys = Object.keys(parsed).sort();
+  if (parsed.schemaVersion === 2) return readTrustedHandoff(parsed, keys, paths, platform);
   if (keys.join("\0") !== ["command", "enabled", "schemaVersion", "version"].join("\0")) return undefined;
   if (parsed.schemaVersion !== 1 || parsed.enabled !== true || !isStableExactVersion(parsed.version)) return undefined;
   if (typeof parsed.command !== "string" || CONTROL_CHARACTERS.test(parsed.command)) return undefined;
   if (!paths.isAbsolute(parsed.command)) return undefined;
   return { command: parsed.command, version: parsed.version };
+}
+
+function readTrustedHandoff(handoff, keys, paths, platform) {
+  if (keys.join("\0") !== TRUSTED_KEYS.join("\0")
+    || handoff.enabled !== true || !isStableExactVersion(handoff.version)
+    || !DIGEST.test(handoff.commandSha256) || !DIGEST.test(handoff.launcherSha256)
+    || !DIGEST.test(handoff.treeSha256)) return undefined;
+
+  for (const [label, value, directory] of [
+    ["dispatcher", handoff.command, false],
+    ["root", handoff.rootPath, true],
+    ["tree", handoff.treePath, true],
+    ["entry", handoff.entryPath, false],
+    ["launcher", handoff.launcherPath, false],
+  ]) {
+    if (!trustedPath(value, directory, paths)) return undefined;
+  }
+  if (!contained(handoff.rootPath, handoff.treePath, paths)
+    || !contained(handoff.rootPath, handoff.launcherPath, paths)
+    || !contained(handoff.treePath, handoff.entryPath, paths)
+    || contained(handoff.rootPath, handoff.command, paths)) return undefined;
+
+  const dispatcher = readBoundedRegularFile(handoff.command, MAX_DISPATCHER_BYTES, "Playwright dispatcher");
+  const launcher = readBoundedRegularFile(handoff.launcherPath, MAX_LAUNCHER_BYTES, "Playwright launcher");
+  if (!Buffer.from(launcher.toString("utf8"), "utf8").equals(launcher)) return undefined;
+  if (sha256(dispatcher) !== handoff.commandSha256 || sha256(launcher) !== handoff.launcherSha256) return undefined;
+  if (browserTreeSha256(handoff.treePath, platform) !== handoff.treeSha256) return undefined;
+  return { command: handoff.command, version: handoff.version };
+}
+
+function trustedPath(value, directory, paths) {
+  if (typeof value !== "string" || CONTROL_CHARACTERS.test(value)
+    || !paths.isAbsolute(value) || paths.resolve(value) !== value
+    || Buffer.byteLength(value, "utf8") > MAX_PATH_BYTES) return false;
+  const resolved = realpathSync(value);
+  if ((paths === win32 ? resolved.toLowerCase() !== value.toLowerCase() : resolved !== value)) return false;
+  const stat = lstatSync(value);
+  return !stat.isSymbolicLink() && (directory ? stat.isDirectory() : stat.isFile());
+}
+
+function contained(root, candidate, paths) {
+  const rel = paths.relative(paths.resolve(root), paths.resolve(candidate));
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${paths.sep}`) && !paths.isAbsolute(rel);
+}
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function resolveDefaultAgentDir({ env, platform, paths }) {
