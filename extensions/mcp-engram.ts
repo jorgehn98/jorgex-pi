@@ -442,7 +442,7 @@ function openTrustedRegularFile(filePath, label) {
   }
 }
 
-function readBoundedRegularFile(filePath, maxBytes, label) {
+export function readBoundedRegularFile(filePath, maxBytes, label) {
   const opened = openTrustedRegularFile(filePath, label);
   let primary;
   try {
@@ -572,7 +572,7 @@ function readDirectoryEntries(directoryPath, label, remainingEntries, root, path
   return entries;
 }
 
-function browserTreeSha256(root, platform = process.platform) {
+export function browserTreeSha256(root, platform = process.platform) {
   const paths = platformPaths(platform);
   const resolvedRoot = paths.resolve(root);
   const entries = [];
