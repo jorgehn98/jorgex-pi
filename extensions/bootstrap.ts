@@ -727,9 +727,14 @@ function browserRouting(assets, resolvePlaywrightCapability, hasDevtools) {
     const routing = capability.trusted === true
       ? `Run only the verified Stack dispatcher at ${command} for the commands above. Do not use a global playwright-cli or pnpm dlx.`
       : `Use Playwright at ${command} for the commands above.`;
+    const guidance = capability.trusted === true
+      ? assets.playwright.trimEnd()
+        .replace(/\bplaywright-cli\b(?=\s+(?:open|snapshot|close|--help|-s=))/g, command)
+        .replaceAll("jorgex-stack browser playwright", command)
+      : assets.playwright.trimEnd();
     sections.push({
       marker: playwrightMarker,
-      contents: `${assets.playwright.trimEnd()}\n\n${routing}`,
+      contents: `${guidance}\n\n${routing}`,
     });
   }
   if (hasDevtools) sections.push({ marker: devtoolsMarker, contents: assets.devtools });

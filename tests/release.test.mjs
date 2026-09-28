@@ -269,6 +269,9 @@ test("pull requests execute the reviewed actions in a non-privileged quality gat
     "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
     "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+    "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
   ], "quality must check out both Pi and the pinned Stack snapshot with reviewed actions");
   for (const action of actionUses) assert.match(action, /@[a-f0-9]{40}$/, `quality action must not use a mutable tag: ${action}`);
   for (const action of actionUses) assert.equal(reviewedActions.has(action), true, "quality action is not in the reviewed allowlist: " + action);
@@ -280,6 +283,9 @@ test("pull requests execute the reviewed actions in a non-privileged quality gat
     "pnpm pack --pack-destination .validation-artifacts",
   ]) assert.ok(workflow.includes(command), `quality workflow is missing required command: ${command}`);
   assertCrossRepoParityGate(workflowJobBlock(workflow, "verify"), "quality");
+  const windows = workflowJobBlock(workflow, "playwright-windows");
+  assert.match(windows, /runs-on:\s*windows-latest/);
+  assert.match(windows, /node --test --test-name-pattern="T36 trusted Playwright v2 Windows" tests\/playwright\.test\.mjs/);
 });
 
 test("the publish workflow publishes the exact deterministic tarball created by pnpm pack", () => {
