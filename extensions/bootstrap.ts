@@ -721,7 +721,9 @@ function browserRouting(assets, resolvePlaywrightCapability, hasDevtools) {
     capability = { status: "hidden" };
   }
   if (capability?.status === "ready" && typeof capability.commandPath === "string") {
-    const command = formatPlaywrightCommandPath(capability.commandPath);
+    const command = capability.trusted === true
+      ? formatTrustedPlaywrightCommandPath(capability.commandPath)
+      : formatPlaywrightCommandPath(capability.commandPath);
     const routing = capability.trusted === true
       ? `Run only the verified Stack dispatcher at ${command} for the commands above. Do not use a global playwright-cli or pnpm dlx.`
       : `Use Playwright at ${command} for the commands above.`;
@@ -736,6 +738,11 @@ function browserRouting(assets, resolvePlaywrightCapability, hasDevtools) {
 
 function formatPlaywrightCommandPath(commandPath) {
   return /\s/.test(commandPath) ? JSON.stringify(commandPath) : commandPath;
+}
+
+function formatTrustedPlaywrightCommandPath(commandPath) {
+  const quoted = `'${commandPath.replace(/'/g, process.platform === "win32" ? "''" : "'\\''")}'`;
+  return process.platform === "win32" ? `& ${quoted}` : quoted;
 }
 
 function readDefaultSystemPromptAssets() {
