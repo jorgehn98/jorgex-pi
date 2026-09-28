@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep, win32 } from "node:path";
 import test from "node:test";
@@ -123,6 +123,13 @@ test("T33 RED: Playwright v2 tamper and foreign command block before the version
     ["tree drift", (f) => writeFileSync(f.entryPath, "mutated entry\n")],
     ["foreign command", (f) => { f.handoff.command = join(f.root, "other-command"); writeFileSync(f.handoff.command, "#!/bin/sh\nexit 0\n"); chmodSync(f.handoff.command, 0o755); }],
     ["command digest drift", (f) => { f.handoff.commandSha256 = "0".repeat(64); }],
+    ["self-verifying command inside managed root", (f) => {
+      const command = join(f.handoff.rootPath, "mutable-command");
+      copyFileSync(f.command, command);
+      chmodSync(command, 0o755);
+      f.handoff.command = command;
+      f.handoff.commandSha256 = createHash("sha256").update(readFileSync(command)).digest("hex");
+    }],
     ["absolute symlink with matching tree digest", (f) => {
       const link = join(f.treePath, "@playwright", "cli", "runtime-link");
       unlinkSync(link);
