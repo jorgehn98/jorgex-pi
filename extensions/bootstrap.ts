@@ -721,9 +721,20 @@ function browserRouting(assets, resolvePlaywrightCapability, hasDevtools) {
     capability = { status: "hidden" };
   }
   if (capability?.status === "ready" && typeof capability.commandPath === "string") {
+    const command = capability.trusted === true
+      ? formatTrustedPlaywrightCommandPath(capability.commandPath)
+      : formatPlaywrightCommandPath(capability.commandPath);
+    const routing = capability.trusted === true
+      ? `Run only the verified Stack dispatcher at ${command} for the commands above. Do not use a global playwright-cli or pnpm dlx.`
+      : `Use Playwright at ${command} for the commands above.`;
+    const guidance = capability.trusted === true
+      ? assets.playwright.trimEnd()
+        .replace(/\bplaywright-cli\b(?=\s+(?:open|snapshot|close|--help|-s=))/g, command)
+        .replaceAll("jorgex-stack browser playwright", command)
+      : assets.playwright.trimEnd();
     sections.push({
       marker: playwrightMarker,
-      contents: `${assets.playwright.trimEnd()}\n\nUse Playwright at ${formatPlaywrightCommandPath(capability.commandPath)} for the commands above.`,
+      contents: `${guidance}\n\n${routing}`,
     });
   }
   if (hasDevtools) sections.push({ marker: devtoolsMarker, contents: assets.devtools });
@@ -732,6 +743,11 @@ function browserRouting(assets, resolvePlaywrightCapability, hasDevtools) {
 
 function formatPlaywrightCommandPath(commandPath) {
   return /\s/.test(commandPath) ? JSON.stringify(commandPath) : commandPath;
+}
+
+function formatTrustedPlaywrightCommandPath(commandPath) {
+  const quoted = `'${commandPath.replace(/'/g, process.platform === "win32" ? "''" : "'\\''")}'`;
+  return process.platform === "win32" ? `& ${quoted}` : quoted;
 }
 
 function readDefaultSystemPromptAssets() {

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, win32 } from "node:path";
+import { join, relative, sep, win32 } from "node:path";
 import test from "node:test";
 
 const EXPECTED_VERSION = "0.1.18";
@@ -52,6 +54,122 @@ async function withAgentDir(agentDir, callback) {
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previous;
   }
+}
+
+function browserTreeDigest(root) {
+  const entries = [];
+  const visit = (directory) => {
+    for (const item of readdirSync(directory, { withFileTypes: true })) {
+      const full = join(directory, item.name);
+      const rel = relative(root, full).split(sep).join("/");
+      if (item.isDirectory()) { entries.push({ kind: "dir", rel }); visit(full); }
+      else if (item.isSymbolicLink()) entries.push({ kind: "symlink", rel, target: readlinkSync(full) });
+      else if (item.isFile()) entries.push({ kind: "file", rel });
+      else throw new Error(`unsupported test entry: ${full}`);
+    }
+  };
+  visit(root);
+  entries.sort((a, b) => a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0);
+  const hash = createHash("sha256").update("browser-v2\0");
+  for (const item of entries) {
+    const bytes = item.kind === "symlink" ? Buffer.from(item.target)
+      : item.kind === "file" ? readFileSync(join(root, ...item.rel.split("/"))) : Buffer.alloc(0);
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(bytes.length));
+    hash.update(`${item.kind}\0${item.rel}\0`).update(length).update(bytes);
+  }
+  return hash.digest("hex");
+}
+
+function trustedFixture() {
+  const fixture = createSandbox("0.1.21");
+  const rootPath = join(fixture.root, "managed-release");
+  const treePath = join(rootPath, "node_modules");
+  const packagePath = join(treePath, "@playwright", "cli");
+  const entryPath = join(packagePath, "entry.js");
+  const launcherPath = join(rootPath, "launcher.mjs");
+  const marker = join(fixture.root, "version-probe.marker");
+  mkdirSync(packagePath, { recursive: true });
+  writeFileSync(join(packagePath, "package.json"), '{"name":"@playwright/cli","version":"0.1.21"}\n');
+  writeFileSync(entryPath, "export {};\n");
+  symlinkSync("entry.js", join(packagePath, "runtime-link"));
+  writeFileSync(launcherPath, "await import('./node_modules/@playwright/cli/entry.js');\n");
+  writeFileSync(fixture.command, `#!/bin/sh\nif [ "$1" != "--version" ]; then exit 64; fi\nprintf 'ran\\n' > '${marker}'\nprintf 'playwright-cli 0.1.21\\n'\n`);
+  chmodSync(fixture.command, 0o755);
+  const sha = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+  const handoff = {
+    schemaVersion: 2, enabled: true, command: fixture.command, version: "0.1.21",
+    commandSha256: sha(fixture.command), rootPath, treePath, entryPath,
+    launcherPath, launcherSha256: sha(launcherPath), treeSha256: browserTreeDigest(treePath),
+  };
+  return { ...fixture, marker, handoff, entryPath, launcherPath, treePath };
+}
+
+test("T33 trusted Playwright v2 accepts safe relative links and validates before version spawn", { skip: process.platform === "win32" }, async () => {
+  const { resolvePlaywrightCapability } = await resolverModule();
+  const fixture = trustedFixture();
+  try {
+    assert.equal(fixture.handoff.treeSha256, "2d8a192654859f71078ac72bb43e4aa1fe04d89a05f2e974e55d982d08aa0dc9", "independent browser-v2 vector");
+    writeHandoff(fixture, fixture.handoff);
+    const ready = resolvePlaywrightCapability({ agentDir: fixture.agentDir });
+    assert.equal(ready.status, "ready", "v2 evidence must be accepted after validation");
+    assert.equal(ready.commandPath, fixture.command);
+    assert.equal(readFileSync(fixture.marker, "utf8"), "ran\n");
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("T33 Playwright v2 tamper and foreign command block before the version marker", { skip: process.platform === "win32" }, async () => {
+  const { resolvePlaywrightCapability } = await resolverModule();
+  for (const [name, change] of [
+    ["launcher drift", (f) => writeFileSync(f.launcherPath, "mutated launcher\n")],
+    ["tree drift", (f) => writeFileSync(f.entryPath, "mutated entry\n")],
+    ["foreign command", (f) => { f.handoff.command = join(f.root, "other-command"); writeFileSync(f.handoff.command, "#!/bin/sh\nexit 0\n"); chmodSync(f.handoff.command, 0o755); }],
+    ["command digest drift", (f) => { f.handoff.commandSha256 = "0".repeat(64); }],
+    ["entry is a directory with matching tree digest", (f) => {
+      const directory = join(f.treePath, "@playwright", "cli", "directory-entry");
+      mkdirSync(directory);
+      f.handoff.entryPath = directory;
+      f.handoff.treeSha256 = browserTreeDigest(f.treePath);
+    }],
+    ["entry escapes the verified tree", (f) => {
+      const outside = join(f.root, "foreign-entry.js");
+      writeFileSync(outside, "export {};\n");
+      f.handoff.entryPath = outside;
+    }],
+    ["self-verifying command inside managed root", (f) => {
+      const command = join(f.handoff.rootPath, "mutable-command");
+      copyFileSync(f.command, command);
+      chmodSync(command, 0o755);
+      f.handoff.command = command;
+      f.handoff.commandSha256 = createHash("sha256").update(readFileSync(command)).digest("hex");
+    }],
+    ["absolute symlink with matching tree digest", (f) => {
+      const link = join(f.treePath, "@playwright", "cli", "runtime-link");
+      unlinkSync(link);
+      symlinkSync(f.command, link);
+      f.handoff.treeSha256 = browserTreeDigest(f.treePath);
+    }],
+    ["symlink chain with matching tree digest", (f) => {
+      const dir = join(f.treePath, "@playwright", "cli");
+      unlinkSync(join(dir, "runtime-link"));
+      symlinkSync("entry.js", join(dir, "other-link"));
+      symlinkSync("other-link", join(dir, "runtime-link"));
+      f.handoff.treeSha256 = browserTreeDigest(f.treePath);
+    }],
+    ["extra key", (f) => { f.handoff.extra = true; }],
+  ]) {
+    const fixture = trustedFixture();
+    try {
+      change(fixture);
+      writeHandoff(fixture, fixture.handoff);
+      assert.equal(resolvePlaywrightCapability({ agentDir: fixture.agentDir }).status, "hidden", name);
+      assert.equal(fsExists(fixture.marker), false, `${name} must block before --version`);
+    } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+  }
+});
+
+function fsExists(file) {
+  try { readFileSync(file); return true; } catch { return false; }
 }
 
 test("the default Playwright resolver accepts only an exact handoff and a real matching executable", async () => {
@@ -165,6 +283,79 @@ test("the default bootstrap resolver advertises only the verified temporary Play
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
   }
+});
+
+test("T34 trusted Playwright v2 routing names the Stack dispatcher instead of global CLI", { skip: process.platform === "win32" }, async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const fixture = trustedFixture();
+  const pi = createPiHarness();
+  try {
+    const dangerous = join(fixture.root, "stack'$(touch injected)");
+    renameSync(fixture.command, dangerous);
+    fixture.command = dangerous;
+    fixture.handoff.command = dangerous;
+    fixture.handoff.commandSha256 = createHash("sha256").update(readFileSync(dangerous)).digest("hex");
+    writeHandoff(fixture, fixture.handoff);
+    await withAgentDir(fixture.agentDir, async () => {
+      await createBootstrap({
+        loadCompanion: async () => () => {},
+        getPermissionsService: () => ({ ready: true }),
+        detectWebAccessConflict: () => undefined,
+        detectGoalConflict: () => undefined,
+        readGoalConfig: () => ({ kind: "loaded" }),
+        resolveMcpEngram: async () => ({ state: "managed" }),
+        readSystemPromptAssets: readSystemPromptAssets,
+      })(pi.api);
+      const result = await pi.beforeAgentStart({ systemPrompt: "Existing prompt" }, { sessionId: "playwright-v2" });
+      const block = extractManagedBlock(result.systemPrompt, "jorgex:playwright");
+      const quoted = `'${fixture.command.replace(/'/g, "'\\''")}'`;
+      assert.ok(block?.includes(quoted), "v2 path must be shell-quoted even with metacharacters");
+      assert.match(block, /Run only the verified Stack dispatcher/i);
+      assert.match(block, /not.*global.*playwright-cli|global.*playwright-cli.*not/i);
+      for (const subcommand of ["open", "snapshot", "close", "--help"]) {
+        assert.equal(block.includes(`\`playwright-cli ${subcommand}`), false, `legacy ${subcommand} example must be replaced`);
+        assert.ok(block.includes(`\`${quoted} ${subcommand}`), `trusted ${subcommand} example must use dispatcher`);
+      }
+      assert.match(execFileSync("sh", ["-c", `${quoted} --version`], { cwd: fixture.root, encoding: "utf8" }), /0\.1\.21/);
+      assert.equal(existsSync(join(fixture.root, "injected")), false);
+    });
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("T36 trusted Playwright v2 Windows verifies dispatcher and tree before cmd spawn", { skip: process.platform !== "win32" }, async () => {
+  const { resolvePlaywrightCapability } = await resolverModule();
+  const root = mkdtempSync(join(tmpdir(), "jorgex-pi-playwright-v2-win-"));
+  try {
+    const agentDir = join(root, "agent");
+    const handoffPath = join(agentDir, "jorgex-pi", "playwright.v1.json");
+    const rootPath = join(root, "managed-release");
+    const treePath = join(rootPath, "node_modules");
+    const packagePath = join(treePath, "@playwright", "cli");
+    const entryPath = join(packagePath, "entry.js");
+    const launcherPath = join(rootPath, "launcher.mjs");
+    const marker = join(root, "version-probe.marker");
+    const command = join(root, "stack-dispatch.cmd");
+    mkdirSync(join(agentDir, "jorgex-pi"), { recursive: true });
+    mkdirSync(packagePath, { recursive: true });
+    writeFileSync(join(packagePath, "package.json"), '{"name":"@playwright/cli","version":"0.1.21"}\n');
+    writeFileSync(entryPath, "export {};\n");
+    writeFileSync(launcherPath, "await import('./node_modules/@playwright/cli/entry.js');\n");
+    writeFileSync(command, `@echo off\r\nif not "%~1"=="--version" exit /b 64\r\necho ran > "${marker}"\r\necho playwright-cli 0.1.21\r\n`);
+    const sha = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+    const handoff = {
+      schemaVersion: 2, enabled: true, command, version: "0.1.21", commandSha256: sha(command),
+      rootPath, treePath, entryPath, launcherPath, launcherSha256: sha(launcherPath),
+      treeSha256: browserTreeDigest(treePath),
+    };
+    writeFileSync(handoffPath, `${JSON.stringify(handoff)}\n`);
+    const env = { ...process.env, ComSpec: process.env.ComSpec ?? "C:\\Windows\\System32\\cmd.exe" };
+    assert.equal(resolvePlaywrightCapability({ agentDir, platform: "win32", env }).status, "ready");
+    assert.equal(readFileSync(marker, "utf8").trim(), "ran");
+    unlinkSync(marker);
+    writeFileSync(entryPath, "mutated entry\n");
+    assert.equal(resolvePlaywrightCapability({ agentDir, platform: "win32", env }).status, "hidden");
+    assert.equal(existsSync(marker), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("Windows .cmd handoff uses an explicit quoted ComSpec invocation", { skip: process.platform === "win32" ? "the fixture uses POSIX temporary filenames to simulate Windows paths" : false }, async () => {
