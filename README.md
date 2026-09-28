@@ -188,6 +188,8 @@ For v1, Pi requires `enabled: true`, an exact stable semver, an absolute executa
 
 The new v2 form has exactly these fields; the dispatcher is a separate executable shipped by Stack, outside the mutable Playwright release:
 
+The package also ships `contract/browser-handoffs.v1.json` with the exact reader schemas it accepts (`playwright: [1, 2]`, `devtools: [1, 2, 3]`). Stack can require this package-local declaration before projecting a trusted handoff to an installed Pi release; an older package without it does not prove v2/v3 support. This is compatibility evidence, not a pin selecting the next Pi version or an additional root capability.
+
 ```json
 {
   "schemaVersion": 2,
