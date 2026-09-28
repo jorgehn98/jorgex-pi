@@ -171,9 +171,9 @@ The JorgeX wrapper gives `web_search` a safe workflow precedence: a valid per-ca
 
 Playwright remains a separate opt-in route, used only when the task requires interactive browser UI, forms, dynamic DOM, screenshots, or tracing. Browser profiles, authenticated sessions, cookies, and stored browser state require explicit user approval; page DOM, downloads, and dialogs remain untrusted data.
 
-When the Playwright handoff resolves as ready, the bootstrap adds a package-local fallback using the verified command path. The guidance tells the agent to consult `--help`, use its own task-specific session (`-s=<name>`), open Chromium with `--browser=chromium`, obtain refs with `snapshot`, verify action results, and close only the session it created. Pi does not perform browser launch readiness checks here.
+When the Playwright handoff resolves as ready, bootstrap adds browser guidance with the accepted absolute command path. The agent should consult `--help`, use its own task-specific session (`-s=<name>`), open Chromium with `--browser=chromium`, obtain refs with `snapshot`, verify action results, and close only the session it created. A trusted v2 handoff explicitly routes those commands through the Stack dispatcher rather than a global `playwright-cli` or `pnpm dlx`. Pi does not perform browser launch readiness checks here.
 
-The optional Stack handoff is `PI_CODING_AGENT_DIR/jorgex-pi/playwright.v1.json` (normally `~/.pi/agent/jorgex-pi/playwright.v1.json`). It is a strict, Stack-owned, read-only JSON contract with exactly these fields. “Stack-owned” describes the lifecycle and write ownership; the Pi resolver does not authenticate the file's provenance.
+The optional Stack handoff remains at `PI_CODING_AGENT_DIR/jorgex-pi/playwright.v1.json` (normally `~/.pi/agent/jorgex-pi/playwright.v1.json`). It is strict and read-only to Pi. “Stack-owned” describes its lifecycle and write ownership, not independent provenance authentication. Pi retains this four-field v1 form for historical handoffs:
 
 ```json
 {
@@ -184,9 +184,29 @@ The optional Stack handoff is `PI_CODING_AGENT_DIR/jorgex-pi/playwright.v1.json`
 }
 ```
 
-Pi accepts the handoff only when `schemaVersion` is `1`, `enabled` is `true`, `version` is an exact stable semver, `command` is absolute and executable, and invoking that path with `--version` returns exactly the handoff version. The resolver does not search `PATH`, inspect browser profiles, open a user session, or test whether a live browser can launch. Stack owns acquisition of the shared CLI and Chromium, including browser readiness checks; the Pi capability check validates only the executable handoff and does not download, checksum, or authenticate the CLI binary.
+For v1, Pi requires `enabled: true`, an exact stable semver, an absolute executable, and an exact `command --version` match. This historical reader does **not** authenticate the CLI binary or its dependencies and is not the form for a new byte-bound Stack opt-in.
 
-When the handoff is absent, malformed, or fails the version check, the capability stays hidden and the browser guidance is omitted. A manually written file that satisfies the same schema and executable/version checks is accepted; Pi does not authenticate its provenance. Once a valid handoff is present, Pi exposes the routing with the managed command path. The bootstrap resolves it in `before_agent_start` for each agent turn and does not rewrite it; changing or removing the file is re-evaluated on the next turn. The capability is advertised as `playwright-handoff-v1`; this resolver state does not certify live browser readiness. Its adoption is a separate Stack change and does not alter Pi's canonical snapshot or shared source commit.
+The new v2 form has exactly these fields; the dispatcher is a separate executable shipped by Stack, outside the mutable Playwright release:
+
+```json
+{
+  "schemaVersion": 2,
+  "enabled": true,
+  "command": "/absolute/stack/dist/browser-playwright.js",
+  "commandSha256": "<64 lowercase hex characters>",
+  "version": "<exact-stable-version>",
+  "rootPath": "/absolute/stack-managed/release",
+  "treePath": "/absolute/stack-managed/release/node_modules",
+  "entryPath": "/absolute/stack-managed/release/node_modules/@playwright/cli/entry.js",
+  "launcherPath": "/absolute/stack-managed/release/launcher.mjs",
+  "launcherSha256": "<64 lowercase hex characters>",
+  "treeSha256": "<64 lowercase hex characters>"
+}
+```
+
+Before reporting `ready` or running `command --version`, Pi checks canonical absolute paths, containment, regular files/directories, the dispatcher's location outside the release, bounded dispatcher and launcher SHA-256, and the browser-v2 dependency-tree digest. Safe internal relative symlinks are accepted; absolute, escaping or chained symlinks are rejected. The Stack dispatcher rechecks the managed receipt, launcher and tree before each actual Playwright command. A matching handoff is local evidence, not independent npm provenance; Pi never downloads Playwright, owns the dispatcher, or opens Chromium during this capability check. A compatible Stack producer must be published and adopted separately before v2 can be used for new opt-ins.
+
+When either handoff is absent, malformed, tampered, or fails the version check, the capability stays hidden. Bootstrap resolves it in `before_agent_start` on each turn and never rewrites it; Stack owns the file. A manually written, internally consistent local handoff may satisfy the parser, so neither schema proves who wrote it. The existing root capability name `playwright-handoff-v1` remains unchanged for Stack compatibility; schema v2 does not imply a new root capability or certify live browser readiness. The shared snapshot and its source commit are unchanged by this Pi-native reader. As with the DevTools guard, no claim is made against a same-user writer changing trusted Stack/Pi code or dependencies in the narrow interval between verification and loading.
 
 `pi-web-access` also registers `/websearch`, `/curator`, `/google-account`, and `/search`. These slash commands are explicit user actions and do not pass through Pi's `tool_call` health guard. They retain the companion's own lifecycle, UI, configuration, and error handling; the fail-closed guarantee above applies to agent tool calls, not those commands.
 
