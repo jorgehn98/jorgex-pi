@@ -272,6 +272,31 @@ test("the default bootstrap resolver advertises only the verified temporary Play
   }
 });
 
+test("T34 RED: trusted Playwright v2 routing names the Stack dispatcher instead of global CLI", { skip: process.platform === "win32" }, async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const fixture = trustedFixture();
+  const pi = createPiHarness();
+  try {
+    writeHandoff(fixture, fixture.handoff);
+    await withAgentDir(fixture.agentDir, async () => {
+      await createBootstrap({
+        loadCompanion: async () => () => {},
+        getPermissionsService: () => ({ ready: true }),
+        detectWebAccessConflict: () => undefined,
+        detectGoalConflict: () => undefined,
+        readGoalConfig: () => ({ kind: "loaded" }),
+        resolveMcpEngram: async () => ({ state: "managed" }),
+        readSystemPromptAssets: readSystemPromptAssets,
+      })(pi.api);
+      const result = await pi.beforeAgentStart({ systemPrompt: "Existing prompt" }, { sessionId: "playwright-v2" });
+      const block = extractManagedBlock(result.systemPrompt, "jorgex:playwright");
+      assert.ok(block?.includes(fixture.command));
+      assert.match(block, /Run only the verified Stack dispatcher/i);
+      assert.match(block, /not.*global.*playwright-cli|global.*playwright-cli.*not/i);
+    });
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
 test("Windows .cmd handoff uses an explicit quoted ComSpec invocation", { skip: process.platform === "win32" ? "the fixture uses POSIX temporary filenames to simulate Windows paths" : false }, async () => {
   const { resolvePlaywrightCapability } = await resolverModule();
   const fixture = createWindowsSandbox();
