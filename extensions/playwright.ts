@@ -34,7 +34,7 @@ export function resolvePlaywrightCapability({
     const handoff = readHandoff(handoffPath, paths, platform);
     if (!handoff) return hiddenCapability();
 
-    const invocation = planExecutable(handoff.command, platform, env);
+    const invocation = planExecutable(handoff.command, platform, env, handoff.trusted === true);
     if (invocation === undefined || !isExecutable(handoff.command, platform)) return hiddenCapability();
 
     const output = execFileSync(invocation.command, invocation.args, {
@@ -144,7 +144,10 @@ function validateAbsolutePath(value, paths, label) {
   return paths.resolve(value);
 }
 
-function planExecutable(command, platform, env) {
+function planExecutable(command, platform, env, trusted) {
+  if (platform === "win32" && trusted && /\.js$/i.test(command)) {
+    return { command: process.execPath, args: [command, "--version"] };
+  }
   if (platform !== "win32" || !/\.(cmd|bat)$/i.test(command)) return { command, args: ["--version"] };
   if (WINDOWS_CMD_METACHARACTERS.test(command)) return undefined;
   const quote = (part) => part === "" || /\s/.test(part) ? `"${part}"` : part;

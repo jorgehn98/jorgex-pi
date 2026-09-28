@@ -747,6 +747,9 @@ function formatPlaywrightCommandPath(commandPath) {
 
 function formatTrustedPlaywrightCommandPath(commandPath) {
   const quoted = `'${commandPath.replace(/'/g, process.platform === "win32" ? "''" : "'\\''")}'`;
+  if (process.platform === "win32" && /\.js$/i.test(commandPath)) {
+    return `& '${process.execPath.replace(/'/g, "''")}' ${quoted}`;
+  }
   return process.platform === "win32" ? `& ${quoted}` : quoted;
 }
 
