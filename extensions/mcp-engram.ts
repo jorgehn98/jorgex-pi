@@ -716,16 +716,23 @@ function hashRegularFilePayload(hash, filePath, total) {
 
 function buildTrustedDevToolsGuard(expected, platform) {
   const guardExpected = JSON.stringify({ ...expected, platform });
-  return `(${runTrustedDevToolsGuard.toString()})(${guardExpected})`;
+  // The adapter interpolates environment references in command arguments.
+  // Encode both code and expected paths so its expansion cannot rewrite them.
+  const encoded = Buffer.from(`(${runTrustedDevToolsGuard.toString()})(${guardExpected})`, "utf8").toString("base64");
+  return `await eval(Buffer.from(${JSON.stringify(encoded)}, "base64").toString("utf8"))`;
 }
 
 // This function is serialized into the registered Node --eval command. Keep
 // every dependency local: the launcher and its tree are mutable, while this
 // function comes from the already-loaded Pi module and is the trust boundary.
 async function runTrustedDevToolsGuard(expected) {
-  const crypto = await import("node:crypto");
-  const fs = await import("node:fs");
-  const paths = expected.platform === "win32" ? await import("node:path").then(({ win32 }) => win32) : await import("node:path").then(({ posix }) => posix);
+  // Keep import syntax out of Jiti's AST transform: this serialized function
+  // runs in standalone Node, where Jiti's private import helpers do not exist.
+  const nativeImport = new Function("specifier", "return import(specifier)");
+  const crypto = await nativeImport("node:crypto");
+  const fs = await nativeImport("node:fs");
+  const pathModule = await nativeImport("node:path");
+  const paths = expected.platform === "win32" ? pathModule.win32 : pathModule.posix;
   const fixedFlags = [
     "--isolated",
     "--redact-network-headers",
