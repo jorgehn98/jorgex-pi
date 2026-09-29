@@ -589,7 +589,22 @@ export default async function (pi) {
     assert.equal(resolved?.state, "managed", resolved?.reason);
     const server = resolved.config.mcpServers["chrome-devtools"];
     assert.equal(server?.command, process.execPath);
-    const runGuard = () => spawnSync(server.command, server.args, {
+    // The adapter expands environment references in every command argument,
+    // including JavaScript template literals in an unencoded inline guard.
+    let interpolate = (value) => value
+      .replace(/\$\{(\w+)\}/g, () => "")
+      .replace(/\$env:(\w+)/g, () => "")
+      .replace(/\{env:(\w+)\}/g, () => "");
+    if (process.env.JORGEX_OFFICIAL_SETUP_DIR) {
+      const { createJiti } = await import("jiti");
+      const jiti = createJiti(import.meta.url, { moduleCache: false });
+      const { interpolateEnvVars } = await jiti.import(join(resolve(process.env.JORGEX_OFFICIAL_SETUP_DIR), "npm", "node_modules", "pi-mcp-adapter", "utils.ts"));
+      interpolate = (value) => interpolateEnvVars(value, {});
+    }
+    const adapterArgs = server.args.map(interpolate);
+    assert.deepEqual(adapterArgs, server.args, "the registered guard must be opaque to adapter environment interpolation");
+    assert.ok(server.args.join(" ").length < 30_000, "the bounded fixture command must fit Windows' 32K command-line limit");
+    const runGuard = () => spawnSync(server.command, adapterArgs, {
       cwd: fixture.sandbox,
       env: { T28_MARKER: fixture.markerPath, ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
       encoding: "utf8",
@@ -597,6 +612,7 @@ export default async function (pi) {
     });
     const valid = runGuard();
     assert.equal(valid.status, 0, `Jiti-loaded guard must run in standalone Node:\n${valid.stderr}\n${valid.stdout}`);
+    assert.equal(existsSync(fixture.markerPath), true, "adapter interpolation must not erase the guarded launcher's source");
     assert.deepEqual(JSON.parse(readFileSync(fixture.markerPath, "utf8")).args, fixture.fixedFlags);
     unlinkSync(fixture.markerPath);
     writeFileSync(fixture.launcherPath, `${fixture.launcherBytes}\n// tampered launcher\n`);

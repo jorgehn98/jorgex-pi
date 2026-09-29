@@ -716,7 +716,10 @@ function hashRegularFilePayload(hash, filePath, total) {
 
 function buildTrustedDevToolsGuard(expected, platform) {
   const guardExpected = JSON.stringify({ ...expected, platform });
-  return `(${runTrustedDevToolsGuard.toString()})(${guardExpected})`;
+  // The adapter interpolates environment references in command arguments.
+  // Encode both code and expected paths so its expansion cannot rewrite them.
+  const encoded = Buffer.from(`(${runTrustedDevToolsGuard.toString()})(${guardExpected})`, "utf8").toString("base64");
+  return `await eval(Buffer.from(${JSON.stringify(encoded)}, "base64").toString("utf8"))`;
 }
 
 // This function is serialized into the registered Node --eval command. Keep
