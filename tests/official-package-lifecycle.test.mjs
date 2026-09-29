@@ -44,6 +44,7 @@ test("assets preserve official external state and never claim managed MCP writes
   const preserved = assets.preservedExternalState ?? [];
   const has = (owner, relativePath) => preserved.some((entry) => entry.owner === owner && entry.relativePath === relativePath);
   assert.equal(has("user", "mcp.json"), true, "mcp.json stays user-owned external state");
+  assert.equal(has("user", "mcp-adapter.json"), true, "mcp-adapter.json stays user-owned external state");
   assert.ok(
     preserved.some(({ relativePath }) => relativePath === "mcp-cache.json"),
     "mcp cache stays preserved external state",
@@ -73,7 +74,7 @@ test("assets preserve official external state and never claim managed MCP writes
     );
   }
   for (const write of assets.managedExternalWrites ?? []) {
-    assert.doesNotMatch(write.relativePath ?? "", /^mcp\.json$|^mcp-cache\.json$/, "Pi must never claim managed writes over official MCP state");
+    assert.doesNotMatch(write.relativePath ?? "", /^mcp(?:-adapter)?\.json$|^mcp-cache\.json$/, "Pi must never claim managed writes over official MCP state");
   }
 });
 
@@ -86,5 +87,6 @@ test("cleanup/status/doctor preserve external state and use no fallback factory 
   // Runner diagnostics must not silently install or mutate official state;
   // cleanup only removes receipt-owned lifecycle fields, never external MCP/bin/DB.
   assert.doesNotMatch(runnerSource, /unlinkSync\(.*mcp\.json|writeFileSync\(.*mcp\.json/m, "runner must never write or delete mcp.json");
+  assert.doesNotMatch(runnerSource, /unlinkSync\(.*mcp-adapter\.json|writeFileSync\(.*mcp-adapter\.json/m, "runner must never write or delete mcp-adapter.json");
   assert.ok(runnerSource.includes("cleanupLifecycle"), "runner keeps its ownership-safe cleanup seam");
 });

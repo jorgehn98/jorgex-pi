@@ -22,6 +22,9 @@ function makeBridgeSandbox({ globalPackages, withMcp = true, withContext7Conflic
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
   writeFileSync(join(agentDir, "settings.json"), `${JSON.stringify({ packages: globalPackages }, null, 2)}\n`);
+  const adapterDir = join(agentDir, "npm", "node_modules", "pi-mcp-adapter");
+  mkdirSync(adapterDir, { recursive: true });
+  writeFileSync(join(adapterDir, "package.json"), JSON.stringify({ name: "pi-mcp-adapter", version: "2.36.0" }));
   if (withMcp) {
     writeFileSync(
       join(agentDir, "mcp.json"),
@@ -150,6 +153,9 @@ test("T33: missing bridge reason names official MCP/setup remedy, not missing bi
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: [VALID_GENTLE, VALID_ADAPTER] }));
+  const adapterDir = join(agentDir, "npm", "node_modules", "pi-mcp-adapter");
+  mkdirSync(adapterDir, { recursive: true });
+  writeFileSync(join(adapterDir, "package.json"), JSON.stringify({ name: "pi-mcp-adapter", version: "2.36.0" }));
   try {
     const bridge = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
