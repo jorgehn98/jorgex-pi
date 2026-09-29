@@ -1,5 +1,9 @@
 {
   "schemaVersion": 1,
+  "mcpAdapterConfig": {
+    "schemaVersion": 1,
+    "files": ["mcp.json", "mcp-adapter.json"]
+  },
   "package": {
     "name": "jorgex-pi",
     "version": "0.8.36",
