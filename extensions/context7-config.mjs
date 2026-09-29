@@ -155,8 +155,10 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
     ["agents-global", paths.join(home, ".agents", "mcp.json")],
     ["agents-nested-global", paths.join(home, ".agents", "mcp", "mcp.json")],
     ["pi-global", paths.join(agentDir, "mcp.json")],
+    ["pi-global-adapter", paths.join(agentDir, "mcp-adapter.json")],
     ["shared-project", paths.join(cwd, ".mcp.json")],
     ["pi-project", paths.join(cwd, configDir, "mcp.json")],
+    ["pi-project-adapter", paths.join(cwd, configDir, "mcp-adapter.json")],
   ];
   const flagIndex = argv.indexOf("--mcp-config");
   const override = flagIndex >= 0 ? argv[flagIndex + 1] : argv.find((arg) => arg.startsWith("--mcp-config="))?.slice(13);
@@ -190,7 +192,7 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
   return { state: "available" };
 }
 
-function readConfig(file) {
+export function readConfig(file) {
   const stat = statSync(file);
   if (!stat.isFile() || stat.size > maxConfigBytes) throw new Error("Invalid MCP configuration file");
   const bytes = readFileSync(file);

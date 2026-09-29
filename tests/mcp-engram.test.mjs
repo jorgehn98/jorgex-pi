@@ -31,6 +31,12 @@ const expectedContext7Config = {
   directTools: expected.context7.directTools,
 };
 
+function installAdapterFixture(agentDir) {
+  const packageDir = join(agentDir, "npm", "node_modules", "pi-mcp-adapter");
+  mkdirSync(packageDir, { recursive: true });
+  writeFileSync(join(packageDir, "package.json"), JSON.stringify({ name: "pi-mcp-adapter", version: "2.36.0" }));
+}
+
 test("the official bridge owns no bundled adapter and verifies over the external event bus", async () => {
   const manifest = readJson(join(root, "package.json"));
   const contract = readJson(join(root, "contract", "jorgex-pi.v1.json"));
@@ -87,8 +93,10 @@ test("Context7 inspection recognizes a direct Pi config without importing or rew
       ["agents-global", join(home, ".agents", "mcp.json")],
       ["agents-nested-global", join(home, ".agents", "mcp", "mcp.json")],
       ["pi-global", configPath],
+      ["pi-global-adapter", join(agentDir, "mcp-adapter.json")],
       ["shared-project", join(sandbox, ".mcp.json")],
       ["pi-project", join(sandbox, ".pi", "mcp.json")],
+      ["pi-project-adapter", join(sandbox, ".pi", "mcp-adapter.json")],
     ];
     for (const [source, sourcePath] of sourcePaths) {
       mkdirSync(dirname(sourcePath), { recursive: true });
@@ -158,6 +166,7 @@ test("Context7 and Engram resolution expand a tilde agent directory under an iso
   mkdirSync(resolvedAgentDir, { recursive: true });
   writeFileSync(configPath, previousBytes);
   writeFileSync(join(resolvedAgentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(resolvedAgentDir);
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
   writeReceipt(
@@ -206,6 +215,7 @@ test("managed Engram registers anonymous Context7 over HTTP and keeps an optiona
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const anonymous = await resolveMcpEngramConfig({
@@ -258,6 +268,7 @@ test("a previous homonymous Context7 config is preserved and blocks only managed
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(configPath, previousBytes);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
 
@@ -285,6 +296,7 @@ test("official Context7 definitions register over the event bus with directTools
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     for (const scenario of [
@@ -321,6 +333,7 @@ test("managed Engram resolves the direct official binary config containing Engra
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const result = await resolveMcpEngramConfig({
@@ -360,6 +373,7 @@ test("official bridge carries no child-only adapter settings in any context", as
   mkdirSync(defaultAgentDir, { recursive: true });
   writeFileSync(join(defaultAgentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   writeFileSync(join(defaultAgentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(defaultAgentDir);
   try {
     const parent = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -391,6 +405,7 @@ test("managed Engram leaves the optional Pi Chrome DevTools server absent withou
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   try {
     const result = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -425,6 +440,7 @@ test("managed Engram adds the exact optional Pi Chrome DevTools handoff", async 
   mkdirSync(dirname(handoffPath), { recursive: true });
   writeFileSync(handoffPath, `${JSON.stringify({ schemaVersion: 1, enabled: true, command: pnpmPath, args })}\n`);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const result = await resolveMcpEngramConfig({
@@ -461,6 +477,7 @@ test("managed Engram accepts only a local Node launcher in the DevTools v2 hando
   writeFileSync(launcher, "// local fixture; never execute\n");
   mkdirSync(dirname(handoffPath), { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: {
     engram: { command: engramBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false },
   } }));
@@ -813,6 +830,7 @@ test("Stack-observed chrome-devtools-mcp 1.10.1 handoff resolves managed with ex
   mkdirSync(dirname(handoffPath), { recursive: true });
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   try {
     for (const [label, args, command] of [
       ["latest stays rejected", ["dlx", "chrome-devtools-mcp@latest", "--isolated", "--redact-network-headers", "--no-performance-crux", "--no-usage-statistics"], undefined],
@@ -873,6 +891,7 @@ test("an invalid Pi Chrome DevTools handoff fails closed with a diagnostic", asy
   mkdirSync(dirname(handoffPath), { recursive: true });
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   try {
     for (const [label, contents] of [
       ["unreadable JSON", "{not-json\n"],
@@ -899,6 +918,7 @@ test("missing or failed Engram resolution preserves the isolated Context7 regist
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   const env = { HOME: join(sandbox, "home"), PI_CODING_AGENT_DIR: agentDir };
   try {
     const missing = await resolveMcpEngramConfig({ resolveEngramBinary: () => undefined, env });
@@ -1053,6 +1073,7 @@ test("the official gentle profile exposes exactly the six reviewed read-only Eng
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: resolve(process.execPath), args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   let managed;
   try {
     managed = await resolveMcpEngramConfig({
@@ -1093,6 +1114,7 @@ test("executable ENGRAM_BIN without official mcp.json server must not resolve ma
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   const fakeBin = join(sandbox, "engram");
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
@@ -1140,6 +1162,7 @@ function createT28Fixture(resolveMcpEngramConfig) {
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({
     packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"],
   }));
+  installAdapterFixture(agentDir);
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({
     mcpServers: {
       engram: {

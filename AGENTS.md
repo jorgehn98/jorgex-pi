@@ -8,6 +8,7 @@ Paquete Pi-native del harness JorgeX. Este archivo define la relación operativa
 
 - **JorgeX Stack** es la fuente canónica de agentes, skills, system prompt y políticas compartidas, además del fleet manager que instala y verifica Pi.
 - **JorgeX Pi** posee la traducción Pi-native, el bootstrap, contratos, companions, assets, runner JSON y lifecycle del paquete.
+- El bridge Engram Pi exige metadata válida del `pi-mcp-adapter` instalado para seleccionar la ruta que realmente lee: `mcp-adapter.json` desde 3.0.0; `mcp.json` es histórico y no prueba salud con el adapter actual. Los dos archivos son del usuario y Pi no los migra ni sobrescribe; acepta JSONC acotado (comentarios y trailing commas) en sus configuraciones MCP. `contract/jorgex-pi.v1.json` declara de forma aditiva ambos nombres (`mcpAdapterConfig.files`); Stack debe usar esa declaración verificada para la migración, no un número de versión de `jorgex-pi` ni ownership de rutas preservadas.
 - El contenido compartido no se mantiene a mano en ambos sitios: `contract/parity.v2.json` fija el commit canónico de Stack y los generadores producen la snapshot, el fallback de política, los módulos de system prompt y la proyección Pi de `/lean-audit`.
 
 Todo cambio debe incluir una revisión explícita de impacto cruzado:

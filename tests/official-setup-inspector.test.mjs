@@ -19,6 +19,12 @@ const DEVTOOLS_ARGS = [
   "--no-usage-statistics",
 ];
 
+function installAdapterFixture(agentDir) {
+  const packageDir = join(agentDir, "npm", "node_modules", "pi-mcp-adapter");
+  mkdirSync(packageDir, { recursive: true });
+  writeFileSync(join(packageDir, "package.json"), JSON.stringify({ name: "pi-mcp-adapter", version: "2.36.0" }));
+}
+
 test("official setup requires exactly one global gentle-engram@semver and one pi-mcp-adapter, no project duplicate", async () => {
   const { inspectContext7Config } = await import("../extensions/context7-config.mjs");
   const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-official-packages-"));
@@ -136,6 +142,7 @@ test("valid mcp.json Engram server requires exact fields and command precedence"
   writeFileSync(fakeBin, "fake binary; never execute\n");
   chmodSync(fakeBin, 0o755);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
 
   try {
     const validServer = {
@@ -213,6 +220,7 @@ test("DevTools handoff keeps exact 1.6.0 flags (control)", async () => {
   writeFileSync(handoffPath, `${JSON.stringify({ schemaVersion: 1, enabled: true, command: pnpmPath, args: DEVTOOLS_ARGS })}\n`);
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   try {
     const result = await resolveMcpEngramConfig({
       resolveEngramBinary: () => fakeBin,
@@ -239,6 +247,7 @@ test("Context7 keeps canonical endpoint and never persists the secret (control)"
   const agentDir = join(sandbox, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:gentle-engram@0.1.13", "npm:pi-mcp-adapter@2.36.0"] }));
+  installAdapterFixture(agentDir);
   writeFileSync(join(agentDir, "mcp.json"), `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`);
   try {
     const keyed = await resolveMcpEngramConfig({

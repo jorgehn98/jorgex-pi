@@ -33,24 +33,62 @@ const SEED_ADAPTER = "npm:pi-mcp-adapter";
 // Real-package provisioning (harness-provided, never downloaded by the test):
 // JORGEX_OFFICIAL_SETUP_DIR points at an isolated agent dir prepared by a real
 // `engram setup pi` with a verified stable temp binary. It must contain
-// settings.json (single official pair), mcp.json (official engram server whose
-// command is the verified binary), and npm/node_modules with the ACTUAL
-// gentle-engram + pi-mcp-adapter packages. Pi 0.85.1 additionally needs
-// JORGEX_PI_BIN (or JORGEX_PI_SDK_ROOT) per the existing harness.
+// settings.json (single official pair), the MCP config selected by the installed
+// adapter metadata, and npm/node_modules with the ACTUAL gentle-engram +
+// pi-mcp-adapter packages. Adapters before 3.0.0 read legacy mcp.json; 3.0.0+
+// read mcp-adapter.json. Pi SDK targets are labelled from their package metadata.
 const officialSetupDir = process.env.JORGEX_OFFICIAL_SETUP_DIR?.trim();
 const configuredPiBin = process.env.JORGEX_PI_BIN?.trim();
 const configuredSdkRoot = process.env.JORGEX_PI_SDK_ROOT?.trim();
+const PI_SDK_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
+const PI_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const ADAPTER_VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
-function resolveRealSetup() {
-  if (!officialSetupDir) return undefined;
-  const settingsPath = join(officialSetupDir, "settings.json");
-  const mcpPath = join(officialSetupDir, "mcp.json");
-  const gentleIndex = join(officialSetupDir, "npm", "node_modules", "gentle-engram", "index.ts");
-  const adapterIndex = join(officialSetupDir, "npm", "node_modules", "pi-mcp-adapter", "index.ts");
-  for (const path of [settingsPath, mcpPath, gentleIndex, adapterIndex]) {
+function mcpConfigNameForAdapter(adapterPackage, adapterManifest) {
+  if (adapterPackage?.name !== "pi-mcp-adapter" || typeof adapterPackage.version !== "string") {
+    throw new Error(`JORGEX_OFFICIAL_SETUP_DIR has invalid pi-mcp-adapter metadata at ${adapterManifest}`);
+  }
+  const match = ADAPTER_VERSION_PATTERN.exec(adapterPackage.version);
+  if (!match) throw new Error(`JORGEX_OFFICIAL_SETUP_DIR has invalid pi-mcp-adapter version at ${adapterManifest}`);
+  return Number(match[1]) >= 3 ? "mcp-adapter.json" : "mcp.json";
+}
+
+function resolveRealSetup(setupDir = officialSetupDir) {
+  if (!setupDir) return undefined;
+  const settingsPath = join(setupDir, "settings.json");
+  const gentleIndex = join(setupDir, "npm", "node_modules", "gentle-engram", "index.ts");
+  const adapterIndex = join(setupDir, "npm", "node_modules", "pi-mcp-adapter", "index.ts");
+  const adapterManifest = join(setupDir, "npm", "node_modules", "pi-mcp-adapter", "package.json");
+  for (const path of [settingsPath, gentleIndex, adapterIndex, adapterManifest]) {
     if (!existsSync(path)) throw new Error(`JORGEX_OFFICIAL_SETUP_DIR is incomplete: missing ${path}`);
   }
-  return { dir: officialSetupDir, settingsPath, mcpPath, gentleIndex, adapterIndex };
+  let adapterPackage;
+  try {
+    adapterPackage = JSON.parse(readFileSync(adapterManifest, "utf8"));
+  } catch (error) {
+    throw new Error(`JORGEX_OFFICIAL_SETUP_DIR has unreadable pi-mcp-adapter metadata at ${adapterManifest}: ${error?.message ?? error}`);
+  }
+  const mcpConfigName = mcpConfigNameForAdapter(adapterPackage, adapterManifest);
+  const mcpPath = join(setupDir, mcpConfigName);
+  if (!existsSync(mcpPath)) throw new Error(`JORGEX_OFFICIAL_SETUP_DIR is incomplete: missing ${mcpPath}`);
+
+  // Preserve any other user-owned config in the isolated copy as well. The
+  // selected file is authoritative for the installed adapter; copying the
+  // alternate file (when present) makes duplicate legacy/current state visible
+  // to the real bridge instead of silently migrating or dropping it.
+  const alternateMcpConfigName = mcpConfigName === "mcp.json" ? "mcp-adapter.json" : "mcp.json";
+  const configNames = [mcpConfigName, ...(existsSync(join(setupDir, alternateMcpConfigName)) ? [alternateMcpConfigName] : [])];
+  return {
+    dir: setupDir,
+    settingsPath,
+    mcpPath,
+    mcpConfigName,
+    configNames,
+    gentleIndex,
+    adapterIndex,
+    adapterManifest,
+    adapterPackage,
+  };
 }
 
 function resolveSdkRootFromBin(piBin) {
@@ -71,13 +109,34 @@ function resolveSdkRootFromBin(piBin) {
   }
 }
 
+function readPiSdkVersion(sdkRoot) {
+  const manifestPath = join(sdkRoot, "package.json");
+  if (!existsSync(manifestPath)) throw new Error(`configured Pi SDK is incomplete: missing ${manifestPath}`);
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(`configured Pi SDK metadata is unreadable at ${manifestPath}: ${error?.message ?? error}`);
+  }
+  if (manifest?.name !== PI_SDK_PACKAGE_NAME || typeof manifest.version !== "string" || !PI_VERSION_PATTERN.test(manifest.version)) {
+    throw new Error(`configured Pi SDK metadata is invalid at ${manifestPath}`);
+  }
+  return manifest.version;
+}
+
 function resolvePiTargets() {
-  const sdkRoot = configuredSdkRoot || (configuredPiBin ? resolveSdkRootFromBin(configuredPiBin) : undefined);
-  const has851 = sdkRoot && existsSync(join(sdkRoot, "package.json"));
-  return [
-    { name: "0.84.2", sdkRoot: undefined },
-    ...(has851 ? [{ name: "0.85.1", sdkRoot }] : []),
-  ];
+  const localSdkRoot = resolve(root, "node_modules", "@earendil-works", "pi-coding-agent");
+  const localVersion = readPiSdkVersion(localSdkRoot);
+  const targets = [{ name: localVersion, sdkRoot: undefined }];
+  const configuredRoot = configuredSdkRoot
+    ? resolve(configuredSdkRoot)
+    : (configuredPiBin ? resolveSdkRootFromBin(configuredPiBin) : undefined);
+  if (configuredSdkRoot || configuredPiBin) {
+    if (!configuredRoot) throw new Error("configured Pi binary does not resolve to a Pi SDK root");
+    const configuredVersion = readPiSdkVersion(configuredRoot);
+    if (configuredVersion !== localVersion) targets.push({ name: configuredVersion, sdkRoot: configuredRoot });
+  }
+  return targets;
 }
 
 function setupSandbox() {
@@ -108,6 +167,9 @@ function setupSandbox() {
     join(agentDir, "settings.json"),
     `${JSON.stringify({ packages: [SEED_GENTLE, SEED_ADAPTER] }, null, 2)}\n`,
   );
+  const adapterDir = join(agentDir, "npm", "node_modules", "pi-mcp-adapter");
+  mkdirSync(adapterDir, { recursive: true });
+  writeFileSync(join(adapterDir, "package.json"), JSON.stringify({ name: "pi-mcp-adapter", version: "2.36.0" }));
   writeFileSync(
     join(agentDir, "mcp.json"),
     `${JSON.stringify({ mcpServers: { engram: { command: fakeBin, args: ["mcp", "--tools=agent"], lifecycle: "lazy", directTools: false } } }, null, 2)}\n`,
@@ -143,10 +205,15 @@ function setupRealSandbox(setup) {
   assert.equal(gentleCount, 1, `provisioned setup must own exactly one gentle package: ${settingsBytes}`);
   assert.equal(adapterCount, 1, `provisioned setup must own exactly one adapter package: ${settingsBytes}`);
   writeFileSync(join(agentDir, "settings.json"), settingsBytes);
-  writeFileSync(join(agentDir, "mcp.json"), mcpBytes);
+  for (const configName of setup.configNames) {
+    writeFileSync(join(agentDir, configName), readFileSync(join(setup.dir, configName), "utf8"));
+  }
+  const adapterDir = join(agentDir, "npm", "node_modules", "pi-mcp-adapter");
+  mkdirSync(adapterDir, { recursive: true });
+  writeFileSync(join(adapterDir, "package.json"), readFileSync(setup.adapterManifest));
   const mcp = JSON.parse(mcpBytes);
   const engramBin = mcp.mcpServers?.engram?.command;
-  assert.equal(typeof engramBin, "string", "provisioned mcp.json must carry the official engram server command");
+  assert.equal(typeof engramBin, "string", `provisioned ${setup.mcpConfigName} must carry the official engram server command`);
   assert.ok(existsSync(engramBin), `provisioned engram binary must exist: ${engramBin}`);
   try {
     execFileSync(engramBin, ["--version"], {
@@ -178,7 +245,21 @@ function setupRealSandbox(setup) {
     handoffPath,
     `${JSON.stringify({ schemaVersion: 1, enabled: true, command: fakePnpm, args: [...expected.devtools.args] })}\n`,
   );
-  return { sandbox, home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir, engramBin, fakePnpm };
+  return { sandbox, home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir, engramBin, fakePnpm, mcpConfigName: setup.mcpConfigName };
+}
+
+function makeSetupPathFixture(adapterVersion, configName) {
+  const setupDir = mkdtempSync(join(tmpdir(), "jorgex-pi-official-config-path-"));
+  const adapterDir = join(setupDir, "npm", "node_modules", "pi-mcp-adapter");
+  const gentleDir = join(setupDir, "npm", "node_modules", "gentle-engram");
+  mkdirSync(adapterDir, { recursive: true });
+  mkdirSync(gentleDir, { recursive: true });
+  writeFileSync(join(setupDir, "settings.json"), `${JSON.stringify({ packages: [SEED_GENTLE, SEED_ADAPTER] })}\n`);
+  writeFileSync(join(gentleDir, "index.ts"), "export default {};\n");
+  writeFileSync(join(adapterDir, "index.ts"), "export default {};\n");
+  writeFileSync(join(adapterDir, "package.json"), `${JSON.stringify({ name: "pi-mcp-adapter", version: adapterVersion })}\n`);
+  writeFileSync(join(setupDir, configName), "{}\n");
+  return setupDir;
 }
 
 function allowedHostEnv() {
@@ -197,6 +278,7 @@ function runRealProbe({ sandbox, setup, sdkRoot, order }) {
     USERPROFILE: sandbox.home,
     PATH: "/usr/bin:/bin",
     PI_CODING_AGENT_DIR: sandbox.agentDir,
+    JORGEX_MCP_CONFIG_NAME: sandbox.mcpConfigName,
     XDG_CONFIG_HOME: sandbox.xdgConfig,
     XDG_CACHE_HOME: sandbox.xdgCache,
     XDG_DATA_HOME: sandbox.xdgData,
@@ -292,14 +374,34 @@ test("official smoke: isolated single pair resolves managed bridge with gentle p
   }
 });
 
+test("official smoke harness selects the adapter-owned MCP source without migration or a major-version cap", () => {
+  const cases = [
+    { version: "2.36.0", configName: "mcp.json" },
+    { version: "3.2.0", configName: "mcp-adapter.json" },
+    { version: "4.0.0", configName: "mcp-adapter.json" },
+  ];
+  const sandboxes = [];
+  try {
+    for (const { version, configName } of cases) {
+      const setupDir = makeSetupPathFixture(version, configName);
+      sandboxes.push(setupDir);
+      const setup = resolveRealSetup(setupDir);
+      assert.equal(setup.mcpConfigName, configName, `${version} must select the config read by its adapter`);
+      assert.equal(setup.mcpPath, join(setupDir, configName));
+      assert.deepEqual(setup.configNames, [configName], `${version} fixture must not invent or migrate the other config`);
+      assert.equal(existsSync(join(setupDir, configName === "mcp.json" ? "mcp-adapter.json" : "mcp.json")), false);
+    }
+  } finally {
+    for (const sandbox of sandboxes) rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 const realSkip = !officialSetupDir
   ? "requires JORGEX_OFFICIAL_SETUP_DIR with real gentle-engram + pi-mcp-adapter installed by real `engram setup pi` (verified stable temp binary)"
   : false;
 
 for (const target of resolvePiTargets()) {
-  const targetSkip = realSkip || (target.name === "0.85.1" && !target.sdkRoot
-    ? "requires JORGEX_PI_BIN for the Pi 0.85.1 loader"
-    : false);
+  const targetSkip = realSkip;
   for (const order of expected.orders) {
     test(`official smoke (real packages): Pi ${target.name} loads gentle+adapter+jorgex (${order}) with native surface and runtime-register`, { skip: targetSkip }, async () => {
       const setup = resolveRealSetup();
@@ -307,12 +409,18 @@ for (const target of resolvePiTargets()) {
       try {
         const probed = runRealProbe({ sandbox, setup, sdkRoot: target.sdkRoot, order });
         const where = `${target.name}/${order}`;
+        const diagnostics = JSON.stringify(probed.diagnostics ?? {});
+        assert.equal(probed.piVersion, target.name, `${where}: test label must match the SDK package actually loaded by the probe; diagnostics=${diagnostics}`);
         assert.deepEqual(probed.loaderErrors, [], `${where}: real loader must load gentle+adapter+jorgex without diagnostics`);
+        assert.deepEqual(probed.diagnostics?.extensionErrors ?? [], [], `${where}: intended Pi lifecycle must not emit extension errors; diagnostics=${diagnostics}`);
+        assert.deepEqual(probed.diagnostics?.notifications ?? [], [], `${where}: intended Pi lifecycle must not emit error notifications; diagnostics=${diagnostics}`);
         assert.deepEqual(probed.sixMissing, [], `${where}: the six gentle reads must be present in the native surface`);
         assert.equal(probed.sixPresent.length, 6, `${where}: exactly the six reads must be observed`);
+        assert.deepEqual(probed.secondSession.sixMissing, [], `${where}: replacement runner must also expose all six gentle reads`);
+        assert.equal(probed.secondSession.sixPresent.length, 6, `${where}: replacement runner must not mask a first-runner tool loss`);
         assert.equal(probed.bootstrapRegistered, true, `${where}: bootstrap registration must land on the real adapter`);
-        assert.equal(probed.prompt1HasContext7, true, `${where}: managed prompt must include Context7 after real registration`);
-        assert.equal(probed.prompt1HasPolicy, true, `${where}: managed prompt must keep the policy section`);
+        assert.equal(probed.prompt1HasContext7, true, `${where}: managed prompt must include Context7 after real registration; diagnostics=${diagnostics}`);
+        assert.equal(probed.prompt1HasPolicy, true, `${where}: managed prompt must keep the policy section; diagnostics=${diagnostics}`);
         assert.equal(probed.officialHeading, "## Engram Persistent Memory — Protocol", `${where}: probe must use the stable official heading without snapshotting provider internals`);
         for (const [label, eng] of [["main", probed.mainEngram], ["child", probed.childEngram]]) {
           assert.equal(eng.officialHeadingCount, 1, `${where}: ${label} final prompt must contain the official Engram protocol exactly once`);
@@ -335,7 +443,7 @@ for (const target of resolvePiTargets()) {
         assert.equal(probed.dispose2, "ok-idempotent", `${where}: registration.dispose must be idempotent`);
         assert.equal(probed.reRegisterAfterDispose, true, `${where}: re-registration after dispose must succeed`);
         assert.equal(probed.settingsUnchanged, true, `${where}: session lifecycle must not rewrite settings.json`);
-        assert.equal(probed.mcpUnchanged, true, `${where}: session lifecycle must not rewrite mcp.json`);
+        assert.equal(probed.mcpUnchanged, true, `${where}: session lifecycle must not rewrite ${sandbox.mcpConfigName}`);
         assert.ok(
           (probed.fetchHosts ?? []).every((host) => host === "127.0.0.1:9"),
           `${where}: the only fetch targets may be the discard-port guard: ${JSON.stringify(probed.fetchHosts)}`,
@@ -356,7 +464,6 @@ test("official smoke (real packages): registrations release on shutdown for the 
   // loader- and order-independent, but the evidence must name every combo.
   const matrix = [];
   for (const target of resolvePiTargets()) {
-    if (target.name === "0.85.1" && !target.sdkRoot) continue;
     for (const order of expected.orders) matrix.push({ target, order });
   }
   assert.ok(matrix.length > 0, "at least one Pi loader must be provisioned for the real dispose check");
@@ -368,7 +475,12 @@ test("official smoke (real packages): registrations release on shutdown for the 
       assert.equal(
         probed.secondSession.promptHasContext7,
         true,
-        `${where}: second session must keep managed Context7 (observed blocker: already-registered leak, duplicateError=${probed.secondSession.duplicateError})`,
+        `${where}: second session must keep managed Context7 (observed blocker: already-registered leak, duplicateError=${probed.secondSession.duplicateError}); diagnostics=${JSON.stringify(probed.diagnostics ?? {})}`,
+      );
+      assert.equal(
+        probed.secondSession.bootstrapRegistered,
+        true,
+        `${where}: replacement runner must register Context7 through the real bootstrap lifecycle; diagnostics=${JSON.stringify(probed.diagnostics ?? {})}`,
       );
       assert.equal(
         probed.secondSession.duplicateError,

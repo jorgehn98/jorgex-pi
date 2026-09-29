@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inspectContext7Config, inspectOfficialPackages, resolvePiAgentDir } from "./context7-config.mjs";
+import { inspectContext7Config, inspectOfficialPackages, readConfig, resolvePiAgentDir } from "./context7-config.mjs";
 
 // Synchronous runtime registration event published by the external
 // pi-mcp-adapter contract observed by the smoke harness (version 1):
@@ -112,15 +112,15 @@ export async function resolveMcpEngramConfig({
     const binary = await (resolveEngramBinary ?? (() => resolveConfiguredEngramBinary({ env, platform })))();
     const official = readOfficialEngramServer({ env, platform });
     if (official.error) throw new Error(official.error);
-    // The official mcp.json server is mandatory: an executable binary never
-    // substitutes it. Absence fails closed as missing with the Context7
-    // diagnosis preserved and the official setup remedy; the configured
-    // binary only validates the official command.
+    // The official Engram server from the adapter-selected config is
+    // mandatory: an executable binary never substitutes it. Absence fails
+    // closed as missing with the Context7 diagnosis and setup remedy
+    // preserved; the configured binary only validates its command.
     if (!official.server) {
       return { state: "missing", config, context7, reason: "official Engram MCP setup is missing; run `engram setup pi` and reload Pi" };
     }
     if (binary !== undefined && official.server.command !== binary) {
-      throw new Error("Official mcp.json Engram command does not match the configured Engram binary; explicit configuration takes precedence");
+      throw new Error("Official Engram MCP command does not match the configured Engram binary; explicit configuration takes precedence");
     }
     config.mcpServers.engram = official.server;
     const devtools = readChromeDevToolsHandoff({ env, platform });
@@ -146,42 +146,64 @@ export async function resolveMcpEngramConfig({
 function readOfficialEngramServer({ env, platform }) {
   const paths = platformPaths(platform);
   const agentDir = resolvePiAgentDir({ env, platform });
-  const mcpPath = paths.join(agentDir, "mcp.json");
-  let raw;
+  const adapterPath = paths.join(agentDir, "npm", "node_modules", "pi-mcp-adapter", "package.json");
+  let configName = "mcp.json";
   try {
-    raw = readFileSync(mcpPath, "utf8");
+    const adapter = JSON.parse(readFileSync(adapterPath, "utf8"));
+    if (adapter?.name !== "pi-mcp-adapter" || typeof adapter.version !== "string") {
+      return { found: false, error: `Installed pi-mcp-adapter has invalid package metadata at ${adapterPath}` };
+    }
+    const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(adapter.version);
+    if (!match) return { found: false, error: `Installed pi-mcp-adapter version is invalid at ${adapterPath}` };
+    const major = Number(match[1]);
+    if (major >= 3) configName = "mcp-adapter.json";
   } catch (error) {
-    if (error?.code === "ENOENT") return { found: false };
-    return { found: false, error: `Official Engram MCP configuration is unreadable at ${mcpPath}` };
+    return { found: false, error: `Installed pi-mcp-adapter package metadata is missing or unreadable at ${adapterPath}` };
   }
-
+  const mcpPath = paths.join(agentDir, configName);
+  if (configName === "mcp-adapter.json") {
+    const legacyPath = paths.join(agentDir, "mcp.json");
+    try {
+      const legacy = readConfig(legacyPath);
+      if (legacy?.mcpServers?.engram !== undefined || legacy?.["mcp-servers"]?.engram !== undefined) {
+        return { found: false, error: `Official Engram server remains in ${legacyPath}, which pi-mcp-adapter no longer reads; migrate it to ${mcpPath} without duplicating the server` };
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        return { found: false, error: `Legacy MCP configuration is unreadable or invalid at ${legacyPath}` };
+      }
+    }
+  }
   let mcp;
   try {
-    mcp = JSON.parse(raw);
-  } catch {
-    return { found: false, error: `Official Engram MCP configuration contains invalid JSON at ${mcpPath}` };
+    mcp = readConfig(mcpPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return { found: false };
+    return { found: false, error: error instanceof SyntaxError
+      ? `Official Engram MCP configuration contains invalid JSON at ${mcpPath}`
+      : `Official Engram MCP configuration is unreadable at ${mcpPath}` };
   }
 
   if (!isRecord(mcp)) return { found: false, error: `Official Engram MCP configuration must be an object at ${mcpPath}` };
   const server = mcp.mcpServers?.engram;
   if (server === undefined) return { found: false };
-  if (!isRecord(server)) return { found: false, error: `Official mcp.json Engram server must be an object at ${mcpPath}` };
+  if (!isRecord(server)) return { found: false, error: `Official ${configName} Engram server must be an object at ${mcpPath}` };
   if (typeof server.command !== "string" || !paths.isAbsolute(server.command)) {
-    return { found: false, error: `Official mcp.json Engram command must be an absolute path at ${mcpPath}` };
+    return { found: false, error: `Official ${configName} Engram command must be an absolute path at ${mcpPath}` };
   }
   if (!isExecutable(server.command, platform)) {
-    return { found: false, error: `Official mcp.json Engram command is not executable at ${mcpPath}` };
+    return { found: false, error: `Official ${configName} Engram command is not executable at ${mcpPath}` };
   }
   if (!Array.isArray(server.args)
     || server.args.length !== OFFICIAL_ENGRAM_ARGS.length
     || server.args.some((arg, index) => arg !== OFFICIAL_ENGRAM_ARGS[index])) {
-    return { found: false, error: `Official mcp.json Engram server must use the exact official arguments at ${mcpPath}` };
+    return { found: false, error: `Official ${configName} Engram server must use the exact official arguments at ${mcpPath}` };
   }
   if (server.lifecycle !== "lazy") {
-    return { found: false, error: `Official mcp.json Engram server must use lifecycle lazy at ${mcpPath}` };
+    return { found: false, error: `Official ${configName} Engram server must use lifecycle lazy at ${mcpPath}` };
   }
   if (server.directTools !== false) {
-    return { found: false, error: `Official mcp.json Engram server must disable direct tools at ${mcpPath}` };
+    return { found: false, error: `Official ${configName} Engram server must disable direct tools at ${mcpPath}` };
   }
   return {
     found: true,

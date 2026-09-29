@@ -67,6 +67,7 @@ test("contract v1 records tested Pi evidence as a closed boundary, not a future 
   const packageManifest = readJson(join(root, "package.json"), "package manifest");
   const contract = readJson(join(root, expected.contractPath), "versioned jorgex-pi contract");
   assert.equal(contract.schemaVersion, expected.schemaVersion);
+  assert.deepEqual(contract.mcpAdapterConfig, { schemaVersion: 1, files: ["mcp.json", "mcp-adapter.json"] }, "Stack must verify declared reader support before migrating user configuration");
   assert.equal(contract.package?.name, expected.packageName);
   assert.equal(contract.package?.version, packageManifest.version);
   assert.equal(contract.package?.source, `${expected.sourcePrefix}${packageManifest.version}`);

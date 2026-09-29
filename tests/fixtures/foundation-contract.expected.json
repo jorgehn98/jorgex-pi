@@ -205,6 +205,11 @@
         "relativePath": "mcp.json"
       },
       {
+        "owner": "user",
+        "root": "PI_CODING_AGENT_DIR",
+        "relativePath": "mcp-adapter.json"
+      },
+      {
         "owner": "official-engram-setup",
         "root": "PI_CODING_AGENT_DIR",
         "relativePath": "npm/node_modules/gentle-engram"
