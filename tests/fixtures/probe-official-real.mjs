@@ -1,6 +1,6 @@
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 // Real-package probe for the official Engram smoke: loads the ACTUAL
 // gentle-engram + pi-mcp-adapter installed by real `engram setup pi`
@@ -43,8 +43,11 @@ globalThis.fetch = async (...args) => {
 const cwd = process.cwd();
 const agentDir = process.env.PI_CODING_AGENT_DIR;
 if (!agentDir) throw new Error("PI_CODING_AGENT_DIR is required");
+const probeSessionFile = join(cwd, "official-real-session.jsonl");
 const settingsPath = join(agentDir, "settings.json");
-const mcpPath = join(agentDir, "mcp.json");
+const mcpConfigName = process.env.JORGEX_MCP_CONFIG_NAME;
+if (mcpConfigName !== "mcp.json" && mcpConfigName !== "mcp-adapter.json") throw new Error("JORGEX_MCP_CONFIG_NAME must select a known file");
+const mcpPath = join(agentDir, mcpConfigName);
 const metadataCachePath = join(agentDir, "mcp-cache.json");
 if (!existsSync(metadataCachePath)) writeFileSync(metadataCachePath, '{"version":1,"servers":{}}\n');
 
@@ -53,63 +56,124 @@ const mcpBefore = existsSync(mcpPath) ? readFileSync(mcpPath, "utf8") : undefine
 
 const paths = order === "adapter-first" ? [gentleIndex, adapterIndex, root] : [root, gentleIndex, adapterIndex];
 
-const eventBus = createEventBus();
-const loader = new DefaultResourceLoader({
-  cwd,
-  agentDir,
-  additionalExtensionPaths: paths,
-  noSkills: true,
-  noPromptTemplates: true,
-  noThemes: true,
-  noContextFiles: true,
-  eventBus,
-});
-await loader.reload();
-const loaded = loader.getExtensions();
-
 const entries = [];
-const sessionManager = {
-  getSessionId: () => "official-real-session",
-  getSessionDir: () => cwd,
-  getEntries: () => entries,
-  getBranch: () => entries,
-};
 let activeTools = [];
-const runner = new ExtensionRunner(loaded.extensions, loaded.runtime, cwd, sessionManager, {});
-runner.bindCore(
-  {
-    sendMessage() {},
-    sendUserMessage() {},
-    appendEntry(customType, data) { entries.push({ type: "custom", customType, data }); },
-    setSessionName() {},
-    getSessionName: () => undefined,
-    setLabel() {},
-    getActiveTools: () => [...activeTools],
-    getAllTools: () => runner.getAllRegisteredTools().map(({ definition }) => definition),
-    setActiveTools: (names) => { activeTools = [...names]; },
-    refreshTools() {},
-    getCommands: () => runner.getRegisteredCommands(),
-    setModel: async () => false,
-    getThinkingLevel: () => undefined,
-    setThinkingLevel() {},
-  },
-  {
-    getModel: () => undefined,
-    getScopedModels: () => [],
-    isIdle: () => true,
-    isProjectTrusted: () => true,
-    getSignal: () => undefined,
-    abort() {},
-    hasPendingMessages: () => false,
-    shutdown() {},
-    getContextUsage: () => undefined,
-    compact() {},
-    getSystemPrompt: () => "",
-  },
-);
-activeTools = runner.getAllRegisteredTools().map(({ definition }) => definition.name);
+const notifications = [];
+const extensionErrors = [];
+let eventBus;
+let loader;
+let loaded;
+let sessionManager;
+let runner;
+let memTools = [];
 
-const memTools = [...activeTools].filter((name) => name.startsWith("mem_")).sort();
+function createSessionManager(sessionId) {
+  const sessionFile = join(cwd, `${sessionId}.jsonl`);
+  return {
+    getCwd: () => cwd,
+    getSessionId: () => sessionId,
+    getSessionFile: () => sessionFile,
+    getSessionDir: () => cwd,
+    getLeafId: () => null,
+    getLeafEntry: () => undefined,
+    getHeader: () => null,
+    getSessionName: () => undefined,
+    getEntries: () => entries,
+    getBranch: () => entries,
+  };
+}
+
+function configureRunner(nextRunner) {
+  if (typeof nextRunner.setUIContext === "function") {
+    nextRunner.setUIContext({
+      select: async () => undefined,
+      confirm: async () => false,
+      input: async () => undefined,
+      editor: async () => undefined,
+      notify(message, type) {
+        if (notifications.length < 20) notifications.push({ message: String(message).slice(0, 240), type });
+      },
+      onTerminalInput: () => () => {},
+      setStatus() {},
+      setWorkingMessage() {},
+      setWorkingVisible() {},
+      setWorkingIndicator() {},
+      setHiddenThinkingLabel() {},
+      setWidget() {},
+      setFooter() {},
+      setHeader() {},
+      setTitle() {},
+      custom: async () => undefined,
+    }, "print");
+  }
+  if (typeof nextRunner.onError === "function") {
+    nextRunner.onError((error) => {
+      if (extensionErrors.length < 20) {
+        extensionErrors.push({
+          event: error?.event,
+          extensionPath: error?.extensionPath,
+          error: String(error?.error ?? "unknown").slice(0, 240),
+          stack: typeof error?.stack === "string" ? error.stack.split("\n").slice(0, 3).join("\n").slice(0, 480) : undefined,
+        });
+      }
+    });
+  }
+  nextRunner.bindCore(
+    {
+      sendMessage() {},
+      sendUserMessage() {},
+      appendEntry(customType, data) { entries.push({ type: "custom", customType, data }); },
+      setSessionName() {},
+      getSessionName: () => undefined,
+      setLabel() {},
+      getActiveTools: () => [...activeTools],
+      getAllTools: () => nextRunner.getAllRegisteredTools().map(({ definition }) => definition),
+      setActiveTools: (names) => { activeTools = [...names]; },
+      refreshTools() {},
+      getCommands: () => nextRunner.getRegisteredCommands(),
+      setModel: async () => false,
+      getThinkingLevel: () => undefined,
+      setThinkingLevel() {},
+    },
+    {
+      getModel: () => undefined,
+      getScopedModels: () => [],
+      isIdle: () => true,
+      isProjectTrusted: () => true,
+      getSignal: () => undefined,
+      abort() {},
+      hasPendingMessages: () => false,
+      shutdown() {},
+      getContextUsage: () => undefined,
+      compact() {},
+      getSystemPrompt: () => "",
+    },
+  );
+  activeTools = nextRunner.getAllRegisteredTools().map(({ definition }) => definition.name);
+  memTools = [...activeTools].filter((name) => name.startsWith("mem_")).sort();
+}
+
+async function createProbeRuntime(sessionId) {
+  eventBus = createEventBus();
+  loader = new DefaultResourceLoader({
+    cwd,
+    agentDir,
+    additionalExtensionPaths: paths,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    eventBus,
+  });
+  await loader.reload();
+  loaded = loader.getExtensions();
+  sessionManager = createSessionManager(sessionId);
+  runner = new ExtensionRunner(loaded.extensions, loaded.runtime, cwd, sessionManager, {});
+  configureRunner(runner);
+}
+
+await createProbeRuntime("official-real-session");
+const firstLoaderErrors = [...loaded.errors];
 
 function emitRegister(name, definition) {
   const request = { version: 1, name, definition };
@@ -136,6 +200,21 @@ function describeResult(result) {
   };
 }
 
+function extractSystemPrompt(result) {
+  if (typeof result?.systemPrompt === "string") return result.systemPrompt;
+  if (typeof result?.systemPromptOptions?.forceSystemPrompt === "string") return result.systemPromptOptions.forceSystemPrompt;
+  return "";
+}
+
+function emitBeforeAgentStart(prompt, baseSystemPrompt) {
+  // Pi 0.84 passes the base prompt and options separately; Pi 0.87 folds the
+  // base prompt into BuildSystemPromptOptions.forceSystemPrompt. Keep the
+  // invocation faithful to the SDK actually loaded by this probe.
+  return runner.emitBeforeAgentStart.length >= 4
+    ? runner.emitBeforeAgentStart(prompt, undefined, baseSystemPrompt, { cwd })
+    : runner.emitBeforeAgentStart(prompt, undefined, { cwd, forceSystemPrompt: baseSystemPrompt });
+}
+
 await runner.emit({ type: "session_start", reason: "startup" });
 // Bootstrap registers synchronously during session_start; poll a duplicate to
 // observe the registration landing without disturbing adapter state.
@@ -149,7 +228,7 @@ for (let i = 0; i < 200 && !bootstrapRegistered; i++) {
   }
 }
 
-const prompt1 = await runner.emitBeforeAgentStart("continue", undefined, "Base policy", { cwd });
+const prompt1 = await emitBeforeAgentStart("continue", "Base policy");
 
 // Provider-only child capture: the engram role persona as base lets the real
 // gentle-engram inject its official protocol for the child without Pi adding
@@ -162,11 +241,16 @@ function countOccurrences(haystack, needle) {
   return haystack.split(needle).length - 1;
 }
 function describeEngramPrompt(prompt) {
-  const text = prompt?.systemPrompt ?? "";
+  const text = extractSystemPrompt(prompt);
   return {
     officialHeadingCount: countOccurrences(text, OFFICIAL_ENGRAM_HEADING),
     hasJorgeXEngramMarker: text.includes(JORGEX_ENGRAM_MARKER),
     hasJorgeXEngramBlock: text.includes(`<!-- ${JORGEX_ENGRAM_MARKER} -->`),
+    promptLength: text.length,
+    promptKeys: prompt && typeof prompt === "object" ? Object.keys(prompt).sort() : [],
+    promptOptionKeys: prompt?.systemPromptOptions && typeof prompt.systemPromptOptions === "object"
+      ? Object.keys(prompt.systemPromptOptions).sort()
+      : [],
   };
 }
 let engramChildBase;
@@ -178,7 +262,7 @@ try {
 if (engramChildBase.trim().length === 0) {
   throw new Error(`official real probe requires agents/engram.md: empty at ${join(root, "agents", "engram.md")}: role must be non-empty`);
 }
-const childPrompt = await runner.emitBeforeAgentStart("continue", undefined, engramChildBase, { cwd });
+const childPrompt = await emitBeforeAgentStart("continue", engramChildBase);
 const mainEngram = describeEngramPrompt(prompt1);
 const childEngram = describeEngramPrompt(childPrompt);
 
@@ -188,7 +272,7 @@ const probeResult = describeResult(
 );
 
 // Snapshots via the real snapshot event (needs the adapter's active state,
-// which requires the faithful setup mcp.json with a real binary).
+// which requires the faithful adapter-selected MCP config with a real binary).
 async function snapshotWithPoll(name) {
   let result;
   for (let i = 0; i < 60; i++) {
@@ -253,12 +337,12 @@ try {
   // Best-effort residue cleanup; the assertion below already recorded reRegisterOk.
 }
 
-await runner.emit({ type: "session_shutdown" });
-// Second session on the same runner: bootstrap must release the first
-// session's registrations on shutdown for the next registration to succeed.
-// Prove release before the next start: a manual re-registration for the same
-// name after shutdown must succeed (real duplicate fails closed); dispose it
-// immediately so the next session's bootstrap can re-register the same name.
+await runner.emit({ type: "session_shutdown", reason: "new" });
+// Pi tears down the old ExtensionRunner after session_shutdown and creates a
+// fresh runner/resource graph for the replacement session. Prove bootstrap
+// disposed its old registration before the replacement starts, then exercise
+// the real replacement lifecycle instead of reusing a permanently cleaned
+// runner (which Pi explicitly forbids).
 const dupAfterShutdown = emitRegister("context7", {
   url: "https://mcp.context7.com/mcp",
   lifecycle: "lazy",
@@ -270,40 +354,53 @@ try {
 } catch {
   // Best-effort cleanup of the disposal proof; the assertion below records dupAfterShutdownOk.
 }
-await runner.emit({ type: "session_start", reason: "restart" });
-const prompt2 = await runner.emitBeforeAgentStart("continue", undefined, "Base policy", { cwd });
+runner.invalidate?.();
+await createProbeRuntime("official-real-session-replacement");
+await runner.emit({ type: "session_start", reason: "new" });
+let secondBootstrapRegistered = false;
+for (let i = 0; i < 200 && !secondBootstrapRegistered; i++) {
+  const dup = emitRegister("context7", { url: "https://mcp.context7.com/mcp", lifecycle: "lazy", directTools: false });
+  if (dup?.ok !== true && String(dup?.error?.message ?? dup?.error ?? "").includes("already registered")) {
+    secondBootstrapRegistered = true;
+  } else {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+const prompt2 = await emitBeforeAgentStart("continue", "Base policy");
 const secondSession = {
-  promptHasContext7: (prompt2?.systemPrompt ?? "").includes("jorgex:context7"),
+  promptHasContext7: extractSystemPrompt(prompt2).includes("jorgex:context7"),
+  bootstrapRegistered: secondBootstrapRegistered,
   duplicateError: dupAfterShutdownOk
     ? null
     : String(dupAfterShutdown?.error?.message ?? dupAfterShutdown?.error ?? "absent"),
 };
-await runner.emit({ type: "session_shutdown" });
+await runner.emit({ type: "session_shutdown", reason: "quit" });
+runner.invalidate?.();
 
 const settingsAfter = existsSync(settingsPath) ? readFileSync(settingsPath, "utf8") : undefined;
 const mcpAfter = existsSync(mcpPath) ? readFileSync(mcpPath, "utf8") : undefined;
 
 let piVersion = "unknown";
 try {
-  const sdkManifest = sdkRoot
-    ? JSON.parse(readFileSync(join(sdkRoot, "package.json"), "utf8"))
-    : await import("@earendil-works/pi-coding-agent/package.json", { with: { type: "json" } }).then((m) => m.default);
+  const loadedSdkRoot = sdkRoot
+    ?? dirname(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))));
+  const sdkManifest = JSON.parse(readFileSync(join(loadedSdkRoot, "package.json"), "utf8"));
   piVersion = sdkManifest.version ?? piVersion;
 } catch {
-  // piVersion stays unknown; the test asserts versions via contract, not here.
+  // piVersion stays unknown; the smoke includes it in its bounded diagnostics.
 }
 
 process.stdout.write(
   `${JSON.stringify({
     order,
     piVersion,
-    loaderErrors: loaded.errors,
+    loaderErrors: [...firstLoaderErrors, ...loaded.errors],
     sixPresent: SIX.filter((name) => memTools.includes(name)),
     sixMissing: SIX.filter((name) => !memTools.includes(name)),
     memTools,
     bootstrapRegistered,
-    prompt1HasContext7: (prompt1?.systemPrompt ?? "").includes("jorgex:context7"),
-    prompt1HasPolicy: (prompt1?.systemPrompt ?? "").includes("jorgex:system-prompt"),
+    prompt1HasContext7: extractSystemPrompt(prompt1).includes("jorgex:context7"),
+    prompt1HasPolicy: extractSystemPrompt(prompt1).includes("jorgex:system-prompt"),
     probeResultShape: probeResult,
     snapshotContext7,
     snapshotDevtools,
@@ -311,6 +408,12 @@ process.stdout.write(
     dispose2,
     reRegisterAfterDispose: reRegisterOk,
     secondSession,
+    diagnostics: {
+      notifications,
+      extensionErrors,
+      prompt1: describeEngramPrompt(prompt1),
+      prompt2: describeEngramPrompt(prompt2),
+    },
     mainEngram,
     childEngram,
     officialHeading: OFFICIAL_ENGRAM_HEADING,
