@@ -19,7 +19,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
@@ -560,6 +560,56 @@ test("T28 schema v3 registers an inline guard and blocks launcher/tree tamper be
     const treeTampered = runRegistered();
     assert.notEqual(treeTampered.status, 0, "tree tamper must fail before spawn");
     assert.equal(existsSync(fixture.markerPath), false, "tree tamper must not reach the marker");
+  } finally {
+    rmSync(fixture.sandbox, { recursive: true, force: true });
+  }
+});
+
+test("T67 real Pi loader serializes a standalone DevTools guard that still rejects tamper", async () => {
+  const { createEventBus, discoverAndLoadExtensions } = await import(process.env.JORGEX_PI_SDK_ROOT
+    ? pathToFileURL(join(resolve(process.env.JORGEX_PI_SDK_ROOT), "dist", "index.js")).href
+    : "@earendil-works/pi-coding-agent");
+  const fixture = createT28Fixture();
+  try {
+    writeT28Handoff(fixture, createT28Handoff(fixture));
+    // This wrapper makes Pi's actual extension loader compile the bridge dependency,
+    // unlike native Node imports used by the other guard tests.
+    const wrapperPath = join(fixture.sandbox, "guard-extension.ts");
+    writeFileSync(wrapperPath, `import { resolveMcpEngramConfig } from ${JSON.stringify(pathToFileURL(join(root, "extensions", "mcp-engram.ts")).href)};
+export default async function (pi) {
+  const resolved = await resolveMcpEngramConfig({ env: ${JSON.stringify(fixture.env)}, cwd: ${JSON.stringify(fixture.sandbox)} });
+  pi.events.emit("fixture:devtools-guard", resolved);
+}
+`);
+    const eventBus = createEventBus();
+    let resolved;
+    eventBus.on("fixture:devtools-guard", (value) => { resolved = value; });
+    const loaded = await discoverAndLoadExtensions([wrapperPath], fixture.sandbox, fixture.env.PI_CODING_AGENT_DIR, eventBus);
+    assert.deepEqual(loaded.errors, [], "Pi must load the bridge through its Jiti loader");
+    assert.equal(resolved?.state, "managed", resolved?.reason);
+    const server = resolved.config.mcpServers["chrome-devtools"];
+    assert.equal(server?.command, process.execPath);
+    const runGuard = () => spawnSync(server.command, server.args, {
+      cwd: fixture.sandbox,
+      env: { T28_MARKER: fixture.markerPath, ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    const valid = runGuard();
+    assert.equal(valid.status, 0, `Jiti-loaded guard must run in standalone Node:\n${valid.stderr}\n${valid.stdout}`);
+    assert.deepEqual(JSON.parse(readFileSync(fixture.markerPath, "utf8")).args, fixture.fixedFlags);
+    unlinkSync(fixture.markerPath);
+    writeFileSync(fixture.launcherPath, `${fixture.launcherBytes}\n// tampered launcher\n`);
+    const launcherTampered = runGuard();
+    assert.notEqual(launcherTampered.status, 0);
+    assert.match(launcherTampered.stderr, /trusted DevTools guard:.*launcher/i);
+    assert.equal(existsSync(fixture.markerPath), false);
+    writeFileSync(fixture.launcherPath, fixture.launcherBytes);
+    writeFileSync(fixture.entryPath, `${fixture.entryBytes}\n// tampered tree\n`);
+    const treeTampered = runGuard();
+    assert.notEqual(treeTampered.status, 0);
+    assert.match(treeTampered.stderr, /trusted DevTools guard:.*tree/i);
+    assert.equal(existsSync(fixture.markerPath), false);
   } finally {
     rmSync(fixture.sandbox, { recursive: true, force: true });
   }
@@ -1180,7 +1230,7 @@ if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(expectedFlags)) pro
 if (!process.env.T28_MARKER) process.exit(42);
 writeFileSync(process.env.T28_MARKER, JSON.stringify({ launcherPath: process.argv[1], args: process.argv.slice(2) }));
 `;
-  const launcherBytes = `await import(${JSON.stringify(entryPath)});\n`;
+  const launcherBytes = `await import(${JSON.stringify(pathToFileURL(entryPath).href)});\n`;
   writeFileSync(entryPath, entryBytes);
   writeFileSync(launcherPath, launcherBytes);
   if (process.platform !== "win32") symlinkSync("../browser/bin/entry.mjs", linkPath);
