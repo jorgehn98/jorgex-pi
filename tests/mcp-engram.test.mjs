@@ -10,6 +10,7 @@ import {
   readFileSync,
   readdirSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   truncateSync,
@@ -1202,7 +1203,7 @@ test("executable ENGRAM_BIN without official mcp.json server must not resolve ma
 });
 
 function createT28Fixture(resolveMcpEngramConfig) {
-  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-t28-trusted-devtools-"));
+  const sandbox = realpathSync(mkdtempSync(join(tmpdir(), "jorgex-pi-t28-trusted-devtools-")));
   const agentDir = join(sandbox, "agent");
   const handoffPath = join(agentDir, "jorgex-pi", "devtools.v1.json");
   const engramBin = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
