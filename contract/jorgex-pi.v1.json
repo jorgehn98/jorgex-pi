@@ -2,12 +2,15 @@
   "schemaVersion": 1,
   "mcpAdapterConfig": {
     "schemaVersion": 1,
-    "files": ["mcp.json", "mcp-adapter.json"]
+    "files": [
+      "mcp.json",
+      "mcp-adapter.json"
+    ]
   },
   "package": {
     "name": "jorgex-pi",
-    "version": "0.8.36",
-    "source": "npm:jorgex-pi@0.8.36"
+    "version": "0.8.37",
+    "source": "npm:jorgex-pi@0.8.37"
   },
   "pi": {
     "minimumVersion": "0.84.2",
