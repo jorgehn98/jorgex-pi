@@ -65,7 +65,6 @@ let loader;
 let loaded;
 let sessionManager;
 let runner;
-let memTools = [];
 
 function createSessionManager(sessionId) {
   const sessionFile = join(cwd, `${sessionId}.jsonl`);
@@ -150,7 +149,6 @@ function configureRunner(nextRunner) {
     },
   );
   activeTools = nextRunner.getAllRegisteredTools().map(({ definition }) => definition.name);
-  memTools = [...activeTools].filter((name) => name.startsWith("mem_")).sort();
 }
 
 async function createProbeRuntime(sessionId) {
@@ -229,6 +227,7 @@ for (let i = 0; i < 200 && !bootstrapRegistered; i++) {
 }
 
 const prompt1 = await emitBeforeAgentStart("continue", "Base policy");
+const firstMemTools = runner.getAllRegisteredTools().map(({ definition }) => definition.name).filter((name) => name.startsWith("mem_")).sort();
 
 // Provider-only child capture: the engram role persona as base lets the real
 // gentle-engram inject its official protocol for the child without Pi adding
@@ -367,7 +366,10 @@ for (let i = 0; i < 200 && !secondBootstrapRegistered; i++) {
   }
 }
 const prompt2 = await emitBeforeAgentStart("continue", "Base policy");
+const secondMemTools = runner.getAllRegisteredTools().map(({ definition }) => definition.name).filter((name) => name.startsWith("mem_")).sort();
 const secondSession = {
+  sixPresent: SIX.filter((name) => secondMemTools.includes(name)),
+  sixMissing: SIX.filter((name) => !secondMemTools.includes(name)),
   promptHasContext7: extractSystemPrompt(prompt2).includes("jorgex:context7"),
   bootstrapRegistered: secondBootstrapRegistered,
   duplicateError: dupAfterShutdownOk
@@ -395,9 +397,9 @@ process.stdout.write(
     order,
     piVersion,
     loaderErrors: [...firstLoaderErrors, ...loaded.errors],
-    sixPresent: SIX.filter((name) => memTools.includes(name)),
-    sixMissing: SIX.filter((name) => !memTools.includes(name)),
-    memTools,
+    sixPresent: SIX.filter((name) => firstMemTools.includes(name)),
+    sixMissing: SIX.filter((name) => !firstMemTools.includes(name)),
+    memTools: firstMemTools,
     bootstrapRegistered,
     prompt1HasContext7: extractSystemPrompt(prompt1).includes("jorgex:context7"),
     prompt1HasPolicy: extractSystemPrompt(prompt1).includes("jorgex:system-prompt"),

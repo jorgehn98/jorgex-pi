@@ -416,6 +416,8 @@ for (const target of resolvePiTargets()) {
         assert.deepEqual(probed.diagnostics?.notifications ?? [], [], `${where}: intended Pi lifecycle must not emit error notifications; diagnostics=${diagnostics}`);
         assert.deepEqual(probed.sixMissing, [], `${where}: the six gentle reads must be present in the native surface`);
         assert.equal(probed.sixPresent.length, 6, `${where}: exactly the six reads must be observed`);
+        assert.deepEqual(probed.secondSession.sixMissing, [], `${where}: replacement runner must also expose all six gentle reads`);
+        assert.equal(probed.secondSession.sixPresent.length, 6, `${where}: replacement runner must not mask a first-runner tool loss`);
         assert.equal(probed.bootstrapRegistered, true, `${where}: bootstrap registration must land on the real adapter`);
         assert.equal(probed.prompt1HasContext7, true, `${where}: managed prompt must include Context7 after real registration; diagnostics=${diagnostics}`);
         assert.equal(probed.prompt1HasPolicy, true, `${where}: managed prompt must keep the policy section; diagnostics=${diagnostics}`);
