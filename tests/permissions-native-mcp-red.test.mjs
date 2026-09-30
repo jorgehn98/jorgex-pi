@@ -54,8 +54,8 @@ const sandboxSdkRoot = join(sandboxRoot, "pihost", "node_modules", "@earendil-wo
 const { providerEntry, sdkRoot, available } = resolveRealPackages();
 const skipReason = "no real Pi permission provider/SDK available (run `pnpm install` or set JORGEX_PI_T69_SANDBOX)";
 
-test("native MCP namespace tools are allowed by the generated policy while controls stay enforced", { skip: available ? false : skipReason }, () => {
-  const sandbox = createSandbox("native-mcp-generated");
+test("native MCP namespace tools are allowed by the generated policy while controls stay enforced", { skip: available ? false : skipReason }, (t) => {
+  const sandbox = createSandbox(t, "native-mcp-generated");
   writeGeneratedPolicy(sandbox);
   try {
     const output = runNativeFixture(sandbox);
@@ -116,8 +116,8 @@ test("native MCP namespace tools are allowed by the generated policy while contr
   }
 });
 
-test("a later native override still wins over the broad MCP grant", { skip: available ? false : skipReason }, () => {
-  const sandbox = createSandbox("native-mcp-override");
+test("a later native override still wins over the broad MCP grant", { skip: available ? false : skipReason }, (t) => {
+  const sandbox = createSandbox(t, "native-mcp-override");
   writeGeneratedPolicy(sandbox, {
     "mcp__*": "allow",
     "mcp__fixture__override_deny": "deny",
@@ -161,8 +161,12 @@ function resolveRealPackages() {
   return { providerEntry: sandboxProvider, sdkRoot: sandboxSdkRoot, available: existsSync(sandboxProvider) && existsSync(join(sandboxSdkRoot, "dist", "index.js")) };
 }
 
-function createSandbox(label) {
+function createSandbox(t, label) {
   const rootDir = mkdtempSync(join(tmpdir(), `jorgex-pi-${label}-`));
+  // Owned temporary tree: register the runner-hook teardown immediately after
+  // the owned mkdtemp and before any other IO, so a failure while the fixture is
+  // being built still cleans up on success, failure and cancellation.
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }));
   const agentDir = join(rootDir, "agent");
   const home = join(rootDir, "home");
   const cwd = join(rootDir, "workspace");

@@ -170,6 +170,111 @@ export async function resolveMcpEngramConfig({
   }
 }
 
+// Readonly authority for the persistent native DevTools server. Stack consumes
+// this export from the verified Pi artifact instead of duplicating the guard.
+// It returns the trusted v3 guard command/args (never the mutable launcher),
+// only when the hand-off is enabled with schema 3. Absent or disabled yields
+// undefined, and v1/v2 or a malformed enabled hand-off fails closed. It writes
+// no configuration or receipt and registers nothing.
+export function resolveNativeDevtoolsDefinition({ env = process.env, platform = process.platform } = {}) {
+  const definition = readChromeDevToolsHandoff({ env, platform, native: true });
+  if (!definition) return undefined;
+  return { command: definition.command, args: [...definition.args] };
+}
+
+const NATIVE_MCP_DEFINITION_NAMES = new Set(["engram", "context7", "chrome-devtools"]);
+const NATIVE_MCP_PREFERENCE_KEYS = ["exposure", "toolExposure", "enabled"];
+const NATIVE_MCP_CONTEXT7_ONLY_KEYS = ["url", "headers"];
+const NATIVE_MCP_STDIO_ONLY_KEYS = ["command", "args", "cwd", "env"];
+const NATIVE_MCP_CONTEXT7_KEYS = new Set([...NATIVE_MCP_CONTEXT7_ONLY_KEYS, ...NATIVE_MCP_PREFERENCE_KEYS]);
+const NATIVE_MCP_STDIO_KEYS = new Set([...NATIVE_MCP_STDIO_ONLY_KEYS, ...NATIVE_MCP_PREFERENCE_KEYS]);
+
+// Pure digest of the protected fields of a persistent native MCP definition:
+// SHA-256 of UTF-8 JSON without whitespace, object keys sorted recursively and
+// array order preserved. It is a function over raw data only: it never resolves
+// `${NAME}`, executes a `!command`, looks up executables or touches the network,
+// and it never normalizes user values. The cleanup SHA is a separate contract.
+export function digestNativeMcpDefinition(name, definition) {
+  if (!NATIVE_MCP_DEFINITION_NAMES.has(name)) {
+    throw new Error("Unsupported native MCP definition name");
+  }
+  if (!isRecord(definition)) throw new Error("Native MCP definition must be an object");
+  const httpTransport = name === "context7";
+  const allowed = httpTransport ? NATIVE_MCP_CONTEXT7_KEYS : NATIVE_MCP_STDIO_KEYS;
+  const transportMixKey = httpTransport ? NATIVE_MCP_STDIO_ONLY_KEYS : NATIVE_MCP_CONTEXT7_ONLY_KEYS;
+  for (const key of Object.keys(definition)) {
+    if (allowed.has(key)) continue;
+    // A transport mix keeps an identifiable diagnostic; every other unsupported
+    // option produces the same fixed sentence without echoing the field key or
+    // any user-authored value.
+    if (transportMixKey.includes(key)) {
+      throw new Error("Native MCP definition mixes HTTP and stdio transports; only one transport is allowed");
+    }
+    throw new Error("Unsupported native MCP definition option");
+  }
+  const protectedFields = name === "context7"
+    ? protectedContext7Definition(definition)
+    : protectedStdioDefinition(definition);
+  return createHash("sha256").update(JSON.stringify(sortDefinitionKeys(protectedFields)), "utf8").digest("hex");
+}
+
+function protectedContext7Definition(definition) {
+  if (typeof definition.url !== "string" || !isHttpUrl(definition.url)) {
+    throw new Error("Context7 native MCP definition requires a valid HTTP(S) url");
+  }
+  if (Object.hasOwn(definition, "headers") && !isStringRecord(definition.headers)) {
+    throw new Error("Context7 native MCP definition headers must be a record of string values");
+  }
+  return { url: definition.url };
+}
+
+function protectedStdioDefinition(definition) {
+  if (typeof definition.command !== "string" || !isAbsolutePathValue(definition.command)) {
+    throw new Error("Native MCP stdio definition requires an absolute command");
+  }
+  const protectedFields = { command: definition.command };
+  if (Object.hasOwn(definition, "args")) {
+    if (!Array.isArray(definition.args) || definition.args.some((arg) => typeof arg !== "string")) {
+      throw new Error("Native MCP stdio args must be an array of strings");
+    }
+    protectedFields.args = definition.args;
+  }
+  if (Object.hasOwn(definition, "cwd")) {
+    if (typeof definition.cwd !== "string" || !isAbsolutePathValue(definition.cwd)) {
+      throw new Error("Native MCP stdio cwd must be an absolute path");
+    }
+    protectedFields.cwd = definition.cwd;
+  }
+  if (Object.hasOwn(definition, "env")) {
+    if (!isStringRecord(definition.env)) {
+      throw new Error("Native MCP stdio env must be a record of string values");
+    }
+    protectedFields.env = sortDefinitionKeys(definition.env);
+  }
+  return protectedFields;
+}
+
+function sortDefinitionKeys(record) {
+  return Object.fromEntries(Object.keys(record).sort().map((key) => [key, record[key]]));
+}
+
+function isStringRecord(value) {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
+}
+
+function isAbsolutePathValue(value) {
+  return posix.isAbsolute(value) || win32.isAbsolute(value);
+}
+
+function isHttpUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 // Pi's builtin native parser reads strict `mcp.json` as the Engram authority,
 // so no installed adapter metadata is required. The resolved server preserves
 // the persisted fields exactly and never receives adapter-only
@@ -282,7 +387,7 @@ function readOfficialEngramServer({ env, platform }) {
   };
 }
 
-function readChromeDevToolsHandoff({ env, platform }) {
+function readChromeDevToolsHandoff({ env, platform, native = false }) {
   const paths = platformPaths(platform);
   const agentDir = resolvePiAgentDir({ env, platform });
   const handoffPath = paths.join(agentDir, ...DEVTOOLS_HANDOFF_RELATIVE_PATH);
@@ -302,6 +407,16 @@ function readChromeDevToolsHandoff({ env, platform }) {
   }
 
   if (!isRecord(handoff)) throw new Error(`Chrome DevTools handoff must be an object at ${handoffPath}`);
+  if (native) {
+    // New native registrations are readonly and accept only the trusted v3
+    // chain. A disabled hand-off has no native definition, and v1/v2 never
+    // degrade into a guard command.
+    if (handoff.enabled !== true) return undefined;
+    if (handoff.schemaVersion !== 3) {
+      throw new Error(`Native Chrome DevTools definition requires the trusted schema 3 handoff at ${handoffPath}`);
+    }
+    return readTrustedChromeDevToolsHandoff(handoff, handoffPath, paths, platform);
+  }
   const keys = Object.keys(handoff).sort();
   if (handoff.schemaVersion === 3) {
     return readTrustedChromeDevToolsHandoff(handoff, handoffPath, paths, platform);

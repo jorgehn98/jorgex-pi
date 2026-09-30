@@ -79,8 +79,12 @@ function createPiHarness({ commands = [], tools = [], activeTools = [] } = {}) {
 // diagnosis can never be about a broken command.
 const PROJECT_OVERRIDE_COMMAND = "/bin/sh";
 
-function createNativeSandbox({ projectOverride = false } = {}) {
+function createNativeSandbox(t, { projectOverride = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "jorgex-pi-native-bootstrap-"));
+  // Owned temporary tree: register the runner-hook teardown immediately after
+  // the owned mkdtemp and before any other IO, so a failure while the fixture is
+  // being built still cleans up on success, failure and cancellation.
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   const agentDir = join(root, "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), `${JSON.stringify({ packages: ["npm:gentle-engram@0.1.16"] })}\n`);
@@ -175,8 +179,8 @@ async function runNativeBootstrap({ commands, tools, activeTools, sandbox, resol
   return { pi, prompt: agentStart?.systemPrompt ?? "" };
 }
 
-test("native Engram-only bootstrap keeps provider, pending catalog and no legacy Context7/DevTools error", async () => {
-  const sandbox = createNativeSandbox();
+test("native Engram-only bootstrap keeps provider, pending catalog and no legacy Context7/DevTools error", async (t) => {
+  const sandbox = createNativeSandbox(t);
   const sink = {};
   try {
     // Premise: the real reader output for a native install. Capture it so the
@@ -230,8 +234,8 @@ test("native Engram-only bootstrap keeps provider, pending catalog and no legacy
   }
 });
 
-test("native bootstrap diagnoses a substituted /mcp provider instead of reporting a healthy native install", async () => {
-  const sandbox = createNativeSandbox();
+test("native bootstrap diagnoses a substituted /mcp provider instead of reporting a healthy native install", async (t) => {
+  const sandbox = createNativeSandbox(t);
   try {
     // A third-party extension owns `/mcp` (not `builtin:mcp`) and a foreign
     // `tool_search` is registered: the builtin provider is substituted.
@@ -270,8 +274,8 @@ test("native bootstrap diagnoses a substituted /mcp provider instead of reportin
   }
 });
 
-test("native bootstrap diagnoses an absent builtin:tool-search discovery instead of reading an empty catalog as pending", async () => {
-  const sandbox = createNativeSandbox();
+test("native bootstrap diagnoses an absent builtin:tool-search discovery instead of reading an empty catalog as pending", async (t) => {
+  const sandbox = createNativeSandbox(t);
   try {
     // The effective /mcp command is the Pi builtin, but the runtime exposes no
     // `tool_search` tool at all: deferred MCP tools can never be loaded, so the
@@ -301,8 +305,8 @@ test("native bootstrap diagnoses an absent builtin:tool-search discovery instead
   }
 });
 
-test("native bootstrap diagnoses a trusted project override of the protected Engram server", async () => {
-  const sandbox = createNativeSandbox({ projectOverride: true });
+test("native bootstrap diagnoses a trusted project override of the protected Engram server", async (t) => {
+  const sandbox = createNativeSandbox(t, { projectOverride: true });
   try {
     const { entry } = readProjectEngram(sandbox);
     assert.equal(entry.command, PROJECT_OVERRIDE_COMMAND, "the project fixture must define the override");
@@ -340,8 +344,8 @@ test("native bootstrap diagnoses a trusted project override of the protected Eng
   }
 });
 
-test("an untrusted project Engram override is ignored and the global native install stays healthy", async () => {
-  const sandbox = createNativeSandbox({ projectOverride: true });
+test("an untrusted project Engram override is ignored and the global native install stays healthy", async (t) => {
+  const sandbox = createNativeSandbox(t, { projectOverride: true });
   const sink = {};
   try {
     const { entry } = readProjectEngram(sandbox);
