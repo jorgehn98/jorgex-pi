@@ -24,6 +24,8 @@ let upgradePermissions;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let manifest;
 let inspectContext7Config;
+let inspectOfficialPackages;
+let inspectNativeMcpOwnership;
 let agentDir;
 let packageInfo = { name: "jorgex-pi", version: "unknown", root };
 const commands = new Set(["status", "doctor", "models", "sync", "upgrade", "cleanup"]);
@@ -83,7 +85,11 @@ try {
   ({ cleanupPermissions, inspectPermissions, PermissionsLifecycleError, syncPermissions, upgradePermissions } = await import("../extensions/permissions-lifecycle.mjs"));
   const context7Module = await import("../extensions/context7-config.mjs");
   inspectContext7Config = context7Module.inspectContext7Config;
+  inspectOfficialPackages = context7Module.inspectOfficialPackages;
   agentDir = context7Module.resolvePiAgentDir();
+  // The readonly native ownership checker is plain JS (`extensions/native-mcp.mjs`),
+  // never a TS module: no hook or Jiti is required to consume it here.
+  ({ inspectNativeMcpOwnership } = await import("../extensions/native-mcp.mjs"));
   const args = process.argv.slice(2);
   const command = args[0];
   currentCommand = command ?? "unknown";
@@ -101,9 +107,11 @@ try {
       tiers: ["strong", "standard", "cheap"],
     });
   } else if (command === "sync" || command === "upgrade" || command === "cleanup") {
-    emit(command, true, command === "sync" ? syncLifecycle() : command === "upgrade" ? upgradeLifecycle() : cleanupLifecycle());
+    const nativeContext7 = command === "sync" ? await nativeContext7Evidence() : false;
+    emit(command, true, command === "sync" ? syncLifecycle({ nativeContext7 }) : command === "upgrade" ? upgradeLifecycle() : cleanupLifecycle());
   } else {
-    const state = inspectState();
+    const nativeContext7 = await nativeContext7Evidence();
+    const state = inspectState({ nativeContext7 });
     if (command === "status") {
       const healthy = state.installation.state !== "invalid"
         && state.engram.state !== "invalid"
@@ -208,14 +216,35 @@ try {
   }
 }
 
-function inspectState() {
+function inspectState({ nativeContext7 = false } = {}) {
   return {
     installation: inspectInstallation(),
     engram: inspectEngram(),
-    context7: inspectContext7Config(),
+    context7: inspectContext7Config({ nativeContext7 }),
     permissions: inspectPermissions({ agentDir, packageRoot: root }),
     experience: inspectExperience(),
   };
+}
+
+// Readonly native authority evidence for the Context7 dimension, computed from
+// the actual active module (never a caller CLI flag). The native exception is
+// selected through the official-package policy: a declared adapter keeps the
+// legacy pair and a missing pair stays blocked, so the certified package and
+// Context7 ownership alone can never make the entry available. Only under
+// `ready`/`native` does the checker certify the persisted global entry. An
+// invalid authority maps to a stable local blocked diagnostic (false), never
+// INTERNAL and never echoing user data.
+async function nativeContext7Evidence() {
+  try {
+    const official = inspectOfficialPackages({ env: process.env, cwd: process.cwd(), platform: process.platform });
+    if (official.state !== "ready" || official.transport !== "native") return false;
+    const owner = await inspectNativeMcpOwnership({ env: process.env, platform: process.platform, cwd: process.cwd() });
+    return owner?.package?.state === "verified"
+      && owner?.servers?.context7?.state === "managed"
+      && owner?.servers?.context7?.availability === "configured";
+  } catch {
+    return false;
+  }
 }
 
 function inspectExperience() {
@@ -285,8 +314,8 @@ function inspectEngram() {
     : { state: "missing", ownership: "user" };
 }
 
-function syncLifecycle() {
-  const context7 = inspectContext7Config();
+function syncLifecycle({ nativeContext7 = false } = {}) {
+  const context7 = inspectContext7Config({ nativeContext7 });
   if (context7.state !== "available") throw new LifecycleError("CONTEXT7_CONFIG_BLOCKED", `Context7 configuration is blocked: ${context7.code} (${context7.source}). Preserve the existing configuration and resolve the conflict before sync.`);
   return withLifecycleLocks(syncLifecycleUnlocked, true);
 }

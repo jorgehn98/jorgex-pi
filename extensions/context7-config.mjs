@@ -151,7 +151,7 @@ export function inspectOfficialPackages({ env = process.env, cwd = process.cwd()
   return { state: "ready", transport: "legacy", agentDir, configDir };
 }
 
-export function inspectContext7Config({ env = process.env, cwd = process.cwd(), platform = process.platform, argv = process.argv } = {}) {
+export function inspectContext7Config({ env = process.env, cwd = process.cwd(), platform = process.platform, argv = process.argv, nativeContext7 = false } = {}) {
   const paths = platform === "win32" ? win32 : posix;
   const home = (platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? homedir();
   const invalid = (source, code) => ({ state: "invalid", source, code });
@@ -186,7 +186,19 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
     if (!isRecord(config)) return invalid(source, "invalid-shape");
     for (const key of ["mcpServers", "mcp-servers"]) {
       if (config[key] !== undefined && !isRecord(config[key])) return invalid(source, "invalid-shape");
-      if (isRecord(config[key]) && Object.hasOwn(config[key], "context7")) return { state: "conflict", source, code: "existing-context7" };
+      if (isRecord(config[key]) && Object.hasOwn(config[key], "context7")) {
+        // The persisted global native entry in `agentDir/mcp.json` is permitted
+        // only when BOTH the readonly native authority certifies it
+        // (`nativeContext7`) AND this very scan selected the native transport.
+        // A caller boolean can never turn a legacy/missing pair into a bypass;
+        // every other source, the legacy `mcp-servers` alias and all
+        // imports/discovery checks stay enforced.
+        const nativePermitted = source === "pi-global"
+          && key === "mcpServers"
+          && nativeContext7 === true
+          && packages.transport === "native";
+        if (!nativePermitted) return { state: "conflict", source, code: "existing-context7" };
+      }
     }
     if (config.imports !== undefined && (!Array.isArray(config.imports) || config.imports.length > 0)) return invalid(source, "imports-unverified");
     if (config.settings !== undefined && !isRecord(config.settings)) return invalid(source, "invalid-shape");
@@ -194,6 +206,9 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
       || (config.settings?.agentPluginPaths !== undefined && (!Array.isArray(config.settings.agentPluginPaths) || config.settings.agentPluginPaths.length > 0))
       || config.claudePlugins !== undefined) return invalid(source, "discovery-unverified");
   }
+  // A permitted native entry needs no separate terminal branch: a native
+  // transport is always a ready pair, so the default available return below is
+  // correct while a missing/blocked pair keeps failing closed.
   // Total gate runs after duplicate checks and MCP-scan diagnosis: absent,
   // undeclared, empty, foreign-only, or malformed-sole all fail closed as
   // missing. MCP-scan invalid/conflict already returned above and is preserved.

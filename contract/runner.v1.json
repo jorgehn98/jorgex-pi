@@ -38,9 +38,9 @@
   },
   "context7": {
     "transport": "http",
-    "registration": "isolated in-memory bridge at Pi bootstrap",
-    "diagnostic": "available means configuration permits registration; no HTTP handshake is implied",
-    "conflicts": "preserve existing MCP files; block managed Context7 activation",
+    "registration": "native: persistent Pi builtin MCP configuration (PI_CODING_AGENT_DIR/mcp.json); legacy: isolated in-memory bridge at Pi bootstrap",
+    "diagnostic": "available means the local configuration and ownership permit the server; no handshake or builtin-connection guarantee is implied",
+    "conflicts": "preserve existing MCP files; block managed Context7 activation, except a persisted global native entry certified by the readonly native authority",
     "cleanup": "no managed MCP configuration or credentials are written"
   },
   "permissions": {
