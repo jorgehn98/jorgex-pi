@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { readConfig } from "./context7-config.mjs";
 import { RUNTIME_REGISTER_EVENT, RUNTIME_REGISTER_VERSION, resolveMcpEngramConfig } from "./mcp-engram.ts";
 import { resolvePlaywrightCapability as resolveDefaultPlaywrightCapability } from "./playwright.ts";
 import { PI_QUALITY_CAPABILITIES_EVENT, reportPiQualityCapabilities } from "./quality-capabilities.ts";
@@ -1037,7 +1038,7 @@ function notifyRuntimeOnce(notifiedSessions, ctx, sessionId, message) {
 // connection.
 function notifyNativeRuntimeDiagnostic(pi, ctx, notifiedSessions) {
   const sessionId = readSessionId(ctx);
-  const message = inspectNativeRuntime(pi);
+  const message = inspectNativeRuntime(pi) ?? inspectNativeProjectOverride(ctx);
   if (!message) return false;
   return notifyRuntimeOnce(notifiedSessions, ctx, sessionId, message);
 }
@@ -1080,6 +1081,48 @@ function inspectNativeRuntime(pi) {
 
 function isBuiltinSourceInfo(sourceInfo, path) {
   return sourceInfo?.path === path && sourceInfo?.source === "builtin";
+}
+
+// Project scope: Pi reads `<cwd>/.pi/mcp.json` only for a trusted project and a
+// project entry replaces the global entry with the same name. The native reader
+// only validates the global configuration, so a trusted override of a protected
+// server cannot be validated here and is diagnosed as unverified. Untrusted
+// projects are never read (their file is not effective). This is read-only: it
+// never writes, backs up, reassigns ownership or changes project trust, and the
+// diagnostic describes configuration state, never a live MCP connection.
+const nativeProtectedServers = ["engram", "context7", "chrome-devtools"];
+
+function inspectNativeProjectOverride(ctx) {
+  const cwd = typeof ctx?.cwd === "string" && isAbsolute(ctx.cwd) ? ctx.cwd : undefined;
+  if (!cwd || typeof ctx?.isProjectTrusted !== "function") return undefined;
+  let trusted;
+  try {
+    trusted = ctx.isProjectTrusted();
+  } catch (error) {
+    return `JorgeX native project MCP trust check failed (${boundedFailureReason(error)}). Project overrides are not validated.`;
+  }
+  if (trusted !== true) return undefined;
+  const projectPath = join(cwd, ".pi", "mcp.json");
+  let config;
+  try {
+    config = readConfig(projectPath, { strict: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    return error instanceof SyntaxError
+      ? `JorgeX native project MCP configuration contains invalid JSON at ${projectPath}; project overrides are not validated.`
+      : `JorgeX native project MCP configuration is unreadable at ${projectPath}; project overrides are not validated.`;
+  }
+  if (config === null || typeof config !== "object" || Array.isArray(config)) {
+    return `JorgeX native project MCP configuration must be an object at ${projectPath}; project overrides are not validated.`;
+  }
+  const servers = config.mcpServers;
+  if (servers === null || typeof servers !== "object" || Array.isArray(servers)) return undefined;
+  for (const name of nativeProtectedServers) {
+    if (Object.hasOwn(servers, name)) {
+      return `JorgeX native project override for the protected MCP server "${name}" at ${projectPath} cannot be validated by the native reader. The effective MCP configuration is not confirmed by JorgeX; review or remove the project override.`;
+    }
+  }
+  return undefined;
 }
 
 export default createBootstrap();
