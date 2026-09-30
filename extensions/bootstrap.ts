@@ -69,11 +69,13 @@ export function createBootstrap({
     let mcpEngramFailure;
     let mcpEngramFailureNotified = false;
     let bridgeResolution;
+    let nativeTransport = false;
     let context7State;
     let context7Registered = false;
     let devtoolsRegistered = false;
     const runtimeNotifiedContext7Sessions = new Set();
     const runtimeNotifiedDevtoolsSessions = new Set();
+    const runtimeNotifiedNativeSessions = new Set();
     const runtimeOutcomes = new Map();
     const runtimeHandles = new Map();
     const runtimeDisposeFailures = new Map();
@@ -174,7 +176,13 @@ export function createBootstrap({
         systemPromptAssetsFailureNotified = notifyError(ctx, formatSystemPromptAssetsFailure(systemPromptAssetsFailure));
       }
       if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
-      await registerRuntimeServers(pi, readSessionId(ctx));
+      if (nativeTransport) {
+        // Native MCP is owned by the host builtin: no adapter runtime events,
+        // no ephemeral server registration, no host handles to dispose.
+        notifyNativeRuntimeDiagnostic(pi, ctx, runtimeNotifiedNativeSessions);
+      } else {
+        await registerRuntimeServers(pi, readSessionId(ctx));
+      }
     });
 
     pi.events.on("permissions:ready", (event) => {
@@ -199,7 +207,8 @@ export function createBootstrap({
         runtimeOutcomes.delete(sessionId);
         runtimeNotifiedContext7Sessions.delete(sessionId);
         runtimeNotifiedDevtoolsSessions.delete(sessionId);
-        const failures = await disposeRuntimeHandles(sessionId);
+        runtimeNotifiedNativeSessions.delete(sessionId);
+        const failures = nativeTransport ? {} : await disposeRuntimeHandles(sessionId);
         const names = Object.keys(failures);
         if (names.length > 0) {
           // Failed dispose stays retryable via the retained handle; notify the
@@ -256,6 +265,7 @@ export function createBootstrap({
       try {
         const resolution = await bridgeResolver();
         bridgeResolution = resolution;
+        nativeTransport = resolution.transport === "native";
         context7State = resolution.context7;
         // Bootstrap requires a managed bridge with an available definition;
         // the legacy `registered` state alone is not sufficient.
@@ -302,7 +312,12 @@ export function createBootstrap({
       const devtoolsAttempt = runtimeOutcome?.["chrome-devtools"];
       const showContext7 = context7Attempt ? context7Attempt.status === "ok" : context7Registered;
       const showDevtools = devtoolsAttempt ? devtoolsAttempt.status === "ok" : devtoolsRegistered;
-      if ((context7Attempt && context7Attempt.status !== "ok")
+      if (nativeTransport) {
+        // Re-read the live native provider/discovery on every session start.
+        // A native install whose Context7/DevTools guides are not projected yet
+        // is not a legacy adapter registration failure.
+        notifyNativeRuntimeDiagnostic(pi, ctx, runtimeNotifiedNativeSessions);
+      } else if ((context7Attempt && context7Attempt.status !== "ok")
         || (!context7Attempt && context7State && !context7Registered)) {
         notifyRuntimeOnce(
           runtimeNotifiedContext7Sessions,
@@ -311,7 +326,7 @@ export function createBootstrap({
           formatRuntimeContext7Error(context7Attempt, context7State),
         );
       }
-      if (devtoolsAttempt && devtoolsAttempt.status !== "ok") {
+      if (!nativeTransport && devtoolsAttempt && devtoolsAttempt.status !== "ok") {
         notifyRuntimeOnce(
           runtimeNotifiedDevtoolsSessions,
           ctx,
@@ -1010,6 +1025,61 @@ function notifyRuntimeOnce(notifiedSessions, ctx, sessionId, message) {
   const notified = notifyError(ctx, message);
   if (notified && sessionId) notifiedSessions.add(sessionId);
   return notified;
+}
+
+// Native transport keeps provider, deferred catalog and connection concerns
+// separate. It inspects only the public runtime getters and emits a concise
+// diagnostic when the Pi builtin MCP provider (`builtin:mcp`) or its
+// `builtin:tool-search` discovery is absent or replaced. An empty/inactive
+// deferred catalog is pending, never an invented connection failure, and
+// `getActiveTools()` is observed without re-imposing a selection. The observed
+// source metadata describes this runtime only; it is not proof of a live MCP
+// connection.
+function notifyNativeRuntimeDiagnostic(pi, ctx, notifiedSessions) {
+  const sessionId = readSessionId(ctx);
+  const message = inspectNativeRuntime(pi);
+  if (!message) return false;
+  return notifyRuntimeOnce(notifiedSessions, ctx, sessionId, message);
+}
+
+function inspectNativeRuntime(pi) {
+  if (typeof pi?.getCommands !== "function" || typeof pi?.getAllTools !== "function") {
+    return "JorgeX native MCP provider status is unavailable: this Pi build does not expose getCommands()/getAllTools(). Reload a compatible Pi to inspect the builtin MCP provider.";
+  }
+  let commands;
+  let tools;
+  try {
+    commands = pi.getCommands();
+    tools = pi.getAllTools();
+  } catch (error) {
+    return `JorgeX native MCP provider status is unavailable: runtime inspection failed (${boundedFailureReason(error)}). Reload Pi.`;
+  }
+  // Observe discovery without forcing activation; never call setActiveTools.
+  if (typeof pi?.getActiveTools === "function") {
+    try { pi.getActiveTools(); } catch { /* Observation only. */ }
+  }
+  const mcpCommand = (Array.isArray(commands) ? commands : []).find((command) => command?.name === "mcp");
+  if (mcpCommand?.source !== "extension" || !isBuiltinSourceInfo(mcpCommand?.sourceInfo, "builtin:mcp")) {
+    return mcpCommand
+      ? "JorgeX native MCP provider is replaced: the /mcp command is not the Pi builtin (builtin:mcp). Restore the builtin MCP extension and reload Pi."
+      : "JorgeX native MCP provider is missing: the Pi builtin /mcp command (builtin:mcp) is not registered. Restore the builtin MCP extension and reload Pi.";
+  }
+  const toolSearch = (Array.isArray(tools) ? tools : []).find((tool) => tool?.name === "tool_search");
+  // Absence is read from getAllTools(), the discovery factory: a missing
+  // builtin:tool-search means deferred MCP tools can never load. This is
+  // distinct from a registered-but-inactive tool_search (pending catalog), so
+  // it is never inferred from the getActiveTools() selection.
+  if (!toolSearch) {
+    return "JorgeX native MCP discovery is missing: the Pi builtin tool_search (builtin:tool-search) is not registered. Restore the builtin MCP extension and reload Pi.";
+  }
+  if (!isBuiltinSourceInfo(toolSearch.sourceInfo, "builtin:tool-search")) {
+    return "JorgeX native MCP discovery is replaced: tool_search is not the Pi builtin (builtin:tool-search). Restore the builtin MCP extension and reload Pi.";
+  }
+  return undefined;
+}
+
+function isBuiltinSourceInfo(sourceInfo, path) {
+  return sourceInfo?.path === path && sourceInfo?.source === "builtin";
 }
 
 export default createBootstrap();
