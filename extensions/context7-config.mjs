@@ -71,10 +71,11 @@ export function resolvePiAgentDir({ env = process.env, cwd = process.cwd(), plat
   return paths.resolve(cwd, configured);
 }
 
-// Shared official package-pair gate: exactly one global gentle-engram@semver
-// and one global pi-mcp-adapter own the channel. Exposed separately so the
-// bridge can block managed on package ownership even when an independent
-// Context7 MCP conflict would otherwise hide the missing gate.
+// Shared official package gate: a native activation declares one global
+// gentle-engram@semver and no pi-mcp-adapter; a declared adapter keeps the
+// legacy gentle+adapter pair. Exposed separately so the bridge can block
+// managed on package ownership even when an independent Context7 MCP conflict
+// would otherwise hide the missing gate.
 export function inspectOfficialPackages({ env = process.env, cwd = process.cwd(), platform = process.platform } = {}) {
   const paths = platform === "win32" ? win32 : posix;
   const home = (platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? homedir();
@@ -95,10 +96,11 @@ export function inspectOfficialPackages({ env = process.env, cwd = process.cwd()
   let agentDir;
   try { agentDir = resolvePiAgentDir({ env, cwd, platform, configDir }); }
   catch { return invalid("pi-global", "invalid-path"); }
-  // Total official package gate: exactly one valid global gentle-engram@semver
-  // and one valid global pi-mcp-adapter entry own the channel. Duplicate
-  // official names, project entries, or any missing/empty/foreign-only or
-  // malformed package declaration fail closed as missing.
+  // Total official package gate: a native activation declares exactly one
+  // valid global gentle-engram@semver and no adapter; a declared adapter keeps
+  // the legacy pair. Duplicate official names, project entries, or any
+  // missing/empty/foreign-only or malformed package declaration fail closed as
+  // missing.
   let globalGentleValid = 0;
   let globalAdapterValid = 0;
   let globalGentleOfficial = 0;
@@ -134,10 +136,19 @@ export function inspectOfficialPackages({ env = process.env, cwd = process.cwd()
   }
   if (globalGentleOfficial > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-gentle-engram", agentDir, configDir };
   if (globalAdapterOfficial > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-pi-mcp-adapter", agentDir, configDir };
+  // A native activation declares no pi-mcp-adapter: exactly one global
+  // gentle-engram@semver owns the channel and Pi's builtin reads strict
+  // mcp.json. A declared adapter keeps the legacy pair gate below.
+  if (globalAdapterOfficial === 0) {
+    if (globalGentleValid !== 1) {
+      return { state: "missing", source: "pi-global-settings", code: "missing-official-packages", agentDir, configDir };
+    }
+    return { state: "ready", transport: "native", agentDir, configDir };
+  }
   if (globalGentleValid !== 1 || globalAdapterValid !== 1) {
     return { state: "missing", source: "pi-global-settings", code: "missing-official-packages", agentDir, configDir };
   }
-  return { state: "ready", agentDir, configDir };
+  return { state: "ready", transport: "legacy", agentDir, configDir };
 }
 
 export function inspectContext7Config({ env = process.env, cwd = process.cwd(), platform = process.platform, argv = process.argv } = {}) {
@@ -192,11 +203,13 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
   return { state: "available" };
 }
 
-export function readConfig(file) {
+export function readConfig(file, { strict = false } = {}) {
   const stat = statSync(file);
   if (!stat.isFile() || stat.size > maxConfigBytes) throw new Error("Invalid MCP configuration file");
   const bytes = readFileSync(file);
   if (bytes.length > maxConfigBytes) throw new Error("MCP configuration exceeds the size limit");
   const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  return JSON.parse(stripJsonComments(raw, { trailingCommas: true }));
+  // Pi's builtin native parser is strict JSON; the adapter historically accepts
+  // bounded JSONC (comments and trailing commas). Native authority reads strict.
+  return strict ? JSON.parse(raw) : JSON.parse(stripJsonComments(raw, { trailingCommas: true }));
 }

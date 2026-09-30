@@ -99,6 +99,33 @@ export async function resolveMcpEngramConfig({
       reason: "official Engram MCP setup is missing; run `engram setup pi` and reload Pi",
     };
   }
+  // Native transport: no adapter is declared, so Pi's builtin owns strict
+  // mcp.json. The reader returns only the persistently configured Engram
+  // server; Context7/DevTools native persistence is a later bootstrap step.
+  // It preserves the legacy explicit-binary precedence: an injected or
+  // configured resolver must agree with the persisted command.
+  if (packages.transport === "native") {
+    try {
+      const binary = await (resolveEngramBinary ?? (() => resolveConfiguredEngramBinary({ env, platform })))();
+      const official = readNativeEngramServer({ env, platform });
+      if (official.error) throw new Error(official.error);
+      if (!official.server) {
+        return { state: "missing", config, context7, reason: "official Engram MCP setup is missing; run `engram setup pi` and reload Pi" };
+      }
+      if (binary !== undefined && official.server.command !== binary) {
+        throw new Error("Official Engram MCP command does not match the configured Engram binary; explicit configuration takes precedence");
+      }
+      config.mcpServers.engram = official.server;
+      return { state: "managed", config, context7, transport: "native" };
+    } catch (error) {
+      return {
+        state: "failed",
+        config,
+        context7,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   if (context7.state === "available") {
     config.mcpServers.context7 = {
       url: CONTEXT7_URL,
@@ -141,6 +168,42 @@ export async function resolveMcpEngramConfig({
       reason: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+// Pi's builtin native parser reads strict `mcp.json` as the Engram authority,
+// so no installed adapter metadata is required. The resolved server preserves
+// the persisted fields exactly and never receives adapter-only
+// lifecycle/directTools/toolPrefix/excludeTools.
+function readNativeEngramServer({ env, platform }) {
+  const paths = platformPaths(platform);
+  const agentDir = resolvePiAgentDir({ env, platform });
+  const mcpPath = paths.join(agentDir, "mcp.json");
+  let mcp;
+  try {
+    mcp = readConfig(mcpPath, { strict: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return { found: false };
+    return { found: false, error: error instanceof SyntaxError
+      ? `Official Engram MCP configuration contains invalid JSON at ${mcpPath}`
+      : `Official Engram MCP configuration is unreadable at ${mcpPath}` };
+  }
+
+  if (!isRecord(mcp)) return { found: false, error: `Official Engram MCP configuration must be an object at ${mcpPath}` };
+  const server = mcp.mcpServers?.engram;
+  if (server === undefined) return { found: false };
+  if (!isRecord(server)) return { found: false, error: `Official mcp.json Engram server must be an object at ${mcpPath}` };
+  if (typeof server.command !== "string" || !paths.isAbsolute(server.command)) {
+    return { found: false, error: `Official mcp.json Engram command must be an absolute path at ${mcpPath}` };
+  }
+  if (!isExecutable(server.command, platform)) {
+    return { found: false, error: `Official mcp.json Engram command is not executable at ${mcpPath}` };
+  }
+  if (!Array.isArray(server.args)
+    || server.args.length !== OFFICIAL_ENGRAM_ARGS.length
+    || server.args.some((arg, index) => arg !== OFFICIAL_ENGRAM_ARGS[index])) {
+    return { found: false, error: `Official mcp.json Engram server must use the exact official arguments at ${mcpPath}` };
+  }
+  return { found: true, server: { ...server, command: server.command, args: [...server.args] } };
 }
 
 function readOfficialEngramServer({ env, platform }) {
