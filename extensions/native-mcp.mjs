@@ -39,6 +39,12 @@ const SHA512_HEX = /^[0-9a-f]{128}$/;
 const SRI_SHA512_B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const STAGE_NAME = /^stage-[0-9a-f]{32}$/;
 
+// Spec 71 closing clause: the heavy offline proof is a once-per-startup cost
+// keyed by a cheap identity, while configuration, projection authority and
+// preferences stay fresh on every inspection. A single module-local entry, never
+// a history or dictionary.
+let lastIdentityCachedProof;
+
 export async function inspectNativeMcpOwnership({
   env = process.env,
   platform = process.platform,
@@ -139,30 +145,78 @@ function readProjectionClaims({ home, agentDir, platform, paths }) {
 }
 
 // Offline package proof. The direct channel with no granular claim needs no
-// heavy proof, so it is `not-required` and the receipt is not even read. Once a
-// claim exists the proof is mandatory: a missing or incoherent receipt is a
-// visible `conflict` (never a silent `not-required` or unowned success).
+// heavy proof, so it is `not-required` and the receipt is not even read (the
+// startup cache is cleared conservatively). Once a claim exists the proof is
+// mandatory: a missing or incoherent receipt is a visible `conflict` (never a
+// silent `not-required` or unowned success). A verified (or failed) proof is
+// memoized on the cheap startup identity, so a repeated inspection of the same
+// installation never re-opens the archive or the release tree.
 function verifyManagedPackage({ home, agentDir, platform, paths, required }) {
-  if (!required) return { state: "not-required" };
-  let receiptBytes;
+  if (!required) {
+    lastIdentityCachedProof = undefined;
+    return { state: "not-required" };
+  }
+  const identified = identifyManagedReceipt({ home, agentDir, paths });
+  if (identified === undefined) {
+    // A missing or unreadable main receipt or active entry is unproven
+    // ownership; never let a stale verified cache answer for it.
+    lastIdentityCachedProof = undefined;
+    return { state: "conflict", reason: "Native MCP package proof is required for claimed entries" };
+  }
+  if (lastIdentityCachedProof !== undefined && lastIdentityCachedProof.identity === identified.identity) {
+    return lastIdentityCachedProof.reason
+      ? { state: lastIdentityCachedProof.state, reason: lastIdentityCachedProof.reason }
+      : { state: lastIdentityCachedProof.state };
+  }
+  let proof;
   try {
-    receiptBytes = readOptionalRegularBytes(
+    assertManagedReceipt(parseStrictJson(identified.bytes), { home, agentDir, platform, paths });
+    proof = { state: "verified" };
+  } catch {
+    proof = { state: "conflict", reason: "Native MCP package proof failed" };
+  }
+  lastIdentityCachedProof = {
+    identity: identified.identity,
+    state: proof.state,
+    ...(proof.reason ? { reason: proof.reason } : {}),
+  };
+  return proof;
+}
+
+// Cheap startup identity: the raw receipt fingerprint (which already covers the
+// candidate version/source and the lock, tree and tarball hashes), the physical
+// package root derived from this module's URL, the active entry realpath and the
+// home/agent scope, so another installation or fixture can never reuse the
+// cached proof. Missing or unreadable identifiers yield undefined.
+function identifyManagedReceipt({ home, agentDir, paths }) {
+  let bytes;
+  try {
+    bytes = readOptionalRegularBytes(
       join(home, ".jorgex-stack", "pi-receipt.json"),
       RECEIPT_MAX_BYTES,
       "Native MCP package receipt",
     );
   } catch {
-    return { state: "conflict", reason: "Native MCP package receipt is unreadable" };
+    return undefined;
   }
-  if (receiptBytes === undefined) {
-    return { state: "conflict", reason: "Native MCP package proof is required for claimed entries" };
-  }
+  if (bytes === undefined) return undefined;
+  let ownRoot;
+  let entryRealpath;
   try {
-    assertManagedReceipt(parseStrictJson(receiptBytes), { home, agentDir, platform, paths });
-    return { state: "verified" };
+    ownRoot = realpathSync(join(dirname(fileURLToPath(import.meta.url)), ".."));
+    entryRealpath = realpathSync(join(agentDir, "npm", "node_modules", PACKAGE_NAME));
   } catch {
-    return { state: "conflict", reason: "Native MCP package proof failed" };
+    return undefined;
   }
+  const identity = [
+    "v1",
+    sha256Hex(bytes),
+    ownRoot,
+    entryRealpath,
+    paths.resolve(home),
+    paths.resolve(agentDir),
+  ].join("\u0000");
+  return { identity, bytes };
 }
 
 function assertManagedReceipt(receipt, { home, agentDir, platform, paths }) {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   appendFileSync,
   cpSync,
@@ -11,9 +12,9 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { registerHooks, stripTypeScriptTypes } from "node:module";
+import { registerHooks, stripTypeScriptTypes, syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -508,4 +509,126 @@ test("release topology and SRI canonicality fail closed on their own", async (t)
     );
     assert.deepEqual(snapshotTree(sandbox.root), before, "the readonly checker must not write any file");
   });
+});
+
+// --- T70 cache: heavy proof once per startup identity ----------------------
+//
+// Spec 71's last clause makes the heavy offline proof a once-per-startup (per
+// identity fingerprint) cost while the configuration, projection authority and
+// preferences stay fresh on every inspection. The seam is the real filesystem
+// boundary: a test-local instrumentation forwards every call to the REAL fs and
+// only counts the known heavy opens (the cached archive and the release tree);
+// no bytes are faked, the proof is never recomputed outside production and no
+// production cache flag or package-root bypass exists.
+function countHeavyIo(sandbox) {
+  const archivePaths = new Set([sandbox.cachePath, realpathSync(sandbox.cachePath)]);
+  const releasePrefixes = new Set([
+    `${sandbox.releaseDir}${sep}`,
+    `${realpathSync(sandbox.releaseDir)}${sep}`,
+  ]);
+  const counts = { archive: 0, tree: 0, reads: 0 };
+  const originalOpen = fs.openSync;
+  const originalRead = fs.readSync;
+  fs.openSync = function instrumentedOpen(file, ...rest) {
+    if (typeof file === "string") {
+      if (archivePaths.has(file)) counts.archive += 1;
+      else if ([...releasePrefixes].some((prefix) => file.startsWith(prefix))) counts.tree += 1;
+    }
+    return originalOpen.call(this, file, ...rest);
+  };
+  fs.readSync = function instrumentedRead(...args) {
+    counts.reads += 1;
+    return originalRead.apply(this, args);
+  };
+  // Make the patched builtins visible to the managed module's own named
+  // `node:fs` imports; restored from a finally and again from t.after.
+  syncBuiltinESMExports();
+  let restored = false;
+  return {
+    counts,
+    restore() {
+      if (restored) return;
+      restored = true;
+      fs.openSync = originalOpen;
+      fs.readSync = originalRead;
+      syncBuiltinESMExports();
+    },
+  };
+}
+
+test("the heavy release proof runs once per startup identity while preferences stay fresh", async (t) => {
+  const sandbox = createManagedReleaseSandbox(t);
+  const configPath = join(sandbox.agentDir, "mcp.json");
+  const mcpModule = await import(pathToFileURL(sandbox.entryModulePath).href);
+
+  const instrumentation = countHeavyIo(sandbox);
+  t.after(() => instrumentation.restore());
+  let first;
+  let firstCounts;
+  let second;
+  let secondCounts;
+  try {
+    first = await inspect(mcpModule, sandbox);
+    firstCounts = { ...instrumentation.counts };
+
+    // Fresh user preference between the two inspections: `enabled` is an allowed
+    // preference but not a protected definition field, so ownership stays and
+    // only availability and the cleanup stamp must refresh.
+    const config = readJson(configPath);
+    config.mcpServers.context7 = { ...config.mcpServers.context7, enabled: false };
+    writeJson(configPath, config);
+
+    second = await inspect(mcpModule, sandbox);
+    secondCounts = { ...instrumentation.counts };
+  } finally {
+    instrumentation.restore();
+  }
+
+  assert.equal(first.package?.state, "verified", "the first inspection verifies the coherent release");
+  assert.equal(first.servers?.context7?.state, "managed", "the first inspection owns the protected claim");
+  assert.ok(
+    firstCounts.archive >= 1 && firstCounts.tree >= 1,
+    `the instrumentation must observe the real heavy proof: ${JSON.stringify(firstCounts)}`,
+  );
+
+  assert.equal(
+    second.package?.state,
+    "verified",
+    `the same startup identity must not re-prove the package: ${second.package?.reason ?? "no diagnostic"}`,
+  );
+  assert.equal(second.servers?.context7?.state, "managed", "ownership is authority and must not change");
+  assert.equal(second.servers?.context7?.cleanupEligible, false, "the changed entry must be fresh, not cleanup-eligible");
+  assert.equal(second.servers?.context7?.availability, "disabled", "a fresh preference must reclassify availability");
+  assert.equal(
+    secondCounts.archive,
+    firstCounts.archive,
+    `a second inspection with the same identity must not reopen the cached archive: first ${JSON.stringify(firstCounts)} second ${JSON.stringify(secondCounts)}`,
+  );
+  assert.equal(
+    secondCounts.tree,
+    firstCounts.tree,
+    `a second inspection with the same identity must not rehash the release tree: first ${JSON.stringify(firstCounts)} second ${JSON.stringify(secondCounts)}`,
+  );
+});
+
+test("a changed receipt fingerprint invalidates the proof without a sticky conflict", async (t) => {
+  const sandbox = createManagedReleaseSandbox(t);
+  const mcpModule = await import(pathToFileURL(sandbox.entryModulePath).href);
+  const originalReceipt = readFileSync(sandbox.receiptPath);
+
+  const first = await inspect(mcpModule, sandbox);
+  assert.equal(first.package?.state, "verified", "the coherent release verifies before the fingerprint changes");
+  assert.equal(first.servers?.context7?.state, "managed", "the protected claim is owned before the change");
+
+  const drifted = JSON.parse(originalReceipt.toString("utf8"));
+  drifted.scope.codingAgentDir = join(sandbox.root, "other-agent");
+  writeJson(sandbox.receiptPath, drifted);
+  const second = await inspect(mcpModule, sandbox);
+  assert.equal(second.package?.state, "conflict", "a changed receipt fingerprint must invalidate the proof");
+  assert.equal(second.servers?.context7?.state, "conflict", "a claim cannot stay managed on a drifted receipt");
+
+  writeFileSync(sandbox.receiptPath, originalReceipt);
+  const third = await inspect(mcpModule, sandbox);
+  assert.equal(third.package?.state, "verified", "restoring the fingerprint must verify again, with no sticky conflict");
+  assert.equal(third.servers?.context7?.state, "managed", "the restored identity owns the protected claim again");
 });
