@@ -13,7 +13,7 @@ import {
 import { dirname, join, posix, relative, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConfig, resolvePiAgentDir } from "./context7-config.mjs";
-import { digestNativeMcpDefinition, readBoundedRegularFile } from "./mcp-engram.mjs";
+import { digestNativeMcpDefinition, readBoundedRegularFile, resolveNativeDevtoolsDefinition } from "./mcp-engram.mjs";
 
 // Readonly ownership checker for the persistent native MCP configuration
 // (Spec 71, "Proof offline y bind del checker"). It never writes, spawns,
@@ -27,6 +27,7 @@ const SERVER_NAMES = ["engram", "context7", "chrome-devtools"];
 const KNOWN_NAMES = new Set(SERVER_NAMES);
 const PACKAGE_NAME = "jorgex-pi";
 const AUTHORITY_MAX_BYTES = 1024 * 1024;
+const DEVTOOLS_HANDOFF_MAX_BYTES = 1024 * 1024;
 const RECEIPT_MAX_BYTES = 1024 * 1024;
 const SETTINGS_MAX_BYTES = 1024 * 1024;
 const MANIFEST_MAX_BYTES = 1024 * 1024;
@@ -54,11 +55,17 @@ export async function inspectNativeMcpOwnership({
   const home = requireAbsoluteHome(env, platform);
   const agentDir = resolvePiAgentDir({ env, cwd, platform });
   const config = readNativeConfig(paths.join(agentDir, "mcp.json"));
-  const claims = readProjectionClaims({ home, agentDir, platform, paths });
-  const proof = verifyManagedPackage({ home, agentDir, platform, paths, required: claims.size > 0 });
+  const authority = readProjectionClaims({ home, agentDir, platform, paths });
+  const proof = verifyManagedPackage({ home, agentDir, platform, paths, required: authority.claims.size > 0 });
   const servers = {};
   for (const name of SERVER_NAMES) {
-    servers[name] = inspectServer(name, config?.mcpServers?.[name], claims.get(name), proof);
+    servers[name] = inspectServer(name, config?.mcpServers?.[name], authority.claims.get(name), proof, {
+      devtoolsSha256: authority.devtoolsSha256,
+      env,
+      platform,
+      agentDir,
+      paths,
+    });
   }
   return {
     servers,
@@ -104,7 +111,7 @@ function readProjectionClaims({ home, agentDir, platform, paths }) {
   } catch {
     throw new Error("Native MCP projection authority is unreadable");
   }
-  if (bytes === undefined) return new Map();
+  if (bytes === undefined) return { claims: new Map(), devtoolsSha256: undefined };
   let authority;
   try {
     authority = parseStrictJson(bytes);
@@ -125,7 +132,12 @@ function readProjectionClaims({ home, agentDir, platform, paths }) {
     || authority.owned.some((entry) => typeof entry !== "string" || !paths.isAbsolute(entry))) {
     throw new Error("Native MCP projection authority has an invalid owned list");
   }
-  if (authority.mcpNative === undefined) return new Map();
+  // The DevTools chain reads the whole-handoff stamp as a sibling authority
+  // field; it is carried alongside the claims and never cached.
+  const devtoolsSha256 = isRecord(authority.devtools) && typeof authority.devtools.sha256 === "string"
+    ? authority.devtools.sha256
+    : undefined;
+  if (authority.mcpNative === undefined) return { claims: new Map(), devtoolsSha256 };
   const mcpNative = authority.mcpNative;
   if (!isRecord(mcpNative) || mcpNative.schemaVersion !== 1 || !isRecord(mcpNative.entries)) {
     throw new Error("Native MCP projection authority has an unsupported mcpNative shape");
@@ -141,7 +153,7 @@ function readProjectionClaims({ home, agentDir, platform, paths }) {
     }
     claims.set(name, { definitionSha256: claim.definitionSha256, cleanupSha256: claim.cleanupSha256 });
   }
-  return claims;
+  return { claims, devtoolsSha256 };
 }
 
 // Offline package proof. The direct channel with no granular claim needs no
@@ -472,7 +484,7 @@ function lstatOrUndefined(filePath) {
   }
 }
 
-function inspectServer(name, entry, claim, proof) {
+function inspectServer(name, entry, claim, proof, context) {
   if (entry === undefined) {
     return {
       state: claim ? "conflict" : "absent",
@@ -506,6 +518,16 @@ function inspectServer(name, entry, claim, proof) {
         reason: "Native MCP ownership claim could not be verified",
       };
     }
+    // DevTools requires the whole-handoff receipt stamp AND the trusted v3
+    // guard: a matching definition digest alone never owns a script.
+    if (name === "chrome-devtools" && !devtoolsChainOwned(entry, context)) {
+      return {
+        state: "conflict",
+        cleanupEligible: false,
+        availability,
+        reason: "Native Chrome DevTools ownership could not be verified",
+      };
+    }
     return {
       state: "managed",
       cleanupEligible: typeof claim.cleanupSha256 === "string"
@@ -516,6 +538,39 @@ function inspectServer(name, entry, claim, proof) {
   // Availability is syntax only: a present definition is configured, never a
   // live connection, and without a claim it is never owned or cleanup-eligible.
   return { state: "unowned", cleanupEligible: false, availability };
+}
+
+// Spec 71 L33: a DevTools claim is owned only when the projection stamped the
+// WHOLE handoff file (`devtools.sha256`) and the persisted command/args EXACTLY
+// equal the trusted v3 resolution of that handoff. A plain launcher, a v1/v2
+// fallback or any arbitrary script with a matching definition digest is never
+// enough. Re-read fresh on every inspection; never cached, never writing.
+function devtoolsChainOwned(entry, { devtoolsSha256, env, platform, agentDir, paths }) {
+  if (typeof devtoolsSha256 !== "string" || !SHA256_HEX.test(devtoolsSha256)) return false;
+  const handoffPath = paths.join(agentDir, "jorgex-pi", "devtools.v1.json");
+  let handoffBytes;
+  try {
+    handoffBytes = readOptionalRegularBytes(handoffPath, DEVTOOLS_HANDOFF_MAX_BYTES, "Chrome DevTools handoff");
+  } catch {
+    return false;
+  }
+  if (handoffBytes === undefined || sha256Hex(handoffBytes) !== devtoolsSha256) return false;
+  let guard;
+  try {
+    guard = resolveNativeDevtoolsDefinition({ env, platform });
+  } catch {
+    return false;
+  }
+  if (!isRecord(guard)) return false;
+  return sameGuardDefinition(entry, guard);
+}
+
+function sameGuardDefinition(entry, guard) {
+  if (typeof entry.command !== "string" || entry.command !== guard.command) return false;
+  if (!Array.isArray(entry.args) || !Array.isArray(guard.args) || entry.args.length !== guard.args.length) {
+    return false;
+  }
+  return entry.args.every((value, index) => value === guard.args[index]);
 }
 
 // Raw, user-authored `!` executions stay inert data: they classify availability
