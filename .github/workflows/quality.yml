@@ -60,6 +60,6 @@ jobs:
           node-version: "24"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node --test --test-name-pattern="T3[68] trusted Playwright v2 Windows" tests/playwright.test.mjs
+      - run: node --test --test-name-pattern="T3[689] .*Playwright" tests/playwright.test.mjs
       - name: Verify serialized DevTools guard through the real Pi loader
         run: node --test --test-name-pattern="T67 real Pi loader" tests/mcp-engram.test.mjs

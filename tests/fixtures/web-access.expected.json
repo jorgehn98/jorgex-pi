@@ -33,6 +33,14 @@
   ],
   "routing": {
     "webAccess": ["web research", "source verification", "static HTTP(S) retrieval", "PDF, GitHub, and YouTube content"],
-    "playwright": ["browser interaction and QA", "task-specific session", "open with `playwright-cli open --browser=chromium`", "snapshot", "session you created"]
+    "playwright": [
+      "browser interaction and QA",
+      "task-specific session",
+      "consult",
+      "open --browser=chromium",
+      "snapshot",
+      "verify action results",
+      "close` only for the session you created"
+    ]
   }
 }
