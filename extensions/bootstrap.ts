@@ -730,15 +730,19 @@ function browserRouting(assets, resolvePlaywrightCapability, hasDevtools) {
     const command = capability.trusted === true
       ? formatTrustedPlaywrightCommandPath(capability.commandPath)
       : formatPlaywrightCommandPath(capability.commandPath);
+    // Examples always use the shell invocation form. Callbacks keep a command
+    // path containing `$` literal instead of expanding it as a replacement
+    // pattern.
+    const invocation = formatTrustedPlaywrightCommandPath(capability.commandPath);
     const routing = capability.trusted === true
       ? `Run only the verified Stack dispatcher at ${command} for the commands above. Do not use a global playwright-cli or pnpm dlx.`
       : `Use Playwright at ${command} for the commands above.`;
     const guidance = capability.trusted === true
       ? assets.playwright.trimEnd()
-        .replace(/\bplaywright-cli\b(?=\s+(?:open|snapshot|close|--help|-s=))/g, command)
-        .replaceAll("jorgex-stack browser playwright", command)
+        .replace(/\bplaywright-cli\b(?=\s+(?:open|snapshot|close|--help|-s=))/g, () => invocation)
+        .replaceAll("jorgex-stack browser playwright", () => invocation)
       : assets.playwright.trimEnd()
-        .replaceAll("jorgex-stack browser playwright", command)
+        .replaceAll("jorgex-stack browser playwright", () => invocation)
         .replace(managedReceiptClaimPattern, legacyCommandNotice);
     sections.push({
       marker: playwrightMarker,

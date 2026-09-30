@@ -285,7 +285,22 @@ test("pull requests execute the reviewed actions in a non-privileged quality gat
   assertCrossRepoParityGate(workflowJobBlock(workflow, "verify"), "quality");
   const windows = workflowJobBlock(workflow, "playwright-windows");
   assert.match(windows, /runs-on:\s*windows-latest/);
-  assert.match(windows, /node --test --test-name-pattern="T3\[68\] trusted Playwright v2 Windows" tests\/playwright\.test\.mjs/);
+  const selectorSource = windows.match(/--test-name-pattern="([^"]+)"\s+tests\/playwright\.test\.mjs/)?.[1];
+  assert.ok(selectorSource, "the Windows quality job must select its cases with an explicit --test-name-pattern");
+  const windowsSelector = new RegExp(selectorSource);
+  const playwrightTitles = [...readFileSync(join(root, "tests", "playwright.test.mjs"), "utf8").matchAll(/^test\("([^"]+)"/gm)]
+    .map(([, title]) => title);
+  for (const windowsCase of ["T36", "T38", "T39"]) {
+    const title = playwrightTitles.find((candidate) => candidate.startsWith(windowsCase));
+    assert.ok(title, `tests/playwright.test.mjs must define ${windowsCase}`);
+    assert.match(title, windowsSelector, `${windowsCase} must run in the Windows quality job`);
+  }
+  for (const portableCase of ["T33", "T34", "legacy Playwright routing"]) {
+    const title = playwrightTitles.find((candidate) => candidate.startsWith(portableCase));
+    assert.ok(title, `tests/playwright.test.mjs must define ${portableCase}`);
+    assert.doesNotMatch(title, windowsSelector, `${portableCase} is not a Windows-only case and must stay out of the Windows selector`);
+  }
+  assert.doesNotMatch("pnpm install documentation review", windowsSelector, "the Windows selector must not pull in unrelated tests");
 });
 
 test("the publish workflow publishes the exact deterministic tarball created by pnpm pack", () => {

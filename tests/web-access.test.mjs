@@ -192,6 +192,29 @@ test("routing always explains Web Access and reveals Playwright only from an inj
   assert.equal(readyPlaywrightBlock.includes("jorgex-stack browser playwright"), false, "legacy v1 routing must adapt every Stack wrapper example to the accepted command path");
   assert.match(readyPlaywrightBlock, /task-specific session[^.\n]*-s=<name>/i, "ready Playwright routing must require a task-specific session");
   assert.match(readyPlaywrightBlock, /verify action results/i, "ready Playwright routing must verify action results");
+
+  // Platform-explicit literals: the invocation prefix is fixed per platform and never derived
+  // from the production formatter, and neither platform is skipped.
+  const readyInvocation = process.platform === "win32"
+    ? "& '/managed/bin/playwright-cli'"
+    : "'/managed/bin/playwright-cli'";
+  for (const [subcommand, example] of [
+    ["open", "-s=<name> open --browser=chromium"],
+    ["snapshot", "-s=<name> snapshot"],
+    ["close", "-s=<name> close"],
+    ["--help", "--help"],
+  ]) {
+    assert.ok(
+      readyPlaywrightBlock.includes(`${readyInvocation} ${example}`),
+      `ready Playwright routing must quote ${subcommand} with the platform shell prefix`,
+    );
+  }
+  const exampleForms = [...readyPlaywrightBlock.matchAll(/(?:& )?'\/managed\/bin\/playwright-cli'/g)].map(([form]) => form);
+  assert.deepEqual(
+    [...new Set(exampleForms)],
+    [readyInvocation],
+    "every example must use exactly the platform shell invocation form",
+  );
   assert.doesNotMatch(
     readyPlaywrightBlock,
     /verified Stack dispatcher|managed receipt|byte integrity/i,

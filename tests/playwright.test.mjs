@@ -289,11 +289,17 @@ test("the default bootstrap resolver advertises only the verified temporary Play
   }
 });
 
-test("legacy Playwright routing quotes the advertised command only when it contains whitespace", async () => {
+test("legacy Playwright routing keeps the descriptive note but shell-quotes every example", { skip: process.platform === "win32" }, async () => {
   const { createBootstrap } = await import("../extensions/bootstrap.ts");
   for (const scenario of [
-    { label: "space-free command stays literal", commandPath: "/managed/bin/playwright-cli", advertised: "/managed/bin/playwright-cli" },
-    { label: "command with whitespace is JSON-quoted", commandPath: "/managed dir/playwright-cli", advertised: '"/managed dir/playwright-cli"' },
+    { label: "space-free command keeps the bare note", commandPath: "/managed/bin/playwright-cli", note: "/managed/bin/playwright-cli", invocation: "'/managed/bin/playwright-cli'" },
+    { label: "spaced command keeps the JSON-quoted note", commandPath: "/managed dir/playwright-cli", note: '"/managed dir/playwright-cli"', invocation: "'/managed dir/playwright-cli'" },
+    {
+      label: "shell special characters stay literal instead of expanding",
+      commandPath: "/managed $& $' $$ dir/playwright-cli",
+      note: `"/managed $& $' $$ dir/playwright-cli"`,
+      invocation: "'/managed $& $'\\'' $$ dir/playwright-cli'",
+    },
   ]) {
     const pi = createPiHarness();
     await createBootstrap({
@@ -309,17 +315,49 @@ test("legacy Playwright routing quotes the advertised command only when it conta
     const prompt = await pi.beforeAgentStart({ systemPrompt: "Existing prompt" }, { sessionId: scenario.label });
     const block = extractManagedBlock(prompt.systemPrompt, "jorgex:playwright");
 
-    assert.ok(block.includes(`Use Playwright at ${scenario.advertised} for the commands above.`), `${scenario.label}: advertised note`);
+    assert.ok(block.includes(`Use Playwright at ${scenario.note} for the commands above.`), `${scenario.label}: descriptive note`);
     assert.equal(
-      block.includes(`Use Playwright at ${scenario.commandPath} for the commands above.`),
-      scenario.commandPath === scenario.advertised,
-      `${scenario.label}: the unquoted note must appear only for a space-free command`,
+      block.includes(`Use Playwright at ${scenario.invocation} for the commands above.`),
+      scenario.note === scenario.invocation,
+      `${scenario.label}: the note must not adopt the shell invocation form`,
     );
     for (const example of ["-s=<name> open --browser=chromium", "-s=<name> snapshot", "-s=<name> close", "--help"]) {
-      assert.ok(block.includes(`${scenario.advertised} ${example}`), `${scenario.label}: ${example}`);
+      assert.ok(block.includes(`${scenario.invocation} ${example}`), `${scenario.label}: ${example}`);
     }
-    assert.equal(block.includes("jorgex-stack browser playwright"), false, `${scenario.label}: Stack wrapper examples must be adapted`);
+    assert.equal(block.includes("jorgex-stack browser playwright"), false, `${scenario.label}: wrapper examples must be replaced literally`);
   }
+});
+
+test("T39 legacy Playwright Windows cmd routing keeps single separators and no trusted claims", { skip: process.platform !== "win32" }, async () => {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const commandPath = String.raw`C:\Program Files\Playwright\playwright-cli.cmd`;
+  const invocation = String.raw`& 'C:\Program Files\Playwright\playwright-cli.cmd'`;
+  const note = String.raw`Use Playwright at "C:\\Program Files\\Playwright\\playwright-cli.cmd" for the commands above.`;
+  const pi = createPiHarness();
+  await createBootstrap({
+    loadCompanion: async () => () => {},
+    getPermissionsService: () => ({ ready: true }),
+    detectWebAccessConflict: () => undefined,
+    detectGoalConflict: () => undefined,
+    readGoalConfig: () => ({ kind: "loaded" }),
+    resolveMcpEngram: async () => ({ state: "managed" }),
+    readSystemPromptAssets: readSystemPromptAssets,
+    resolvePlaywrightCapability: () => ({ status: "ready", commandPath }),
+  })(pi.api);
+  const prompt = await pi.beforeAgentStart({ systemPrompt: "Existing prompt" }, { sessionId: "legacy-windows" });
+  const block = extractManagedBlock(prompt.systemPrompt, "jorgex:playwright");
+
+  assert.ok(block.includes(note), "the descriptive note keeps its previous JSON-quoted format");
+  for (const example of ["-s=<name> open --browser=chromium", "-s=<name> snapshot", "-s=<name> close", "--help"]) {
+    assert.ok(block.includes(`${invocation} ${example}`), `legacy Windows example must keep single separators: ${example}`);
+  }
+  assert.equal(
+    block.includes(`${JSON.stringify(commandPath)} -s=<name> open`),
+    false,
+    "legacy Windows examples must not use the JSON-quoted form as an invocation",
+  );
+  assert.equal(block.includes("jorgex-stack browser playwright"), false, "Stack wrapper examples must be adapted");
+  assert.doesNotMatch(block, /verified Stack dispatcher|managed receipt|byte integrity/i, "legacy routing must not promise trusted dispatch or receipt verification");
 });
 
 test("T34 trusted Playwright v2 routing names the Stack dispatcher instead of global CLI", { skip: process.platform === "win32" }, async () => {

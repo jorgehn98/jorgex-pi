@@ -36,11 +36,11 @@
     "playwright": [
       "browser interaction and QA",
       "task-specific session",
-      "open with `/managed/bin/playwright-cli -s=<name> open --browser=chromium`",
-      "`/managed/bin/playwright-cli -s=<name> snapshot`",
-      "`/managed/bin/playwright-cli -s=<name> close` only for the session you created",
-      "`/managed/bin/playwright-cli --help`",
-      "verify action results"
+      "consult",
+      "open --browser=chromium",
+      "snapshot",
+      "verify action results",
+      "close` only for the session you created"
     ]
   }
 }
