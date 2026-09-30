@@ -8,6 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { parse as parseYaml } from "yaml";
+import { packProjectTarball } from "./helpers/pnpm-tooling.mjs";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
@@ -260,14 +261,15 @@ test("the real translator is deterministic and writes only inside its package co
   }
 });
 
-test("the real tarball contains the closed runtime assets without a bundled node_modules closure", () => {
-  const packDir = mkdtempSync(join(tmpdir(), "jorgex-pi-runtime-pack-"));
+test("the real tarball contains the closed runtime assets without a bundled node_modules closure", async () => {
+  const { tarball, packDir } = await packProjectTarball({
+    repoRoot: root,
+    env: process.env,
+    versionCheckTimeoutMs: 15_000,
+    timeoutMs: 60_000,
+  });
   try {
-    const packageManager = resolvePnpm();
-    execFileSync(packageManager.command, [...packageManager.args, "pack", "--pack-destination", packDir], { cwd: root, stdio: "pipe" });
-    const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
-    assert.equal(tarballs.length, 1);
-    const archive = readTgz(join(packDir, tarballs[0]));
+    const archive = readTgz(tarball);
     const packedManifest = readPackedJson(archive, "package/package.json");
     const packedContract = readPackedJson(archive, `package/${expected.contractPath}`);
     assert.deepEqual(packedContract.dependency, expected.dependency, "packed runtime dependency stays name-only; resolution happens via npm at install");
@@ -497,15 +499,6 @@ function readJson(path, label) {
   } catch (error) {
     assert.fail(`${label} is missing or invalid at ${relative(root, path)} (${error.code ?? error.message})`);
   }
-}
-
-function resolvePnpm() {
-  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
-  return existsSync(corepackEntry)
-    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
-    : process.platform === "win32"
-      ? { command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe", args: ["/d", "/s", "/c", "pnpm.cmd"] }
-      : { command: "pnpm", args: [] };
 }
 
 function listFiles(base) {

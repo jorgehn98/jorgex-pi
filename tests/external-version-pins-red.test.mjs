@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { createVerificationSandbox, packProjectTarball } from "./helpers/pnpm-tooling.mjs";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
@@ -32,14 +32,17 @@ test("dynamic runtime specs without bundledDependencies", () => {
   }
 });
 
-test("direct pi install acquires six deps via native resolver", () => {
-  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-dynamic-install-"));
+test("direct pi install acquires six deps via native resolver", async () => {
+  const sandbox = createVerificationSandbox({
+    repoRoot: root,
+    env: process.env,
+    prefix: "jorgex-pi-dynamic-install-",
+  }).root;
   const agentDir = join(sandbox, "agent");
   const homeDir = join(sandbox, "home");
   const cwd = join(sandbox, "workspace");
   const npmCache = join(sandbox, "npm-cache");
-  const packDir = join(sandbox, "pack");
-  for (const path of [agentDir, homeDir, cwd, npmCache, packDir]) mkdirSync(path, { recursive: true });
+  for (const path of [agentDir, homeDir, cwd, npmCache]) mkdirSync(path, { recursive: true });
   writeJson(join(agentDir, "settings.json"), { packages: [] });
   const env = {
     ...allowedHostEnv(),
@@ -62,7 +65,12 @@ test("direct pi install acquires six deps via native resolver", () => {
   try {
     const manifest = readJson(join(root, "package.json"));
     const pi = resolveLocalPi(manifest.devDependencies?.["@earendil-works/pi-coding-agent"]);
-    const tarball = packTarball(packDir);
+    const { tarball } = await packProjectTarball({
+      repoRoot: root,
+      env: process.env,
+      versionCheckTimeoutMs: 15_000,
+      timeoutMs: 60_000,
+    });
     runPi(pi, ["install", `npm:jorgex-pi@file:${tarball}`, "--no-approve"], env, cwd);
     const npmRoot = join(agentDir, "npm", "node_modules");
     const installedDir = join(npmRoot, "jorgex-pi");
@@ -108,22 +116,6 @@ function runPi(pi, args, env, cwd) {
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 60_000,
   });
-}
-
-function packTarball(packDir) {
-  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
-  const pm = existsSync(corepackEntry)
-    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
-    : { command: "pnpm", args: [] };
-  execFileSync(pm.command, [...pm.args, "pack", "--pack-destination", packDir], {
-    cwd: root,
-    env: { ...process.env, NO_COLOR: "1" },
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
-  assert.equal(tarballs.length, 1);
-  return join(packDir, tarballs[0]);
 }
 
 function allowedHostEnv() {
