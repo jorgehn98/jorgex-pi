@@ -243,6 +243,16 @@ pnpm pack
 
 Tests use isolated temporary homes and fake executable Engram paths. They verify discovery, argv, environment filtering, adapter metadata, direct-tool projection, lifecycle recovery, JSON protocol, and tarball bindings without starting a real Engram process or reading a real Engram database.
 
+### Exact pnpm preflight and isolation
+
+Five packaging-related test files (`tests/external-version-pins-red.test.mjs`, `tests/pi-sdk-compatibility.test.mjs`, `tests/runtime-agents.test.mjs`, `tests/pi-package-lifecycle.test.mjs`, `tests/foundation-contract.test.mjs`) share `tests/helpers/pnpm-tooling.mjs`. The helper selects the prepared pnpm from `packageManager` (`pnpm@11.22.0` here) **before** it touches `HOME`, `PATH`, or any sandbox: it reads `npm_execpath` (the env var pnpm sets when it invokes a script) or the override `JORGEX_PNPM_ENTRYPOINT=/absolute/path/to/pnpm-binary`, refuses Corepack or `PATH`, and rejects the tool if its declared version differs. Every child also receives `pnpm_config_pm_on_fail=error` and `pnpm_config_verify_deps_before_run=error`, so pnpm 11 cannot swap versions and `verify-deps-before-run` cannot recreate `node_modules` before `run` or `exec`.
+
+The private HOME/XDG stage lives under `JORGEX_VERIFICATION_DISK_ROOT` when set, otherwise `os.tmpdir()`, `$HOME/.cache`, or `$HOME`. The helper probes `statfs`; `tmpfs`, `ramfs`, and an unknown or zero `f_type` block the base (Windows libuv can return zero for an unverified probe, which the helper treats as "not disk"), and the resolved path must sit outside any workspace, worktree, and `node_modules` segment. A real, non-tmpfs `os.tmpdir()` remains an acceptable default.
+
+POSIX cleanup uses `process.kill(-pid, "SIGKILL")` against the leader's own group and clears the helper's timers. Windows cleanup is bounded `taskkill /pid <pid> /t /f` and only works while the leader is still alive; once the leader has exited, `taskkill` cannot guarantee its descendants are gone. That is a documented limit of the helper, not a workaround, and this README does not claim Windows `taskkill` is fully exercised here.
+
+The helper covers only those five callers. The other package tests (`bootstrap`, `runner`, the property and coverage pilots, the cross-repo parity check, etc.) and `pi-sdk-compatibility.test.mjs`'s RPC teardown (`waitForExit`/`stopProcess`/`waitForExitWithin`/`terminateProcessGroup`) keep their existing isolation and lifecycle.
+
 ### Optional property-testing pilot
 
 This repository contains an opt-in property-testing pilot for maintainers working from a checkout. It is not part of the installed package or the default CI path.
