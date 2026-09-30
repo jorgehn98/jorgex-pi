@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "a140809253e2a069fac2fa99c4b9ef45fe78f97f"
+    "commit": "70354b3b03cfc4e7346200303aa0b4342cce5a9a"
   },
   "agents": [
     {
@@ -584,8 +584,8 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md",
-    "sourceSha256": "8efcecbf36b5755e666b5b8a08b2e620420723f6995e7c5319ed0502b5c8a393",
-    "outputSha256": "8efcecbf36b5755e666b5b8a08b2e620420723f6995e7c5319ed0502b5c8a393"
+    "sourceSha256": "16400374675715c454ebdeef2a40e13458405aa5a89b812afe8c046e0b7049f6",
+    "outputSha256": "16400374675715c454ebdeef2a40e13458405aa5a89b812afe8c046e0b7049f6"
   },
   "systemPromptModules": [
     {
@@ -599,8 +599,8 @@
       "name": "playwright",
       "sourcePath": "stack/system-prompt/browser-playwright.md",
       "targetPath": "assets/system-prompt/browser-playwright.md",
-      "sourceSha256": "dbaa960442b923fe11dae62cbff0037a2f760c3e58a0e827a5c717f6b9376eb2",
-      "outputSha256": "dbaa960442b923fe11dae62cbff0037a2f760c3e58a0e827a5c717f6b9376eb2"
+      "sourceSha256": "3799641b91bab13ba445696509ea525f2c826e778cce4a5f6cce41e5871c8168",
+      "outputSha256": "3799641b91bab13ba445696509ea525f2c826e778cce4a5f6cce41e5871c8168"
     },
     {
       "name": "chrome-devtools",
