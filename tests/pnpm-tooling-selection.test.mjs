@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { Worker } from "node:worker_threads";
 import { afterEach, describe, it } from "node:test";
 import {
   PNPM_FAIL_CLOSED,
@@ -65,10 +68,20 @@ function makeRepo(packageManager) {
 /** Parent for verification fixtures; the selector validates disk/workspace before use. */
 function makeDiskBase() {
   const override = process.env[VERIFICATION_DISK_ROOT_ENV]?.trim();
-  const parent = override ? override : join(homedir(), ".cache");
-  mkdirSync(parent, { recursive: true });
-  const directory = mkdtempSync(join(parent, "jorgex-pi-verify-base-"));
+  if (override) assert.ok(isAbsolute(override), "disk base override must be absolute");
+  const parent = override ? resolve(override) : join(homedir(), ".cache");
+  assert.ok(resolve(parent) === parent, "disk base parent must be absolute");
+  if (override) {
+    assert.ok(
+      parent !== root && !parent.startsWith(`${root}${sep}`),
+      "a workspace disk override must be rejected before creating a fixture base",
+    );
+  }
+  // Arm ownership before creating the base directory.
+  const directory = join(parent, `jorgex-pi-verify-base-${process.pid}-${randomUUID().slice(0, 8)}`);
   tempRoots.push(directory);
+  mkdirSync(parent, { recursive: true });
+  mkdirSync(directory, { recursive: true });
   return directory;
 }
 
@@ -665,17 +678,17 @@ describe("verification isolation and bounded pack", () => {
     assert.doesNotThrow(() => cleanupOwnedProcesses());
   });
 
-  it("fails closed when a Windows closed leader cannot verify its tree", { skip: process.platform !== "win32" }, async () => {
+  it("fails closed before spawning on Windows where cancellation cannot be verified", { skip: process.platform !== "win32" }, async () => {
     const repoRoot = makeRepo(`pnpm@${REQUIRED_VERSION}`);
     const pnpm = makePnpmPackage(REQUIRED_VERSION);
 
-    const result = await runBoundedProcess(
-      { command: process.execPath, args: [pnpm.entry, "--version"] },
-      { cwd: repoRoot, env: process.env, timeoutMs: 5_000 },
+    await assert.rejects(
+      runBoundedProcess(
+        { command: process.execPath, args: [pnpm.entry, "--version"] },
+        { cwd: repoRoot, env: process.env, timeoutMs: 5_000 },
+      ),
+      /Windows|no puede verificarse/i,
     );
-
-    assert.equal(result.status, 0);
-    assert.ok(result.cleanupError instanceof Error, "a dead Windows leader cannot be verified and must not pretend clean");
   });
 
   it("retains and reports an owned root when its cleanup fails instead of discarding it", () => {
@@ -705,6 +718,131 @@ describe("verification isolation and bounded pack", () => {
     assert.equal(existsSync(sandbox.root), true);
     cleanupOwnedRoots();
     assert.equal(existsSync(sandbox.root), false);
+  });
+});
+
+describe("cancellation ownership", () => {
+  it("fails closed inside a worker_thread where process signals are unavailable", async () => {
+    const workerCode = [
+      'const { parentPort } = require("node:worker_threads");',
+      `import(${JSON.stringify(helperUrl())}).then(async ({ runBoundedProcess }) => {`,
+      "  try {",
+      '    await runBoundedProcess({ command: process.execPath, args: ["-e", "0"] }, { cwd: process.cwd(), env: process.env, timeoutMs: 1000 });',
+      "    parentPort.postMessage({ rejected: false });",
+      "  } catch (error) {",
+      "    parentPort.postMessage({ rejected: true, message: String((error && error.message) || error) });",
+      "  }",
+      "});",
+    ].join("\n");
+    const worker = new Worker(workerCode, { eval: true });
+    try {
+      const message = await new Promise((resolvePromise, reject) => {
+        worker.once("message", resolvePromise);
+        worker.once("error", reject);
+      });
+      assert.equal(message.rejected, true, "a worker_thread must fail closed before spawning");
+      assert.match(message.message, /worker_thread|no puede verificarse/i);
+    } finally {
+      await worker.terminate();
+    }
+  });
+
+  it("cancels preflight before the first root exists and preserves a foreign signal handler", { skip: process.platform === "win32" }, async () => {
+    const repoRoot = makeRepo(`pnpm@${REQUIRED_VERSION}`);
+    const workRoot = makeDiskBase();
+    const pidFile = join(workRoot, "cancel-foreign.pid");
+    const markerFile = join(workRoot, "foreign.marker");
+    const pnpm = makePnpmPackageWithBehavior(REQUIRED_VERSION, workRoot, { inertWorker: true, pidFile });
+    const script = writeHarness("cancel-foreign", cancelHarnessSource());
+    const child = spawn(process.execPath, [script, helperUrl(), repoRoot, pnpm.entry, pidFile, "foreign", markerFile], {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+    let pids;
+    try {
+      pids = await waitForPids(pidFile, 8_000);
+      process.kill(child.pid, "SIGTERM");
+      const exit = await waitForExitResult(child, 8_000);
+      assert.equal(readFileSync(markerFile, "utf8"), "foreign-handler", "the foreign handler must still run");
+      await waitForExitOf(pids.leader, 5_000);
+      await waitForExitOf(pids.grandchild, 5_000);
+      assert.equal(isAlive(pids.leader), false, "the owned version child must be cleaned on cancel");
+      assert.equal(isAlive(pids.grandchild), false, "the owned grandchild must be cleaned on cancel");
+      assert.equal(exit.code, 0, `the foreign handler decides termination; got ${JSON.stringify(exit)}`);
+    } finally {
+      killOwnGroup(child);
+      if (pids) {
+        killPid(pids.leader);
+        killPid(pids.grandchild);
+      }
+    }
+  });
+
+  it("restores native signal termination when no framework handler exists", { skip: process.platform === "win32" }, async () => {
+    const repoRoot = makeRepo(`pnpm@${REQUIRED_VERSION}`);
+    const workRoot = makeDiskBase();
+    const pidFile = join(workRoot, "cancel-solo.pid");
+    const pnpm = makePnpmPackageWithBehavior(REQUIRED_VERSION, workRoot, { inertWorker: true, pidFile });
+    const script = writeHarness("cancel-solo", cancelHarnessSource());
+    const child = spawn(process.execPath, [script, helperUrl(), repoRoot, pnpm.entry, pidFile, "solo", ""], {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+    let pids;
+    try {
+      pids = await waitForPids(pidFile, 8_000);
+      process.kill(child.pid, "SIGTERM");
+      const exit = await waitForExitResult(child, 8_000);
+      assert.equal(exit.signal, "SIGTERM", `native termination must be preserved; got ${JSON.stringify(exit)}`);
+      await waitForExitOf(pids.leader, 5_000);
+      await waitForExitOf(pids.grandchild, 5_000);
+      assert.equal(isAlive(pids.leader), false);
+      assert.equal(isAlive(pids.grandchild), false);
+    } finally {
+      killOwnGroup(child);
+      if (pids) {
+        killPid(pids.leader);
+        killPid(pids.grandchild);
+      }
+    }
+  });
+
+  it("exits nonzero when the final root cleanup fails", { skip: process.platform === "win32" }, async () => {
+    const base = makeDiskBase();
+    const script = writeHarness("exit-failure", exitFailureHarnessSource());
+    const child = spawn(process.execPath, [script, helperUrl(), base], { stdio: ["ignore", "pipe", "pipe"] });
+    try {
+      const exit = await waitForExitResult(child, 10_000);
+      assert.notEqual(exit.code, 0, `a failed cleanup must not exit 0; got ${JSON.stringify(exit)}`);
+    } finally {
+      chmodSync(base, 0o700);
+      killOwnGroup(child);
+    }
+  });
+
+  it("rejects a symlink-loop disk override instead of a lexical fallback", () => {
+    const base = makeDiskBase();
+    const loopA = join(base, "loop-a");
+    const loopB = join(base, "loop-b");
+    symlinkSync(loopB, loopA);
+    symlinkSync(loopA, loopB);
+    assert.throws(
+      () => resolveVerificationDiskBase({ repoRoot: root, env: { [VERIFICATION_DISK_ROOT_ENV]: loopA } }),
+      /existente|ELOOP|directorio/,
+    );
+  });
+
+  it("rejects a relative or workspace disk override before creating a fixture base", () => {
+    const previous = process.env[VERIFICATION_DISK_ROOT_ENV];
+    try {
+      process.env[VERIFICATION_DISK_ROOT_ENV] = "relative/base";
+      assert.throws(() => makeDiskBase(), /absolute/);
+      process.env[VERIFICATION_DISK_ROOT_ENV] = root;
+      assert.throws(() => makeDiskBase(), /workspace/);
+    } finally {
+      if (previous === undefined) delete process.env[VERIFICATION_DISK_ROOT_ENV];
+      else process.env[VERIFICATION_DISK_ROOT_ENV] = previous;
+    }
   });
 });
 
@@ -741,14 +879,19 @@ function makePnpmPackageWithBehavior(version, workRoot, options = {}) {
     `const workRoot = ${JSON.stringify(workRoot)};`,
     `const hang = ${options.hang ? "true" : "false"};`,
     `const leaderExits = ${options.leaderExits ? "true" : "false"};`,
+    `const inertWorker = ${options.inertWorker ? "true" : "false"};`,
     `const pidFile = ${JSON.stringify(options.pidFile ?? null)};`,
     "const args = process.argv.slice(2);",
-    'if (args[0] === "--version") { console.log(version); process.exit(0); }',
-    'if (args[0] !== "pack") { console.error("unexpected args: " + args.join(" ")); process.exit(2); }',
+    'if (args[0] === "--version" && !inertWorker) { console.log(version); process.exit(0); }',
+    'if (args[0] !== "pack" && !inertWorker) { console.error("unexpected args: " + args.join(" ")); process.exit(2); }',
     'const destinationIndex = args.indexOf("--pack-destination");',
     "const destination = args[destinationIndex + 1];",
-    'mkdirSync(destination, { recursive: true });',
-    "if (hang) {",
+    'if (args[0] === "pack") mkdirSync(destination, { recursive: true });',
+    "if (inertWorker) {",
+    '  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });',
+    '  if (pidFile) writeFileSync(pidFile, JSON.stringify({ leader: process.pid, grandchild: child.pid }));',
+    "  setTimeout(() => {}, 60000);",
+    "} else if (hang) {",
     '  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });',
     '  if (pidFile) writeFileSync(pidFile, String(child.pid));',
     "  setTimeout(() => {}, 60000);",
@@ -776,6 +919,96 @@ function readPidFile(path) {
   const value = Number.parseInt(readFileSync(path, "utf8").trim(), 10);
   if (!Number.isInteger(value) || value <= 0) throw new Error(`fixture descendant pid file is invalid: ${path}`);
   return value;
+}
+
+function helperUrl() {
+  return pathToFileURL(join(testDir, "helpers", "pnpm-tooling.mjs")).href;
+}
+
+function writeHarness(name, source) {
+  const directory = makeTempRoot(`jorgex-pi-harness-${name}-`);
+  const file = join(directory, `${name}.mjs`);
+  writeFileSync(file, source, "utf8");
+  return file;
+}
+
+function cancelHarnessSource() {
+  return [
+    'import { writeFileSync } from "node:fs";',
+    "const [helperUrl, repoRoot, entry, pidFile, mode, markerFile] = process.argv.slice(2);",
+    "const { resolvePnpmPackInvocation, runBoundedProcess } = await import(helperUrl);",
+    'if (mode === "foreign") {',
+    '  process.on("SIGTERM", () => { writeFileSync(markerFile, "foreign-handler"); process.exit(0); });',
+    "}",
+    "resolvePnpmPackInvocation({",
+    "  repoRoot,",
+    "  env: { JORGEX_PNPM_ENTRYPOINT: entry },",
+    "  runProcess: runBoundedProcess,",
+    "  versionCheckTimeoutMs: 60_000,",
+    "}).then(",
+    "  () => { process.exitCode = 0; },",
+    '  (error) => { process.stderr.write(String(error?.stack ?? error) + "\\n"); process.exitCode = 3; },',
+    ");",
+    "",
+  ].join("\n");
+}
+
+function exitFailureHarnessSource() {
+  return [
+    'import { chmodSync } from "node:fs";',
+    "const [helperUrl, base] = process.argv.slice(2);",
+    "const { createVerificationSandbox } = await import(helperUrl);",
+    'createVerificationSandbox({ repoRoot: process.cwd(), env: { JORGEX_VERIFICATION_DISK_ROOT: base }, prefix: "jorgex-pi-exitfail-" });',
+    "chmodSync(base, 0o500);",
+    "",
+  ].join("\n");
+}
+
+async function waitForPids(path, timeoutMs) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (existsSync(path)) {
+      try {
+        const parsed = JSON.parse(readFileSync(path, "utf8"));
+        if (Number.isInteger(parsed?.leader) && Number.isInteger(parsed?.grandchild)) return parsed;
+      } catch {
+        // The fixture may still be writing the file.
+      }
+    }
+    await delay(20);
+  }
+  throw new Error(`fixture pids were not written: ${path}`);
+}
+
+function waitForExitResult(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve({ code: child.exitCode, signal: child.signalCode });
+  }
+  return new Promise((resolvePromise, reject) => {
+    const timer = setTimeout(() => reject(new Error(`subprocess did not exit within ${timeoutMs}ms`)), timeoutMs);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      resolvePromise({ code, signal });
+    });
+  });
+}
+
+function killPid(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Already gone.
+  }
+}
+
+function killOwnGroup(child) {
+  if (child.pid === undefined) return;
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    // Already gone.
+  }
 }
 
 async function waitForPidFile(path, timeoutMs) {

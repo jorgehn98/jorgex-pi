@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isMainThread } from "node:worker_threads";
 
 /**
  * Test-side selection of the exact prepared pnpm for Pi packaging.
@@ -12,10 +13,11 @@ import path from "node:path";
  * entrypoint, trusts only its package metadata (`name`, version and declared
  * `bin.pnpm`), confirms the real version through a bounded runner, and refuses
  * to continue on missing/incorrect tools without any Corepack or PATH fallback.
- * It also pins the pnpm 11 fail-closed guards on every child so a verified
- * 11.22.0 child refuses with `error` instead of running an implicit
- * `install` (dependency verification) or a version download
- * during preflight or pack, and it keeps every private HOME/XDG/stage on
+ * It also sets the pnpm 11 fail-closed env guards on every child because the
+ * prepared 11.22.0 dist reads those keys to refuse an implicit `install`
+ * (dependency verification) or a version download during preflight or pack;
+ * the env wiring alone does not guarantee enforcement outside that dist,
+ * and it keeps every private HOME/XDG/stage on
  * checked disk storage outside workspaces, worktrees and node_modules.
  *
  * The RPC teardown lives in its own test (`pi-sdk-compatibility.test.mjs`);
@@ -47,41 +49,104 @@ const TMPFS_MAGIC = 0x01021994;
 const RAMFS_MAGIC = 0x858458f6;
 const ownedRoots = new Set();
 const activeChildren = new Set();
-let exitHookInstalled = false;
+const OWNED_SIGNALS = ["SIGINT", "SIGTERM"];
+const ownedSignalHandlers = new Map();
+let cancellationOwnerInstalled = false;
+let handlingSignal = false;
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function trackRoot(root) {
-  ownedRoots.add(root);
-  installExitHook();
+function reportCleanupFailure(message) {
+  process.stderr.write(`[pnpm-tooling] ${message}\n`);
 }
 
-function installExitHook() {
-  if (exitHookInstalled) return;
-  exitHookInstalled = true;
-  process.once("exit", () => {
-    let processesClean = true;
-    try {
-      cleanupOwnedProcesses();
-    } catch (error) {
-      processesClean = false;
-      // Never swallow: report and keep the failed entries tracked for retry.
-      process.stderr.write(`[pnpm-tooling] limpieza de procesos incompleta: ${errorMessage(error)}\n`);
+/**
+ * Fails before any spawn where JavaScript cancellation cannot be verified:
+ * worker threads receive no process signals, and Windows has no native
+ * SIGTERM/group guarantee. This fail-closed limit leaves the Windows kill
+ * primitive untested here, not a runtime platform proof.
+ */
+export function assertCancellationVerifiable() {
+  if (!isMainThread) {
+    throw new Error(
+      "La cancelación propia no puede verificarse en un worker_thread (sin señales de proceso); se falla antes de crear cualquier proceso.",
+    );
+  }
+  if (process.platform === "win32") {
+    throw new Error(
+      "La cancelación propia no puede verificarse en Windows (SIGTERM forzado externo y sin job API); se falla antes de crear cualquier proceso.",
+    );
+  }
+}
+
+/** Cleans own processes first and only removes roots once no live process remains. */
+function runOwnedCleanup() {
+  let failed = false;
+  try {
+    cleanupOwnedProcesses();
+  } catch (error) {
+    failed = true;
+    reportCleanupFailure(`limpieza de procesos incompleta: ${errorMessage(error)}`);
+  }
+  if (failed) {
+    reportCleanupFailure("roots retenidos porque hay procesos propios sin finalizar");
+    return false;
+  }
+  try {
+    cleanupOwnedRoots();
+  } catch (error) {
+    failed = true;
+    reportCleanupFailure(`limpieza de roots incompleta: ${errorMessage(error)}`);
+  }
+  return !failed;
+}
+
+function onOwnedSignal(signal) {
+  if (handlingSignal) return;
+  handlingSignal = true;
+  runOwnedCleanup();
+  // Preserve framework owners: never force their termination when another
+  // listener exists. When we are the only listener, restore native signal
+  // termination by removing ours and re-sending the signal to ourselves.
+  if (process.listenerCount(signal) > 1) {
+    handlingSignal = false;
+    return;
+  }
+  const handler = ownedSignalHandlers.get(signal);
+  if (handler !== undefined) process.removeListener(signal, handler);
+  process.kill(process.pid, signal);
+}
+
+function onOwnedExit() {
+  // Failed owned cleanup exits nonzero without overriding a prior failure.
+  if (!runOwnedCleanup()) {
+    if (process.exitCode === undefined || process.exitCode === null || process.exitCode === 0) {
+      process.exitCode = 1;
     }
-    if (!processesClean) {
-      // A live owned process may still be writing inside its root, so the
-      // roots are retained instead of being deleted underneath it.
-      process.stderr.write("[pnpm-tooling] roots retenidos porque hay procesos propios sin finalizar\n");
-      return;
-    }
-    try {
-      cleanupOwnedRoots();
-    } catch (error) {
-      process.stderr.write(`[pnpm-tooling] limpieza de roots incompleta: ${errorMessage(error)}\n`);
-    }
-  });
+  }
+}
+
+/**
+ * Single synchronous SIGINT/SIGTERM owner, armed before the first spawn
+ * including --version preflight (not only at root track). It cleans only
+ * its own processes and roots.
+ */
+function ensureCancellationOwner() {
+  if (cancellationOwnerInstalled) return;
+  cancellationOwnerInstalled = true;
+  for (const signal of OWNED_SIGNALS) {
+    const handler = () => onOwnedSignal(signal);
+    ownedSignalHandlers.set(signal, handler);
+    process.prependListener(signal, handler);
+  }
+  process.once("exit", onOwnedExit);
+}
+
+function trackRoot(root) {
+  ownedRoots.add(root);
+  ensureCancellationOwner();
 }
 
 /**
@@ -121,14 +186,6 @@ export function cleanupOwnedProcesses() {
   }
   if (remaining.length > 0) {
     throw new Error(`No se pudieron finalizar los procesos propios: ${remaining.join(", ")}`);
-  }
-}
-
-function realpathOrSelf(target) {
-  try {
-    return fs.realpathSync(target);
-  } catch {
-    return path.resolve(target);
   }
 }
 
@@ -186,8 +243,11 @@ export function readPnpmPackageMetadata(entry) {
   let resolvedEntry;
   try {
     resolvedEntry = fs.realpathSync(entry);
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw new Error(`No se pudo resolver la ruta del pnpm preparado "${entry}": ${errorMessage(error)}`, {
+      cause: error,
+    });
   }
 
   const packageJsonPath = findPackageJson(path.dirname(resolvedEntry));
@@ -276,7 +336,7 @@ function probeDiskFilesystem(target) {
 }
 
 function isInsideWorkspace(base, repoRoot) {
-  const relative = path.relative(realpathOrSelf(repoRoot), base);
+  const relative = path.relative(fs.realpathSync(repoRoot), base);
   if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) return true;
 
   let current = base;
@@ -296,7 +356,7 @@ function validateDiskBase({ base, repoRoot, origin }) {
     throw new Error(`La base de disco de verificación indicada por ${origin} no es un directorio existente: "${base}".`);
   }
 
-  const resolved = realpathOrSelf(base);
+  const resolved = fs.realpathSync(base);
   if (isInsideWorkspace(resolved, repoRoot)) {
     throw new Error(
       `La base de disco de verificación "${resolved}" está dentro de un workspace; define ${VERIFICATION_DISK_ROOT_ENV} fuera de todo workspace.`,
@@ -347,9 +407,10 @@ export function resolveVerificationDiskBase({ repoRoot, env }) {
 }
 
 /**
- * Creates a private HOME/stage under a checked disk base. Teardown is armed
- * through `register` (and the module-level exit hook) before the directory
- * exists. A failed creation keeps the root tracked and, when its cleanup also
+ * Creates a private HOME/stage under a checked disk base. The cancellation
+ * owner is already armed before the first spawn (preflight); root teardown
+ * here only extends it through `register` (and the module-level exit hook)
+ * before the directory exists. A failed creation keeps the root tracked and, when its cleanup also
  * fails, reports both causes as an AggregateError.
  */
 export function createVerificationSandbox({ repoRoot, env, prefix, register }) {
@@ -558,8 +619,9 @@ export async function packProjectTarball(options) {
 /**
  * Kills the owned process tree. On POSIX it only signals the owned group and
  * never falls back to `child.kill` pretending the whole tree is clean; a
- * failure is returned with the pid and cause. Windows uses a bounded
- * `taskkill /t /f` by pid (TREE_KILL_TIMEOUT_MS).
+ * failure is returned with the pid and cause. The Windows `taskkill /t /f`
+ * branch (TREE_KILL_TIMEOUT_MS) is an untested kill primitive here, not a
+ * runtime platform proof (Windows fails before spawn).
  */
 export function killProcessTree(child) {
   const pid = child.pid;
@@ -596,11 +658,11 @@ export function killProcessTree(child) {
 }
 
 /**
- * Finalizes the owned tree through the injected killer on every platform. A
- * Windows timeout with a live leader runs bounded `taskkill /t /f`; a Windows normal
- * close whose leader already exited cannot verify the tree, so it returns an
- * explicit cleanup error instead of pretending the tree is clean. The child
- * stays tracked whenever the kill fails.
+ * Finalizes the owned tree through the injected killer. The live path is
+ * POSIX/forks (group kill on timeout or normal close); Windows/threads fail
+ * before spawn, so a dead-leader unverified tree is a test-seam cleanup
+ * error, not a reachable Windows proof. The child stays tracked whenever
+ * the kill fails.
  */
 function finalizeOwnedGroup(child, killTree) {
   const kill = killTree(child);
@@ -632,16 +694,20 @@ function settleChild(child, onFinalized) {
 }
 
 /**
- * Bounded process runner used for preflight and pack. It finalizes the owned
- * group/tree through the injected killer on every platform both on timeout
- * (live leader: POSIX group kill, Windows bounded `taskkill /t /f`) and on a
- * normal close; a dead Windows leader that already exited cannot be verified,
- * so that path returns an explicit cleanup error. A kill failure is
+ * Bounded process runner used for preflight and pack. The live path is
+ * POSIX/forks: it finalizes the owned group through the injected killer both
+ * on timeout (live-leader group kill) and on normal close; Windows/threads
+ * fail before spawn, so Windows kill details are test-seam only, not platform
+ * proof. A kill failure is
  * exposed as `cleanupError` and the child stays tracked instead of pretending
  * the tree is clean.
  */
 export function runBoundedProcess(invocation, options) {
   return new Promise((resolvePromise, reject) => {
+    // Arm the cancellation owner and fail closed before creating any process
+    // where JavaScript cancellation cannot be verified.
+    assertCancellationVerifiable();
+    ensureCancellationOwner();
     let child;
     try {
       child = spawn(invocation.command, invocation.args, {
