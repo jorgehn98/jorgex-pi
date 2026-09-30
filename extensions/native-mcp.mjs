@@ -506,7 +506,7 @@ function inspectServer(name, entry, claim, proof, context) {
       reason: "Native MCP definition is invalid or unsupported",
     };
   }
-  const availability = entry.enabled === false
+  const availability = entry.enabled === false || entry.exposure === "hidden"
     ? "disabled"
     : hasRawExecutionCustomization(entry) ? "unsupported-execution" : "configured";
   if (claim) {
