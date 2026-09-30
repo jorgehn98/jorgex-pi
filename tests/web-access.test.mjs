@@ -188,13 +188,15 @@ test("routing always explains Web Access and reveals Playwright only from an inj
   assert.doesNotMatch(readyPlaywrightBlock, /Web Access/i, "Playwright guidance must remain independent");
   assert.equal(countOccurrences(readyPrompt, "<!-- jorgex:browser -->"), 0, "ready routing must not recreate the legacy browser block");
   assert.equal(countOccurrences(readyPrompt, "<!-- jorgex:context7 -->"), 0, "this checkpoint must not announce Context7");
-  assert.match(readyPlaywrightBlock, /\/managed\/bin\/playwright-cli/);
-  assert.match(readyPlaywrightBlock, /open with `?playwright-cli open --browser=chromium`?/i, "ready routing must use the installed Chromium channel");
-  assert.match(readyPlaywrightBlock, /--help/i, "ready Playwright routing must point to the managed CLI help when needed");
+  assert.match(readyPlaywrightBlock, /Use Playwright at \/managed\/bin\/playwright-cli for the commands above/i, "legacy v1 routing must keep the accepted absolute command note");
+  assert.equal(readyPlaywrightBlock.includes("jorgex-stack browser playwright"), false, "legacy v1 routing must adapt every Stack wrapper example to the accepted command path");
   assert.match(readyPlaywrightBlock, /task-specific session[^.\n]*-s=<name>/i, "ready Playwright routing must require a task-specific session");
-  assert.match(readyPlaywrightBlock, /playwright-cli snapshot/i, "ready Playwright routing must use snapshots for element refs");
   assert.match(readyPlaywrightBlock, /verify action results/i, "ready Playwright routing must verify action results");
-  assert.match(readyPlaywrightBlock, /playwright-cli close`? only for the session you created/i, "ready Playwright routing must close only its own session");
+  assert.doesNotMatch(
+    readyPlaywrightBlock,
+    /verified Stack dispatcher|managed receipt|byte integrity/i,
+    "legacy v1 routing must not promise trusted dispatch, receipt verification or byte integrity",
+  );
   assert.match(
     readyPlaywrightBlock,
     /Do not access authenticated profiles, cookies\/storage[^.]*unless the user explicitly requires and approves it/i,
