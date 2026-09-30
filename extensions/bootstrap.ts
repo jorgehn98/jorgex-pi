@@ -48,11 +48,17 @@ export function createBootstrap({
   readGoalConfig = readDefaultGoalConfig,
   resolveMcpEngram: injectedBridgeResolver,
   readSystemPromptAssets = readDefaultSystemPromptAssets,
+  inspectNativeMcpOwnership: injectedOwnershipInspector,
 } = {}) {
   const bridgeResolver = injectedBridgeResolver
     ?? (loadCompanion === loadDefaultCompanion
       ? () => resolveMcpEngramConfig({ env: process.env, platform: process.platform, cwd: process.cwd() })
       : async () => ({ state: "managed" }));
+  // Test-only ownership seam (same pattern as `resolveMcpEngram`). The real
+  // checker is loaded only for a production bootstrap; an injected companion
+  // never reads the real HOME, and its safe default fabricates no managed owner.
+  const ownershipInspector = injectedOwnershipInspector
+    ?? (loadCompanion === loadDefaultCompanion ? inspectNativeOwnershipDefault : async () => emptyNativeOwnership());
   return async function bootstrap(pi) {
     let locateService = injectedLocator;
     const readySessions = new Set();
@@ -77,6 +83,7 @@ export function createBootstrap({
     const runtimeNotifiedContext7Sessions = new Set();
     const runtimeNotifiedDevtoolsSessions = new Set();
     const runtimeNotifiedNativeSessions = new Set();
+    const runtimeNotifiedNativeOwnershipSessions = new Set();
     const runtimeOutcomes = new Map();
     const runtimeHandles = new Map();
     const runtimeDisposeFailures = new Map();
@@ -179,7 +186,10 @@ export function createBootstrap({
       if (bootstrapFailure || webAccessConflict) hideCompanionTools(pi, companionTools);
       if (nativeTransport) {
         // Native MCP is owned by the host builtin: no adapter runtime events,
-        // no ephemeral server registration, no host handles to dispose.
+        // no ephemeral server registration, no host handles to dispose. The
+        // readonly ownership checker is refreshed here and again before the
+        // agent starts; only its internal package proof is cached.
+        await refreshNativeOwnership(ctx);
         notifyNativeRuntimeDiagnostic(pi, ctx, runtimeNotifiedNativeSessions);
       } else {
         await registerRuntimeServers(pi, readSessionId(ctx));
@@ -209,6 +219,7 @@ export function createBootstrap({
         runtimeNotifiedContext7Sessions.delete(sessionId);
         runtimeNotifiedDevtoolsSessions.delete(sessionId);
         runtimeNotifiedNativeSessions.delete(sessionId);
+        runtimeNotifiedNativeOwnershipSessions.delete(sessionId);
         const failures = nativeTransport ? {} : await disposeRuntimeHandles(sessionId);
         const names = Object.keys(failures);
         if (names.length > 0) {
@@ -225,6 +236,42 @@ export function createBootstrap({
       });
       hideCompanionTools(pi, companionTools);
     });
+
+    // Fresh readonly ownership read for one hook invocation. The inspector gets
+    // the real ctx.cwd and ctx.isProjectTrusted() result (never forced true);
+    // a missing context or trust API means the surface is unsupported, and a
+    // thrown trust/inspector failure is reported with a fixed generic message.
+    // Only the checker's internal package proof is cached; everything else is
+    // re-read here.
+    async function resolveOwnershipOutcome(ctx) {
+      const cwd = typeof ctx?.cwd === "string" && isAbsolute(ctx.cwd) ? ctx.cwd : undefined;
+      if (!cwd || typeof ctx?.isProjectTrusted !== "function") return {};
+      let projectTrusted;
+      try {
+        projectTrusted = ctx.isProjectTrusted();
+      } catch {
+        return { failed: true };
+      }
+      try {
+        const dto = await ownershipInspector({ env: process.env, platform: process.platform, cwd, projectTrusted });
+        return { dto };
+      } catch {
+        return { failed: true };
+      }
+    }
+
+    async function refreshNativeOwnership(ctx) {
+      const outcome = await resolveOwnershipOutcome(ctx);
+      if (outcome.failed) {
+        notifyRuntimeOnce(
+          runtimeNotifiedNativeOwnershipSessions,
+          ctx,
+          readSessionId(ctx),
+          "JorgeX native MCP ownership could not be verified; the JorgeX Context7 and Chrome DevTools guides are unavailable.",
+        );
+      }
+      return outcome;
+    }
 
     try {
       if (!locateService) {
@@ -285,7 +332,7 @@ export function createBootstrap({
       }
     }
 
-    pi.on("before_agent_start", (agentEvent, ctx) => {
+    pi.on("before_agent_start", async (agentEvent, ctx) => {
       const activeSession = readSessionId(ctx);
       if (bootstrapFailure || webAccessConflict || !activeSession || !readySessions.has(activeSession)) {
         if (!bootstrapFailure && !webAccessConflict && activeSession && !hiddenSelections.has(activeSession)) {
@@ -313,11 +360,19 @@ export function createBootstrap({
       const devtoolsAttempt = runtimeOutcome?.["chrome-devtools"];
       const showContext7 = context7Attempt ? context7Attempt.status === "ok" : context7Registered;
       const showDevtools = devtoolsAttempt ? devtoolsAttempt.status === "ok" : devtoolsRegistered;
+      let nativeContext7Guide = false;
+      let nativeDevtoolsGuide = false;
       if (nativeTransport) {
         // Re-read the live native provider/discovery on every session start.
         // A native install whose Context7/DevTools guides are not projected yet
-        // is not a legacy adapter registration failure.
+        // is not a legacy adapter registration failure. The ownership inspector
+        // runs once per hook and both guide booleans derive from that same fresh
+        // DTO plus one shared provider/trust gate.
         notifyNativeRuntimeDiagnostic(pi, ctx, runtimeNotifiedNativeSessions);
+        const ownership = await refreshNativeOwnership(ctx);
+        const providerReady = nativeProviderReady(pi, ctx);
+        nativeContext7Guide = nativeGuideOwned(pi, ownership.dto, "context7", providerReady);
+        nativeDevtoolsGuide = nativeGuideOwned(pi, ownership.dto, "chrome-devtools", providerReady);
       } else if ((context7Attempt && context7Attempt.status !== "ok")
         || (!context7Attempt && context7State && !context7Registered)) {
         notifyRuntimeOnce(
@@ -341,9 +396,9 @@ export function createBootstrap({
           : composeDirectInstallPrompt(
               agentEvent?.systemPrompt,
               systemPromptAssets,
-              browserRouting(systemPromptAssets, resolvePlaywrightCapability, showDevtools),
+              browserRouting(systemPromptAssets, resolvePlaywrightCapability, nativeTransport ? nativeDevtoolsGuide : showDevtools),
               companionsHealthy && !webAccessConflict,
-              showContext7,
+              nativeTransport ? nativeContext7Guide : showContext7,
             ),
       };
     });
@@ -1081,6 +1136,59 @@ function inspectNativeRuntime(pi) {
 
 function isBuiltinSourceInfo(sourceInfo, path) {
   return sourceInfo?.path === path && sourceInfo?.source === "builtin";
+}
+
+// Spec 71 L35: a native guide exists only when the readonly owner reports the
+// server managed/configured, the builtin provider/discovery is demonstrated by
+// the public runtime getters, no trusted project override blocks it, and the
+// public namespace catalog of that server has actually been observed. The
+// inspector DTO is shared and `providerReady` is the single per-hook
+// provider/trust gate, so both server guides reuse one runtime/trust lookup
+// instead of a duplicated flow.
+const nativeGuideNamespaces = {
+  context7: "mcp__context7__",
+  "chrome-devtools": "mcp__chrome-devtools__",
+};
+
+function nativeProviderReady(pi, ctx) {
+  return inspectNativeRuntime(pi) === undefined && inspectNativeProjectOverride(ctx) === undefined;
+}
+
+function nativeGuideOwned(pi, dto, server, providerReady) {
+  if (dto?.package?.state !== "verified" || !providerReady) return false;
+  const entry = dto?.servers?.[server];
+  if (entry?.state !== "managed" || entry?.availability !== "configured") return false;
+  return hasObservedNamespaceCatalog(pi, nativeGuideNamespaces[server]);
+}
+
+// Registered or observed is not the same as catalogued; a missing catalog is
+// pending, never an invented connection error. The `mcp__<server>__` prefix is
+// a logical name, not authority: the tool must come from the `builtin:mcp`
+// factory and not be hidden.
+function hasObservedNamespaceCatalog(pi, prefix) {
+  let tools;
+  try {
+    tools = pi?.getAllTools?.();
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(tools)) return false;
+  return tools.some((tool) => typeof tool?.name === "string"
+    && tool.name.startsWith(prefix)
+    && isBuiltinSourceInfo(tool.sourceInfo, "builtin:mcp")
+    && tool.exposure !== "hidden");
+}
+
+// Production default: the real readonly checker, loaded only for the shipped
+// bootstrap. The injected-companion default fabricates no managed owner and
+// never reads the real HOME.
+async function inspectNativeOwnershipDefault(input) {
+  const nativeMcp = await import("./native-mcp.mjs");
+  return nativeMcp.inspectNativeMcpOwnership(input);
+}
+
+function emptyNativeOwnership() {
+  return { servers: {}, package: { state: "not-required" }, connection: "not-verified" };
 }
 
 // Project scope: Pi reads `<cwd>/.pi/mcp.json` only for a trusted project and a
