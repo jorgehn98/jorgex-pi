@@ -50,6 +50,7 @@ export async function inspectNativeMcpOwnership({
   env = process.env,
   platform = process.platform,
   cwd = process.cwd(),
+  projectTrusted = false,
 } = {}) {
   const paths = platform === "win32" ? win32 : posix;
   const home = requireAbsoluteHome(env, platform);
@@ -67,11 +68,39 @@ export async function inspectNativeMcpOwnership({
       paths,
     });
   }
+  applyTrustedProjectOverrides(servers, { cwd, projectTrusted, paths });
   return {
     servers,
     package: proof.reason ? { state: proof.state, reason: proof.reason } : { state: proof.state },
     connection: "not-verified",
   };
+}
+
+// Trusted project scope: Pi reads `<cwd>/.pi/mcp.json` only for a trusted project
+// and a project entry replaces the global entry by name. The readonly reader
+// cannot validate that replacement, so the global granular claim must never
+// authorize it: any project entry naming a protected server becomes an effective
+// conflict (cleanup-ineligible, unavailable), even when the definition is
+// identical. Trust is provided by the caller context, never inferred from the
+// file; an untrusted project is never read (even a malformed one stays inert),
+// and the global inspection result is otherwise unchanged.
+function applyTrustedProjectOverrides(servers, { cwd, projectTrusted, paths }) {
+  if (projectTrusted !== true) return;
+  if (typeof cwd !== "string" || !paths.isAbsolute(cwd)) {
+    throw new Error("Native MCP inspection requires an absolute project cwd");
+  }
+  const projectConfig = readNativeConfig(paths.join(cwd, ".pi", "mcp.json"));
+  const projectServers = projectConfig?.mcpServers;
+  if (!isRecord(projectServers)) return;
+  for (const name of SERVER_NAMES) {
+    if (!Object.hasOwn(projectServers, name)) continue;
+    servers[name] = {
+      state: "conflict",
+      cleanupEligible: false,
+      availability: "unavailable",
+      reason: "Native MCP project override is not validated by the readonly reader",
+    };
+  }
 }
 
 function requireAbsoluteHome(env, platform) {
