@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { readConfig } from "./context7-config.mjs";
-import { RUNTIME_REGISTER_EVENT, RUNTIME_REGISTER_VERSION, resolveMcpEngramConfig } from "./mcp-engram.ts";
+import { RUNTIME_REGISTER_EVENT, RUNTIME_REGISTER_VERSION, resolveMcpEngramConfig } from "./mcp-engram.mjs";
 import { resolvePlaywrightCapability as resolveDefaultPlaywrightCapability } from "./playwright.ts";
 import { PI_QUALITY_CAPABILITIES_EVENT, reportPiQualityCapabilities } from "./quality-capabilities.ts";
 

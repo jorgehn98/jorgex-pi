@@ -34,7 +34,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONTEXT7_URL, digestNativeMcpDefinition } from "../../extensions/mcp-engram.ts";
+import { CONTEXT7_URL, digestNativeMcpDefinition } from "../../extensions/mcp-engram.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PI_ROOT = join(HERE, "..", "..");
@@ -208,7 +208,7 @@ export function createManagedReleaseSandbox(t, { projectTrusted = false } = {}) 
   const nodeModules = join(buildRoot, "node_modules");
   const buildPackageRoot = join(nodeModules, RELEASE_PACKAGE_ROOT);
   const extensionsDir = join(buildPackageRoot, "extensions");
-  for (const file of ["native-mcp.mjs", "context7-config.mjs", "mcp-engram.ts"]) {
+  for (const file of ["native-mcp.mjs", "context7-config.mjs", "mcp-engram.mjs"]) {
     copyFile(join(PI_ROOT, "extensions", file), join(extensionsDir, file));
   }
   copyFile(join(PI_ROOT, "package.json"), join(buildPackageRoot, "package.json"));
@@ -239,7 +239,7 @@ export function createManagedReleaseSandbox(t, { projectTrusted = false } = {}) 
   writeFileSync(join(buildRoot, "package-lock.json"), lockBytes);
   assertReleaseLock(join(buildRoot, "package-lock.json"), { version, dependencies, installedIntegrity: sha512Sri(archiveBytes) });
 
-  const copiedBytes = ["native-mcp.mjs", "context7-config.mjs", "mcp-engram.ts"]
+  const copiedBytes = ["native-mcp.mjs", "context7-config.mjs", "mcp-engram.mjs"]
     .reduce((total, file) => total + readFileSync(join(extensionsDir, file)).length, 0)
     + readFileSync(join(buildPackageRoot, "package.json")).length
     + lockBytes.length

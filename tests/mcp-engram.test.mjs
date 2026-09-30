@@ -54,7 +54,7 @@ test("the official bridge owns no bundled adapter and verifies over the external
   assert.equal(contract.capabilities.includes("mcp-adapter-v1"), false, "owned mcp-adapter-v1 must retire with the bundled transport");
   assert.equal(expected.bridge.event, "pi-mcp-adapter:runtime-register:v1", "bridge event stays versioned");
   assert.equal(expected.bridge.version, 1, "bridge request version stays 1");
-  const bridgeSource = readFileSync(join(root, "extensions", "mcp-engram.ts"), "utf8");
+  const bridgeSource = readFileSync(join(root, "extensions", "mcp-engram.mjs"), "utf8");
   const bootstrapSource = readFileSync(join(root, "extensions", "bootstrap.ts"), "utf8");
   assert.doesNotMatch(bridgeSource, /createMcpAdapter/, "bridge must not keep the bundled factory fallback");
   assert.doesNotMatch(bootstrapSource, /createMcpAdapter/, "bootstrap must register via runtime-register, not the bundled factory");

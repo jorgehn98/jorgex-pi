@@ -12,11 +12,10 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { registerHooks, stripTypeScriptTypes, syncBuiltinESMExports } from "node:module";
-import { tmpdir } from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import { dirname, join, sep } from "node:path";
 import test from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import {
   assertReleaseLockCoherence,
   createManagedReleaseSandbox,
@@ -45,28 +44,11 @@ import {
 // no online emission or signature is claimed.
 const CHECKOUT = new URL("../extensions/native-mcp.mjs", import.meta.url).href;
 
-// The released package root necessarily lives under `node_modules`, where Node
-// refuses to strip TypeScript for `.ts` entries. The fixture keeps the production
-// files byte-identical, so this test bridges that known Node limitation for its
-// own temp tree only; the real host loads them through Pi's own loader, and the
-// actual-Jiti identity case stays a later verification.
-const FIXTURE_PREFIX = join(tmpdir(), "jorgex-pi-native-managed-");
-registerHooks({
-  load(url, context, nextLoad) {
-    if (url.startsWith("file:") && url.endsWith(".ts")) {
-      const file = fileURLToPath(url);
-      if (file.startsWith(FIXTURE_PREFIX)) {
-        return {
-          format: "module",
-          source: stripTypeScriptTypes(readFileSync(file, "utf8"), { mode: "strip" }),
-          shortCircuit: true,
-        };
-      }
-    }
-    return nextLoad(url, context);
-  },
-});
-
+// The release fixture copies the real `.mjs` producer closure byte-identical
+// (no `.ts` lands under `node_modules`), so the managed entry loads in a plain
+// Node exactly as a consumer would and no test-side TypeScript strip hook is
+// needed. The historical `.ts` compatibility shim is exercised by the source
+// tests, and the real Pi/Jiti loader identity stays a separate case.
 function inspect(mcpModule, sandbox) {
   return mcpModule.inspectNativeMcpOwnership({
     env: sandbox.env,

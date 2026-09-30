@@ -13,7 +13,7 @@ import {
 import { dirname, join, posix, relative, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConfig, resolvePiAgentDir } from "./context7-config.mjs";
-import { digestNativeMcpDefinition, readBoundedRegularFile } from "./mcp-engram.ts";
+import { digestNativeMcpDefinition, readBoundedRegularFile } from "./mcp-engram.mjs";
 
 // Readonly ownership checker for the persistent native MCP configuration
 // (Spec 71, "Proof offline y bind del checker"). It never writes, spawns,

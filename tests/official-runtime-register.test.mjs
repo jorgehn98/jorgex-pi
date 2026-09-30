@@ -300,7 +300,7 @@ test("runtime handles dispose idempotently on session_shutdown and never write m
 
 test("no fallback factory: JorgeX never calls createMcpAdapter nor resolves its own adapter", async () => {
   const bootstrapSource = readFileSync(join(root, "extensions", "bootstrap.ts"), "utf8");
-  const bridgeSource = readFileSync(join(root, "extensions", "mcp-engram.ts"), "utf8");
+  const bridgeSource = readFileSync(join(root, "extensions", "mcp-engram.mjs"), "utf8");
   assert.doesNotMatch(bootstrapSource, /createMcpAdapter/, "bootstrap must register via runtime-register:v1, not the bundled factory");
   assert.doesNotMatch(bridgeSource, /createMcpAdapter/, "bridge must not keep the programmatic factory fallback");
   assert.doesNotMatch(bridgeSource, /import\.meta\.resolve\(["']pi-mcp-adapter["']\)/, "bridge must not runtime-import its own adapter copy");

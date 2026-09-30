@@ -365,7 +365,7 @@ test("official smoke: isolated single pair resolves managed bridge with gentle p
     const inventory = JSON.parse(readFileSync(join(root, "contract", "components.v1.json"), "utf8"));
     assert.equal(inventory.components.some(({ name }) => name === "pi-mcp-adapter"), false);
     assert.equal(inventory.components.some(({ name }) => name === "gentle-engram"), false);
-    const bridgeSource = readFileSync(join(root, "extensions", "mcp-engram.ts"), "utf8");
+    const bridgeSource = readFileSync(join(root, "extensions", "mcp-engram.mjs"), "utf8");
     const bootstrapSource = readFileSync(join(root, "extensions", "bootstrap.ts"), "utf8");
     assert.doesNotMatch(bridgeSource, /createMcpAdapter/);
     assert.doesNotMatch(bootstrapSource, /createMcpAdapter/);
@@ -527,7 +527,7 @@ test("official smoke: child uses ambient gentle-engram with no JorgeX gate, sele
     false,
     "engram agent must omit tools so ambient gentle-engram loads; empty tools: would emit --no-tools",
   );
-  for (const name of ["bootstrap.ts", "mcp-engram.ts"]) {
+  for (const name of ["bootstrap.ts", "mcp-engram.mjs"]) {
     const source = readFileSync(join(root, "extensions", name), "utf8");
     assert.doesNotMatch(source, /ENGRAM_CHILD_ALLOWED_TOOLS/, `${name} must not carry a JorgeX selector`);
     assert.doesNotMatch(source, /MCP_DIRECT_TOOLS\s*=\s*["'](__none__|engram\/)/, `${name} must not wire MCP_DIRECT_TOOLS for the child`);
