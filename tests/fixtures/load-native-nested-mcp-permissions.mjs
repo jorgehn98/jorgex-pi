@@ -1,20 +1,4 @@
-// Native nested MCP permission fixture (T73 test artifact, not production).
-//
-// Proves the REAL host SDK nested dispatcher: a tool registered in a real
-// `AgentSession` calls `ctx.executeTool(...)`. The SDK (`NestedToolCallRunner`
-// -> `runToolCall`) generates the child id `<parentId>/<n>`, runs the child
-// through the session's tool hooks (`beforeToolCall` / `afterToolCall`) and the
-// REAL permission provider, and emits `tool_execution_*` carrying
-// `parentToolCallId`.
-//
-// Nothing here calls `runner.emitToolCall` with a manual parent id, and no
-// private method or fake `executeToolFn` is injected: the only scripted part is
-// the model turn, produced by the public pi-ai `fauxProvider` boundary. The
-// faux provider declares its own auth descriptor (an empty auth result), so the
-// run uses ZERO credentials and sets no API key. No network, no real HOME.
-//
-// The host SDK is passed explicitly in JORGEX_PI_NATIVE_SDK_ROOT by the test,
-// which only supplies a build whose public API exposes nested-capable tools.
+// Nested permission fixture: real `ctx.executeTool` dispatcher generates `<parentId>/<n>`; model turn via public fauxProvider, zero credentials.
 import { pathToFileURL } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

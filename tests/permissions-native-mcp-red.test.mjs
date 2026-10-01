@@ -1,26 +1,4 @@
-// Native MCP permission surface (Pi).
-//
-// Risk: Pi's generated permission policy maps MCP through the legacy `mcp`
-// proxy surface only. Pi's built-in MCP extension exposes native tools named
-// `mcp__<server>__<tool>` (see `@earendil-works/pi-coding-agent`'s
-// `dist/extensions/mcp`), which the provider evaluates on their own surface.
-// Without a `mcp__*` mapping in the generated policy those native calls fall to
-// the universal `ask` fallback, so every ordinary native MCP tool prompts.
-//
-// This test drives the REAL permission provider through Pi's real no-LLM
-// resource loader + runner and the REAL generated policy
-// (`assets/permissions/defaults.json`).
-//
-// Controls in the same run keep the failure unambiguous:
-//   - a native call carrying a protected path must still be denied by the
-//     transversal `path` gate (`input.path`);
-//   - a tool without the MCP namespace prefix must keep the `ask` fallback;
-//   - the legacy `mcp: allow` proxy grant must remain effective.
-//
-// Nested native calls are covered in `permissions-native-mcp-nested.test.mjs`:
-// a real proof must go through `ctx.executeTool`, whose dispatcher
-// host SDK action this no-LLM harness does not run; emitting a manual
-// `parentToolCallId` would fake the pipeline.
+// Native permission surface: `mcp__*` mapping plus path gate; nested calls covered separately via `ctx.executeTool`.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {

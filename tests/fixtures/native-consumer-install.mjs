@@ -1,15 +1,4 @@
-// Standalone consumer install fixture (T70/T73 portability seed).
-//
-// The shipped producer closure is copied BYTE-IDENTICAL into
-// `<temp>/node_modules/jorgex-pi`, so a plain child Node can import the declared
-// `.mjs` entrypoints exactly as a real consumer would. Nothing is synthesized:
-// no template copy of a `.ts` file renamed to `.mjs`, no type-stripping hook, no
-// Jiti, no checkout, no HTTP, no credentials, no SDK or whole-cache copy.
-//
-// Spec 71 declares one JS implementation in `extensions/mcp-engram.mjs` (the
-// `.ts` file remains only as a historical `export *` shim) and requires the
-// checker to consume it without Node hooks, because Node 24 cannot strip TS
-// under `node_modules`.
+// Consumer install fixture: shipped closure copied byte-identical for plain Node import.
 import { createHash } from "node:crypto";
 import {
   cpSync,

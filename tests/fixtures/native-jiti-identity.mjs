@@ -1,24 +1,4 @@
-// T73 real-Pi-loader identity fixture wrapper (test artifact, never production).
-//
-// It reuses the shared synthetic managed-release fixture READ-ONLY and only adds
-// the two artifacts this tracer needs, inside the owned temporary tree the
-// shared fixture already tears down on success, failure and cancellation:
-//
-//   1. the probe extension INSIDE the release `extensions` directory. It is
-//      written before the release tree hash is taken and the shared fixture's
-//      own `rebindManagedRelease` then recomputes the raw lock/tree hashes, the
-//      release id and the active symlink, so the managed release stays
-//      self-consistent (the only difference from a real release is the probe
-//      file, which a real release would carry as its own extension).
-//
-//   2. a FOREIGN stage package root with the same real `.mjs` producer closure
-//      plus the same probe. It is never promoted, never referenced by the active
-//      receipt and never part of the release tree; it only exists so the same
-//      probe chain can be loaded from a different physical package root against
-//      the same active receipt.
-//
-// Nothing is downloaded, executed, signed or authenticated here, and no shared
-// fixture is edited.
+// Loader identity fixture: reuses the managed-release sandbox; probe added before rebind, foreign stage never promoted.
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

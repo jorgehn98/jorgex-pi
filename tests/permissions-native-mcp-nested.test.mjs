@@ -1,33 +1,4 @@
-// T73 seam: native nested MCP calls through the REAL host SDK dispatcher.
-//
-// Testing decision
-//   Risk: a nested native MCP call could bypass the permission gate, or the
-//   nested pipeline could be "proved" by emitting a manual `parentToolCallId`
-//   (`runner.emitToolCall`) instead of the SDK's real `ctx.executeTool`
-//   dispatcher. The existing `permissions-native-mcp-red.test.mjs` covers the
-//   generated `mcp__*` policy for model-issued calls only and explicitly leaves
-//   the nested seam uncovered.
-//   Existing protection: `permissions-native-mcp-red.test.mjs` (top-level
-//   native surface + path gate + ask fallback) and the bootstrap/reader tests
-//   for the generated asset.
-//   New behavior: a tool running inside a real `AgentSession` reaches another
-//   MCP tool through `ctx.executeTool`; the SDK generates `<parentId>/<n>`,
-//   runs the child through the session's `tool_call`/`tool_result` hooks and
-//   the real permission provider, and an allowed child has its effect while a
-//   denied one does not.
-//   Seam: an isolated real SDK session whose capability is detected from the
-//   public API (not a version string) and whose only scripted part is the model
-//   turn (public pi-ai `fauxProvider`, empty auth descriptor, zero credentials).
-//   No network, no API key, no real HOME.
-//
-// The fixture never calls `runner.emitToolCall` with a parent id, never touches
-// a private SDK method and never injects a fake `executeToolFn`; the parent
-// linkage asserted here is emitted by the SDK itself.
-//
-// SDK resolution: JORGEX_PI_NATIVE_SDK_ROOT when provided (invalid => fail
-// closed, never skip); otherwise the repo-installed SDK is used only when its
-// public API exposes the nested-tool surface, so the current legacy CI SDK
-// cannot pretend nested coverage.
+// Nested MCP seam: real SDK dispatcher `ctx.executeTool` generates `<parentId>/<n>` through session hooks and the real permission provider.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";

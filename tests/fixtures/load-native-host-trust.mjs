@@ -1,22 +1,8 @@
-// T73 real-host project-trust child runner (test artifact, never production).
-//
-// Runs ONE real public Pi session: `ProjectTrustStore` (on-disk trust) plus the
-// public `DefaultResourceLoader.reload({ resolveProjectTrust })` hook the real
-// host uses, a real `SettingsManager`, a real `AgentSession` bound through
-// `session.bindExtensions()`, and the probe extension loaded by path from the
-// ACTIVE managed symlink. It prints ONLY the loader/trust coherence and what the
-// probe emitted on the shared event bus.
-//
-// The trust decision is persisted with the public `ProjectTrustStore` and read
-// back through the public loader hook; the fixture never passes a trust boolean
-// into the checker. The `SettingsManager` is in-memory (no file I/O, no disk
-// package autoload of the fixture's stub companions), exactly as the existing
-// loader-identity fixture does. No model turn, no prompt, no network, no API key
-// and no real HOME are involved; the fixture fails closed without an isolated
-// sandbox.
+// Host-trust runner: one real session/trust store/bound probe; prints only bus output.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { runNativeProbeSession } from "./native-probe-session.mjs";
 
 const probePath = process.argv[2];
 if (!probePath) throw new Error("probe extension path is required");
@@ -87,29 +73,7 @@ if (loaded.errors.length > 0) {
 
 // Explicit model runtime with no model turn: nothing is prompted and no
 // credential is read (the isolated agent dir has no auth.json).
-const modelRuntime = await ModelRuntime.create({
-  authPath: join(agentDir, "auth.json"),
-  modelsPath: null,
-  refreshOnCreate: false,
-});
-const { session } = await createAgentSession({
-  cwd,
-  agentDir,
-  modelRuntime,
-  resourceLoader: loader,
-  settingsManager,
-  sessionManager: SessionManager.inMemory(cwd),
-  noTools: "all",
-});
-
-let probe;
-const unsubscribe = eventBus.on(channel, (data) => { probe = data; });
-try {
-  await session.bindExtensions({});
-} finally {
-  unsubscribe();
-  session.dispose();
-}
+const probe = await runNativeProbeSession({ sdk, cwd, agentDir, loader, settingsManager, eventBus, channel });
 
 process.stdout.write(`${JSON.stringify({
   sdkVersion,

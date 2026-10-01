@@ -1,16 +1,4 @@
-// Portability seed: the standalone consumer contract.
-//
-// One implementation lives in `extensions/mcp-engram.mjs`; the `.ts` file is
-// only a historical `export *` shim. The checker and bootstrap consume the
-// Jiti dependency. Node 24 refuses TS under `node_modules`
-// (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so a hook-based load would
-// not represent a real consumer.
-//
-// This case is the real boundary: the shipped producer closure is copied
-// byte-identical into `<temp>/node_modules/jorgex-pi` and a PLAIN child Node
-// imports the declared `.mjs` entrypoints. No load hook, no Jiti, no checkout,
-// no HTTP and no credentials are involved, and the isolated HOME/USERPROFILE and
-// agent dir are empty, so the imports can have no side effect.
+// Consumer portability: shipped closure copied byte-identical; plain child Node imports declared `.mjs` entrypoints.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";

@@ -1,34 +1,5 @@
-// T73 real Windows seam for the native managed release proof (Spec 71).
-//
-// Testing decision
-//   Risk: the native managed proof is a pure-filesystem ownership check whose
-//   authority comes from physical paths (`realpath`) and from walking the raw
-//   relative target of every release symlink. Every existing proof test runs
-//   with the Linux `node:path` semantics, so a Windows regression in the
-//   physical root bind or in the raw-target containment walk could ship green.
-//   In particular the published `readContainedLinkTarget` splits the raw target
-//   ONLY on `/`, so a real Windows backslash target can collapse into a single
-//   component and let `lstat` follow an intermediate directory symlink,
-//   certifying a chained release as `verified`.
-//   Existing protection: `mcp-native-managed-proof-red.test.mjs` proves the
-//   coherent release, a contained relative link and the intermediate-symlink
-//   chain, all with forward-slash targets under `process.platform` Linux. It
-//   cannot exercise the win32 path/filesystem semantics.
-//   New behavior: with the REAL win32 `process.platform` and real Windows
-//   symlinks, the coherent fixture verifies, a plain contained relative link
-//   stays verified, and an intermediate directory symlink reached through a raw
-//   backslash target must still fail closed even when the rebound tree hash
-//   matches the mutated bytes.
-//   Seam: the filesystem boundary itself. The production checker is imported
-//   through the ACTIVE managed entry and called with
-//   `{ env: sandbox.env, cwd: sandbox.root, platform: process.platform }`.
-//
-// Windows-only lane: this file runs ONLY on win32 and skips everywhere else, so
-// a Linux run cannot produce a false GREEN (there the backslash target is just a
-// missing filename and would fail closed for the wrong reason). The explicit
-// Windows job must run it; the symlink capability is probed and a missing
-// privilege fails the lane instead of silently skipping. No SDK, Engram, model,
-// network or browser is needed.
+// Windows-only seam: real win32 path/filesystem for the managed release proof.
+// Raw targets split only on `/`, so a backslash chain must still fail closed.
 import assert from "node:assert/strict";
 import {
   lstatSync,
@@ -57,8 +28,6 @@ const SKIP_REASON =
   `Windows-only seam: the managed release proof must run with the real ${process.platform} path and filesystem semantics; ` +
   "run it in the explicit Windows lane.";
 
-// The production checker is always loaded through the ACTIVE managed entry and
-// called with the real platform, never a simulated one.
 function inspect(mcpModule, sandbox) {
   return mcpModule.inspectNativeMcpOwnership({
     env: sandbox.env,
@@ -93,8 +62,6 @@ function assertWindowsSymlinkCapability(t) {
   }
 }
 
-// Baseline validity first: if this fails on Windows the fixture/platform is the
-// problem, not the negative cases below.
 test(
   "a coherent managed release verifies on real Windows with a physical relative active entry",
   { skip: WINDOWS ? false : SKIP_REASON },
@@ -138,9 +105,7 @@ test(
   },
 );
 
-// Positive control: a plain contained relative link whose raw target uses the
-// platform's own separators (backslashes on Windows) must never be mistaken for
-// a chain.
+// Plain contained relative link with native separators must never read as a chain.
 test(
   "a plain contained relative link stays verified on real Windows",
   { skip: WINDOWS ? false : SKIP_REASON },
@@ -198,12 +163,7 @@ test(
   },
 );
 
-// Negative guard: the intermediate component is a directory symlink and the raw
-// target is exactly the platform's own `path.relative` output, so on Windows it
-// carries backslash separators. Splitting only on `/` collapses the target into
-// one component, `lstat` follows the intermediate symlink, and the chained
-// release is wrongly certified. The fixture is rebound first, so a conflict can
-// never come from a stale lock/tree hash.
+// Chained walk through a backslash raw target must fail closed even with a matching tree hash.
 test(
   "an intermediate directory symlink reached through a raw backslash target must conflict on real Windows",
   { skip: WINDOWS ? false : SKIP_REASON },

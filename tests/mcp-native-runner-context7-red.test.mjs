@@ -1,17 +1,4 @@
-// T70 diagnose: does the real CLI turn a managed native Context7 into a legacy
-// false conflict, and does it respect the official-package policy?
-//
-// Spec 71 ("Runner: diagnóstico local nativo sin falso conflicto legacy"): the
-// native exception for a persistent global Context7 entry is selected through
-// `inspectOfficialPackages(...).transport === "native"`. A declared adapter
-// keeps the legacy pair, and a missing official pair stays blocked; in neither
-// case may the certified package/Context7 ownership alone make the entry
-// available.
-//
-// The real bin runs from the ACTIVE managed package root (never the checkout,
-// never an injected owner) as one short subprocess per case. Every case asserts
-// the policy premise and the readonly checker premise BEFORE running the CLI, so
-// a failure can never be blamed on an incoherent fixture.
+// Runner diagnose: real CLI from the ACTIVE managed root; premises asserted before each CLI run.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { pathToFileURL } from "node:url";

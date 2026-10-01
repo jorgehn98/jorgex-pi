@@ -1,32 +1,4 @@
-// T73 real HOST TRUST seam for the native MCP project override.
-//
-// Testing decision
-//   Risk: the bootstrap's native project-override gate claims to read the REAL
-//   `ctx.isProjectTrusted()`, but the existing coverage only proves the pure
-//   readonly checker with a fixture boolean passed straight into
-//   `inspectNativeMcpOwnership` (`mcp-native-effective-project-ownership-red`)
-//   and an injected fake context (`mcp-native-guide-integration-red`). Neither
-//   shows that the public host session produces that boolean from its real trust
-//   state, so a regression in the plumbing (a forced value, a stale or duplicated
-//   trust source, or a settings manager the session ignores) could pass every
-//   existing test while the guide gate would be wrong in production.
-//   Existing protection: `mcp-native-effective-project-ownership-red.test.mjs`
-//   (conflict/managed for an explicit `projectTrusted` boolean) and
-//   `mcp-native-guide-integration-red.test.mjs` (guide policy against an injected
-//   context). Both feed the trust value themselves.
-//   New behavior: with a real public `AgentSession` (real `DefaultResourceLoader`,
-//   real `ProjectTrustStore` and real `SettingsManager`), `ctx.isProjectTrusted()`
-//   is the host's own decision, and the real exported checker flips from
-//   `conflict` (a trusted project override of the protected context7 server) to
-//   `managed` (untrusted, so the same override is inert) accordingly.
-//   Seam: a real SDK session in an isolated child process whose probe extension is
-//   loaded BY PATH from the ACTIVE managed symlink; the only scripted input is the
-//   trust decision persisted through the public `ProjectTrustStore`.
-//
-// SDK resolution: JORGEX_PI_NATIVE_SDK_ROOT when provided (invalid => fail
-// closed, never skip). Without it the case is skipped: the legacy repo SDK does
-// not expose the native trust/loader surface, and a false GREEN from an unrelated
-// build would be worse than no evidence.
+// Host trust seam: real AgentSession/DefaultResourceLoader/ProjectTrustStore decides ctx.isProjectTrusted().
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";

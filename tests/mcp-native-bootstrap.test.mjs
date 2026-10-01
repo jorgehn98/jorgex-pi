@@ -1,31 +1,282 @@
-// Bootstrap native guide integration.
-//
-// The readonly ownership checker is integrated into the native bootstrap hooks
-// through an OWN test injection seam (`inspectNativeMcpOwnership`, same pattern
-// as the existing injected resolvers; never an upstream API and never a
-// packageRoot parameter). The Context7 guide must appear only when the checker
-// reports that server managed/configured AND the builtin provider/discovery is
-// demonstrated AND the public Context7 namespace catalog has been observed.
-//
-// The persistent Context7 definition is identical in every case, so a
-// suppressed guide can never be explained by configuration shape. No adapter
-// events, no ephemeral MCP registration, no tool activation, no connection claim
-// and no real HOME.
+// Native bootstrap: native Engram-only startup, provider/discovery diagnostics,
+// project override handling and the managed-ownership guide policy.
 import assert from "node:assert/strict";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { RUNTIME_REGISTER_EVENT } from "../extensions/mcp-engram.mjs";
+import { RUNTIME_REGISTER_EVENT, resolveMcpEngramConfig } from "../extensions/mcp-engram.ts";
 import {
   BUILTIN_MCP_COMMAND,
   BUILTIN_TOOL_SEARCH,
-  createGuideSandbox,
   DEFERRED_CONTEXT7_TOOL,
   DEFERRED_DEVTOOLS_TOOL,
   FOREIGN_CONTEXT7_TOOL,
+  createGuideSandbox,
+  createPiHarness,
   ownershipDto,
   runNativeGuideBootstrap,
   snapshotSandbox,
 } from "./fixtures/native-guide-bootstrap.mjs";
 
+const PI_SESSION = { hasUI: true, sessionId: "native-bootstrap-session" };
+
+// --- Native Engram-only bootstrap --------------------------------------------
+// Pi's own loader reads `<agentDir>/mcp.json` always and `<cwd>/.pi/mcp.json`
+// only when the project is trusted, and a project entry replaces the global
+// entry with the same name. The project fixture therefore really replaces the
+// protected `engram` server, with a different real executable so a diagnosis can
+// never be about a broken command.
+const PROJECT_OVERRIDE_COMMAND = "/bin/sh";
+
+function createNativeSandbox(t, { projectOverride = false } = {}) {
+  const root = mkdtempSync(join(tmpdir(), "jorgex-pi-native-bootstrap-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const agentDir = join(root, "agent");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(join(agentDir, "settings.json"), `${JSON.stringify({ packages: ["npm:gentle-engram@0.1.16"] })}\n`);
+  writeFileSync(
+    join(agentDir, "mcp.json"),
+    `${JSON.stringify(
+      { mcpServers: { engram: { command: process.execPath, args: ["mcp", "--tools=agent"], exposure: "deferred" } } },
+      null,
+      2,
+    )}\n`,
+  );
+  let projectDir;
+  if (projectOverride) {
+    projectDir = join(root, "project");
+    mkdirSync(join(projectDir, ".pi"), { recursive: true });
+    writeFileSync(
+      join(projectDir, ".pi", "mcp.json"),
+      `${JSON.stringify(
+        { mcpServers: { engram: { command: PROJECT_OVERRIDE_COMMAND, args: ["mcp", "--tools=agent"], exposure: "deferred" } } },
+        null,
+        2,
+      )}\n`,
+    );
+  }
+  const env = { HOME: root, PI_CODING_AGENT_DIR: agentDir, XDG_CONFIG_HOME: join(root, "xdg") };
+  return {
+    root,
+    agentDir,
+    projectDir,
+    resolve: (cwd = root) => resolveMcpEngramConfig({ env, platform: "linux", cwd }),
+  };
+}
+
+function readProjectEngram(sandbox) {
+  const file = join(sandbox.projectDir, ".pi", "mcp.json");
+  return { file, entry: JSON.parse(readFileSync(file, "utf8")).mcpServers.engram };
+}
+
+async function runNativeBootstrap({ commands, tools, activeTools, sandbox, resolutionSink, projectDir, projectTrusted = false }) {
+  const { createBootstrap } = await import("../extensions/bootstrap.ts");
+  const cwd = projectDir ?? sandbox.root;
+  const pi = createPiHarness({ commands, tools, activeTools });
+  await createBootstrap({
+    loadCompanion: async () => () => {},
+    getPermissionsService: () => ({ ready: true }),
+    readWebAccessConfig: () => ({}),
+    resolvePlaywrightCapability: () => undefined,
+    detectWebAccessConflict: () => undefined,
+    detectGoalConflict: () => undefined,
+    readGoalConfig: () => ({ kind: "loaded" }),
+    resolveMcpEngram: async () => {
+      const resolution = await sandbox.resolve(cwd);
+      if (resolutionSink) resolutionSink.resolution = resolution;
+      return resolution;
+    },
+  })(pi.api);
+  // Real public context input: `cwd` plus `isProjectTrusted()` (SDK types).
+  const ctx = pi.context({ cwd, isProjectTrusted: () => projectTrusted });
+  await pi.emitLifecycle("session_start", {}, ctx);
+  await pi.emitEvent("permissions:ready", { sessionId: PI_SESSION.sessionId });
+  const agentStart = await pi.emitLifecycle("before_agent_start", { systemPrompt: "Existing Pi prompt." }, ctx);
+  return { pi, prompt: agentStart?.systemPrompt ?? "" };
+}
+
+function matching(messages, pattern) {
+  return messages.filter((message) => pattern.test(message));
+}
+
+test("native Engram-only bootstrap keeps provider, pending catalog and no legacy Context7/DevTools error", async (t) => {
+  const sandbox = createNativeSandbox(t);
+  const sink = {};
+  // Premise: the real reader output for a native install. Capture it so the
+  // assertions below protect the actual reader contract, not a stub shape.
+  const { pi, prompt } = await runNativeBootstrap({
+    // `/mcp` and `tool_search` come from the built-in provider; the initial
+    // catalog is still pending (tool_search is registered, not active).
+    commands: [BUILTIN_MCP_COMMAND],
+    tools: [BUILTIN_TOOL_SEARCH],
+    activeTools: [],
+    sandbox,
+    resolutionSink: sink,
+  });
+
+  assert.equal(sink.resolution?.state, "managed", "the native reader must resolve managed for this fixture");
+  assert.equal(sink.resolution?.transport, "native", "the fixture must exercise the native transport");
+  assert.equal(sink.resolution?.context7?.state, "available", "the Context7 channel is available in native");
+  assert.equal(
+    "context7" in (sink.resolution?.config?.mcpServers ?? {}),
+    false,
+    "native adds no ephemeral Context7 definition",
+  );
+
+  const messages = pi.notifications().map(({ message }) => message);
+  // The native branch must not run the legacy Context7/DevTools registration
+  // path: a native install never had a Context7 registration to fail.
+  assert.deepEqual(
+    matching(messages, /Context7|chrome-devtools|DevTools/i),
+    [],
+    `a healthy native Engram-only install must not report a legacy Context7/DevTools runtime error: ${messages.join(" | ")}`,
+  );
+  assert.deepEqual(
+    matching(messages, /Engram bridge is unavailable/i),
+    [],
+    "a valid native Engram configuration is not a bridge failure",
+  );
+  assert.equal(
+    pi.emittedEvents().some(({ name }) => name === RUNTIME_REGISTER_EVENT),
+    false,
+    "the native branch must not emit adapter runtime-register events",
+  );
+  assert.doesNotMatch(prompt, /jorgex:context7/, "no Context7 guide before the managed ownership contract is closed");
+  assert.doesNotMatch(
+    prompt,
+    /jorgex:chrome-devtools/,
+    "no DevTools guide before the managed ownership contract is closed",
+  );
+  assert.match(prompt, /jorgex:system-prompt/, "the native install still composes the canonical JorgeX policy");
+});
+
+test("native bootstrap diagnoses a substituted /mcp provider instead of reporting a healthy native install", async (t) => {
+  const sandbox = createNativeSandbox(t);
+  // A third-party extension owns `/mcp` (not `builtin:mcp`) and a foreign
+  // `tool_search` is registered: the builtin provider is substituted.
+  const { pi } = await runNativeBootstrap({
+    commands: [
+      {
+        name: "mcp",
+        description: "Show MCP server status",
+        source: "extension",
+        sourceInfo: { path: "/opt/foreign/mcp-adapter.ts", source: "local", scope: "temporary", origin: "top-level" },
+      },
+    ],
+    tools: [
+      {
+        ...BUILTIN_TOOL_SEARCH,
+        sourceInfo: { path: "/opt/foreign/tool-search.ts", source: "local", scope: "temporary", origin: "top-level" },
+      },
+    ],
+    activeTools: [],
+    sandbox,
+  });
+
+  const diagnostics = pi.notifications().filter(({ message }) => /mcp|builtin/i.test(message));
+  // A replaced builtin must be reported, never presented as a healthy native
+  // provider.
+  assert.ok(
+    diagnostics.length >= 1,
+    "a substituted /mcp provider must be diagnosed explicitly instead of being reported as a healthy native install",
+  );
+  assert.ok(
+    diagnostics.some(({ message }) => /builtin/i.test(message)),
+    `the diagnostic must name the missing or replaced builtin provider: ${diagnostics.map(({ message }) => message).join(" | ")}`,
+  );
+});
+
+test("native bootstrap diagnoses an absent builtin:tool-search discovery instead of reading an empty catalog as pending", async (t) => {
+  const sandbox = createNativeSandbox(t);
+  // The effective /mcp command is the Pi builtin, but the runtime exposes no
+  // `tool_search` tool at all: deferred MCP tools can never be loaded, so the
+  // bootstrap must diagnose the absent discovery. This is distinct from the
+  // normal case above (`tool_search` registered, merely inactive) and from an
+  // empty/pending deferred catalog: absence is observed on getAllTools(), the
+  // discovery factory, never inferred from the getActiveTools() selection.
+  const { pi } = await runNativeBootstrap({
+    commands: [BUILTIN_MCP_COMMAND],
+    tools: [],
+    activeTools: [],
+    sandbox,
+  });
+
+  const notifications = pi.notifications();
+  const diagnostics = notifications.filter(({ message }) => /tool_search|tool-search/i.test(message));
+  assert.ok(
+    diagnostics.length >= 1,
+    `an absent builtin:tool-search discovery must be diagnosed explicitly: ${notifications.map(({ message }) => message).join(" | ") || "no notification at all"}`,
+  );
+  assert.ok(
+    diagnostics.some(({ message }) => /builtin/i.test(message)),
+    `the diagnostic must name the missing builtin discovery: ${diagnostics.map(({ message }) => message).join(" | ")}`,
+  );
+});
+
+test("native bootstrap diagnoses a trusted project override of the protected Engram server", async (t) => {
+  const sandbox = createNativeSandbox(t, { projectOverride: true });
+  const { entry } = readProjectEngram(sandbox);
+  assert.equal(entry.command, PROJECT_OVERRIDE_COMMAND, "the project fixture must define the override");
+  assert.ok(existsSync(entry.command), "the override must be a real executable, never a broken command");
+  assert.notEqual(entry.command, process.execPath, "the project fixture must really replace the protected Engram server");
+  const before = snapshotSandbox(sandbox);
+
+  const { pi, prompt } = await runNativeBootstrap({
+    commands: [BUILTIN_MCP_COMMAND],
+    tools: [BUILTIN_TOOL_SEARCH],
+    activeTools: [],
+    sandbox,
+    projectDir: sandbox.projectDir,
+    projectTrusted: true,
+  });
+
+  // Pi reads `<cwd>/.pi/mcp.json` for trusted projects and a project entry
+  // replaces the global one with the same name, so `engram` is no longer the
+  // server the native reader validated. The bootstrap cannot validate the
+  // project entry, so it must diagnose it instead of presenting a valid managed
+  // native configuration.
+  const notifications = pi.notifications();
+  const diagnostics = notifications.filter(({ message }) => /engram/i.test(message) && /project|override/i.test(message));
+  assert.ok(
+    diagnostics.length >= 1,
+    `a trusted project override of the protected Engram server must be diagnosed explicitly: ${notifications.map(({ message }) => message).join(" | ") || "no notification at all"}`,
+  );
+  // The managed ownership contract is still open: no guide is advertised.
+  assert.doesNotMatch(prompt, /jorgex:context7/, "no Context7 guide from project configuration");
+  assert.doesNotMatch(prompt, /jorgex:chrome-devtools/, "no DevTools guide from project configuration");
+  // Diagnosis only: no configuration, backup or trust state is written.
+  assert.deepEqual(snapshotSandbox(sandbox), before, "the native branch must not write configuration or trust state");
+});
+
+test("an untrusted project Engram override is ignored and the global native install stays healthy", async (t) => {
+  const sandbox = createNativeSandbox(t, { projectOverride: true });
+  const sink = {};
+  const { entry } = readProjectEngram(sandbox);
+  assert.equal(entry.command, PROJECT_OVERRIDE_COMMAND, "the project fixture must define the override");
+  assert.notEqual(entry.command, process.execPath, "the project fixture must really replace the protected Engram server");
+  const before = snapshotSandbox(sandbox);
+
+  const { pi } = await runNativeBootstrap({
+    commands: [BUILTIN_MCP_COMMAND],
+    tools: [BUILTIN_TOOL_SEARCH],
+    activeTools: [],
+    sandbox,
+    resolutionSink: sink,
+    projectDir: sandbox.projectDir,
+    projectTrusted: false,
+  });
+
+  // Pi never reads `<cwd>/.pi/mcp.json` for untrusted projects, so the global
+  // validated entry stays effective and the untrusted file is never claimed as
+  // an effective override: no diagnostic and no legacy error either.
+  assert.deepEqual(pi.notifications(), [], "an untrusted project override must neither be applied nor reported");
+  assert.equal(sink.resolution?.state, "managed", "the global native configuration stays effective");
+  assert.deepEqual(snapshotSandbox(sandbox), before, "the untrusted override must not be rewritten, normalized or backed up");
+});
+
+// --- Guide policy: an owned guide only when the checker reports
+// managed/configured plus an observed catalog. --------------------------------
 test("native bootstrap guides Context7 only from managed ownership plus observed catalog", async (t) => {
   await t.test("a managed/configured Context7 with an observed catalog exposes the owned guide", async (sub) => {
     const sandbox = createGuideSandbox(sub);
@@ -177,8 +428,8 @@ test("native bootstrap guides Context7 only from managed ownership plus observed
 
 // Chrome DevTools vertical: the same guide policy applied to the second native
 // server. The guard chain itself (handoff stamp plus trusted v3 resolution) is
-// already proven by tests/mcp-native-devtools-ownership-red; here only the
-// public prompt policy is exercised through the abstracted DTO.
+// proven by tests/mcp-native-authority; here only the public prompt policy is
+// exercised through the abstracted DTO.
 test("native bootstrap guides Chrome DevTools only from managed ownership plus observed catalog", async (t) => {
   await t.test("a managed/configured Chrome DevTools with an observed catalog exposes its guide", async (sub) => {
     const sandbox = createGuideSandbox(sub);
@@ -289,8 +540,7 @@ test("native bootstrap guides Chrome DevTools only from managed ownership plus o
 // Truthful-diagnostic helper: a guide that is actually present in the composed
 // prompt must never be labelled unavailable by the ownership notice. The check
 // stays wording-agnostic (no prose snapshot): it only rejects pairing a healthy
-// guide's name with an unavailability claim in the same sentence, so a message
-// that names only the affected server or stays generic both pass.
+// guide's name with an unavailability claim in the same sentence.
 function claimsGuideUnavailable(message, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`${escaped}[^.;!?]*unavailable|unavailable[^.;!?]*${escaped}`, "i").test(message);
@@ -301,9 +551,7 @@ function claimsGuideUnavailable(message, name) {
 // conflict` and managed-server conflicts through the existing channel with a
 // fixed diagnostic/remedy; guides suppressed by broken authority are
 // distinguished from a pending catalog or a legitimate unowned server, and the
-// notice never blocks the builtin or a foreign MCP. The inspector here is the
-// same test-only seam and RETURNS a DTO (never throws), which is exactly the
-// case the current refresh swallows.
+// notice never blocks the builtin or a foreign MCP.
 test("native bootstrap diagnoses a returned ownership conflict instead of swallowing it", async (t) => {
   await t.test("a returned package conflict produces one generic authority diagnostic and no guide", async (sub) => {
     const sandbox = createGuideSandbox(sub);

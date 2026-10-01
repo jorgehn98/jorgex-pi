@@ -1,22 +1,4 @@
-// Synthetic offline managed Pi release, built for the heavy ownership proof
-// tracer (Spec 71, "Proof offline y bind del checker").
-//
-// The release layout mirrors the authoritative Stack contract, consulted
-// read-only:
-// - `src/lib/pi-package-lifecycle.ts` release verification reads
-//   `<releaseDir>/package-lock.json` (raw sha256), requires a JSON `packages`
-//   object and, per receipt dependency, `packages["node_modules/<name>"]`
-//   with matching `version` and canonical `integrity`, then rehashes the whole
-//   release tree.
-// - `src/lib/pi-staged-lock.ts` fixes the npm lock shape: lockfileVersion 3,
-//   a `packages` root entry and `node_modules/<name>` entries with canonical
-//   sha512 SRI. No `resolved` URL is validated for the release, so none is
-//   invented here.
-// Only the minimum real code files are copied (the checker plus its import
-// closure and the one runtime dependency), never a whole SDK or cache. The tree
-// hash uses the Spec closure encoding (`kind` NUL `rel` NUL raw payload, ordinal
-// sort), deliberately NOT the browser-v2 encoding. Nothing is executed and no
-// signature, registry or published-release claim is made.
+// Synthetic offline managed release fixture; tree hash uses Spec closure encoding, never browser-v2.
 import { createHash } from "node:crypto";
 import {
   chmodSync,

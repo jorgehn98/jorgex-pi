@@ -1,22 +1,4 @@
-// T73 real-host project-trust fixture wrapper (test artifact, never production).
-//
-// It reuses the shared synthetic managed-release fixture READ-ONLY and only adds
-// two artifacts this tracer needs, inside the owned temporary tree the shared
-// fixture already tears down on success, failure and cancellation:
-//
-//   1. the host-trust probe extension INSIDE the release `extensions` directory.
-//      It is written before the release tree hash is taken and the shared
-//      fixture's own `rebindManagedRelease` then recomputes the raw lock/tree
-//      hashes, the release id and the active symlink, so the managed release
-//      stays self-consistent.
-//
-//   2. a project source `<cwd>/.pi/mcp.json` that overrides the protected
-//      `context7` server with a distinct, non-sensitive URL. It is inert while
-//      the project is untrusted and effective (and therefore unverifiable) once
-//      the real host trust resolves the project as trusted.
-//
-// Nothing is downloaded, executed, signed or authenticated here, and no shared
-// fixture is edited.
+// Host-trust fixture: reuses the managed-release sandbox; probe added before rebind, project override inert unless trusted.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

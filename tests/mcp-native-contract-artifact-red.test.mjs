@@ -1,26 +1,4 @@
-// T70/T73 tracer — public native MCP contract/capability of the real Pi package
-// (Spec 71, "Autoridad readonly de MCP persistente: contrato para ambos
-// consumidores").
-//
-// Published Stack selects a Pi candidate by the EXACT root contract, never by
-// semver: the artifact must truthfully declare the genuine `mcp-native-v1`
-// capability and the `mcpNative` binding, and ship the closed-shape
-// `contract/native-mcp.v1.json` whose readonly entrypoint/export declarations
-// resolve to real functions inside the package. Without those bytes the previous
-// Stack cannot fail closed before activating/projecting Pi, and the next Stack
-// cannot consume the readonly authority. The capability describes implemented
-// behavior; it is never a fabricated marker.
-//
-// Expected RED before implementation (T71): `contract/jorgex-pi.v1.json` has no
-// `mcpNative` binding and no `mcp-native-v1` capability, and
-// `contract/native-mcp.v1.json` is absent. Every module is imported only AFTER
-// the declaration that names it has been read and its file exists, so the RED is
-// always the missing contract data — never an import crash from a fixture.
-//
-// The artifact half (T73) runs a REAL `pnpm pack` in an owned on-disk temp dir
-// with the runner teardown registered before any IO; the source binding is
-// validated first, so this case can never pass from a fabricated tarball while
-// the feature is absent.
+// Native MCP contract: EXACT root binding plus `mcp-native-v1` as additive 23rd capability; real `pnpm pack` proves the artifact.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";

@@ -216,7 +216,7 @@ export async function runNativeGuideBootstrap({
 }
 
 // Public readonly DTO of the ownership checker (metadata only). The DevTools
-// guard chain itself is proven by tests/mcp-native-devtools-ownership-red; this
+// guard chain itself is proven by tests/mcp-native-authority; this
 // fixture only abstracts the metadata the guide policy consumes.
 export function ownershipDto({
   context7State = "managed",

@@ -1,20 +1,4 @@
-// Native MCP permission fixture (T70 test artifact, not production).
-//
-// Drives the REAL Pi SDK resource loader + runner with the REAL permission
-// extension against the generated Pi permission policy
-// (`assets/permissions/defaults.json`, materialized by the test at
-// `PI_CODING_AGENT_DIR/extensions/pi-permission-system/config.json`).
-//
-// The permission extension resolves its agent directory from
-// `getAgentDir()` (`PI_CODING_AGENT_DIR`), NOT from the loader's `agentDir`
-// argument, so the test MUST export `PI_CODING_AGENT_DIR` and `HOME` into this
-// process or the extension would read the real user policy.
-//
-// Reuses the established no-LLM seam from `load-permissions-with-pi.mjs`. The
-// provider entry is resolved from `JORGEX_PERMISSION_FIXTURE_PROVIDER`, else
-// the repo's `node_modules`; the SDK from `JORGEX_PI_SDK_ROOT`, else the
-// repo's `node_modules`. Both are the real, unmodified packages — no fake
-// provider and no invented capability.
+// Permission fixture: real SDK loader/runner plus real provider against the generated policy.
 import { pathToFileURL } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
