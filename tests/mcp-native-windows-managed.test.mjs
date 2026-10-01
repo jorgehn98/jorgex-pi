@@ -146,17 +146,24 @@ test(
   async (t) => {
     assertWindowsSymlinkCapability(t);
     const sandbox = createManagedReleaseSandbox(t);
-    mkdirSync(join(sandbox.releaseDir, "node_modules", "lib"), { recursive: true });
-    writeFileSync(join(sandbox.releaseDir, "node_modules", "lib", "entry.dat"), "fixture entry\n");
-    mkdirSync(join(sandbox.releaseDir, "node_modules", ".bin"), { recursive: true });
-    const link = join(sandbox.releaseDir, "node_modules", ".bin", "entry");
-    symlinkSync("../lib/entry.dat", link);
+    // Build inside the current release dir and keep only RELATIVE locations:
+    // `rebindManagedRelease` renames the release to its new id, so an absolute
+    // path captured before the rename would be stale.
+    const libDirRel = join("node_modules", "lib");
+    const binDirRel = join("node_modules", ".bin");
+    const linkRel = join(binDirRel, "entry");
+    mkdirSync(join(sandbox.releaseDir, libDirRel), { recursive: true });
+    writeFileSync(join(sandbox.releaseDir, libDirRel, "entry.dat"), "fixture entry\n");
+    mkdirSync(join(sandbox.releaseDir, binDirRel), { recursive: true });
+    symlinkSync("../lib/entry.dat", join(sandbox.releaseDir, linkRel));
     rebindManagedRelease(sandbox);
 
+    // Re-derive every absolute path from the rebound release dir.
+    const link = join(sandbox.releaseDir, linkRel);
     assert.equal(readlinkSync(link), "../lib/entry.dat", "the plain link keeps its forward-slash relative target");
     assert.equal(lstatSync(link).isSymbolicLink(), true, "the case needs a real contained symlink");
     assert.equal(
-      lstatSync(join(sandbox.releaseDir, "node_modules", "lib", "entry.dat")).isFile(),
+      lstatSync(join(sandbox.releaseDir, libDirRel, "entry.dat")).isFile(),
       true,
       "the link target must be a regular file",
     );
@@ -197,28 +204,42 @@ test(
     assertWindowsSymlinkCapability(t);
     const sandbox = createManagedReleaseSandbox(t);
 
-    const payload = join(sandbox.packageRoot, "extensions", "payload");
-    mkdirSync(payload, { recursive: true });
-    writeFileSync(join(payload, "entry.dat"), "fixture payload\n");
-    symlinkSync("jorgex-pi/extensions/payload", join(sandbox.releaseDir, "node_modules", "lib-link"));
-    const linkParent = join(sandbox.releaseDir, "node_modules", ".bin");
-    mkdirSync(linkParent, { recursive: true });
-    const rawTarget = relative(linkParent, join(sandbox.releaseDir, "node_modules", "lib-link", "entry.dat"));
-    const link = join(linkParent, "through-link");
-    symlinkSync(rawTarget, link);
+    // Build inside the current release dir and keep only RELATIVE locations:
+    // `rebindManagedRelease` renames the release to its new id, so an absolute
+    // path captured before the rename would be stale.
+    const packageRootRel = relative(sandbox.releaseDir, sandbox.packageRoot);
+    const payloadRel = join(packageRootRel, "extensions", "payload");
+    const libLinkRel = join("node_modules", "lib-link");
+    const binDirRel = join("node_modules", ".bin");
+    const linkRel = join(binDirRel, "through-link");
+    mkdirSync(join(sandbox.releaseDir, payloadRel), { recursive: true });
+    writeFileSync(join(sandbox.releaseDir, payloadRel, "entry.dat"), "fixture payload\n");
+    symlinkSync("jorgex-pi/extensions/payload", join(sandbox.releaseDir, libLinkRel));
+    mkdirSync(join(sandbox.releaseDir, binDirRel), { recursive: true });
+    // The raw target is exactly the platform's own `path.relative` output, so on
+    // Windows it carries backslash separators. Its relative geometry survives the
+    // release rename, so it stays valid after the rebind.
+    const rawTarget = relative(
+      join(sandbox.releaseDir, binDirRel),
+      join(sandbox.releaseDir, libLinkRel, "entry.dat"),
+    );
+    symlinkSync(rawTarget, join(sandbox.releaseDir, linkRel));
     rebindManagedRelease(sandbox);
 
+    // Re-derive every absolute path from the rebound release dir.
+    const link = join(sandbox.releaseDir, linkRel);
+    const libLink = join(sandbox.releaseDir, libLinkRel);
     assert.equal(rawTarget.includes("\\"), true, `the Windows raw target must use backslash separators: ${rawTarget}`);
     assert.equal(rawTarget.includes("/"), false, `the Windows raw target must not use forward slashes: ${rawTarget}`);
     assert.equal(readlinkSync(link), rawTarget, "the raw backslash target must be preserved verbatim");
     assert.equal(lstatSync(link).isSymbolicLink(), true, "the case needs a symlink that walks through another symlink");
     assert.equal(
-      lstatSync(join(sandbox.releaseDir, "node_modules", "lib-link")).isSymbolicLink(),
+      lstatSync(libLink).isSymbolicLink(),
       true,
       "the intermediate component must be a directory symlink",
     );
     assert.equal(
-      lstatSync(join(sandbox.releaseDir, "node_modules", "lib-link", "entry.dat")).isFile(),
+      lstatSync(join(libLink, "entry.dat")).isFile(),
       true,
       "the final component under the chained walk must be a regular file",
     );
