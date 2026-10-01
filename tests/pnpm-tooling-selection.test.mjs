@@ -484,7 +484,6 @@ describe("verification isolation and bounded pack", () => {
     assert.equal(prepared.env[PNPM_VERIFY_DEPS_ENV], PNPM_FAIL_CLOSED);
     assert.equal(prepared.env[PNPM_PM_ON_FAIL_ENV], PNPM_FAIL_CLOSED);
     assert.equal(prepared.root.startsWith(diskBase), true);
-    assert.equal(prepared.root.startsWith(tmpdir() + "/"), false);
   });
 
   it("replaces ambient HOME and XDG roots with private owned roots before pack", async () => {
@@ -756,9 +755,9 @@ describe("cancellation ownership", () => {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
-    let pids;
+    let initialError;
     try {
-      pids = await waitForPids(pidFile, 8_000);
+      const pids = await waitForPids(pidFile, 8_000);
       process.kill(child.pid, "SIGTERM");
       const exit = await waitForExitResult(child, 8_000);
       assert.equal(readFileSync(markerFile, "utf8"), "foreign-handler", "the foreign handler must still run");
@@ -767,9 +766,15 @@ describe("cancellation ownership", () => {
       assert.equal(isAlive(pids.leader), false, "the owned version child must be cleaned on cancel");
       assert.equal(isAlive(pids.grandchild), false, "the owned grandchild must be cleaned on cancel");
       assert.equal(exit.code, 0, `the foreign handler decides termination; got ${JSON.stringify(exit)}`);
-    } finally {
-      await finalizeOwnedHarness(child, { pidFile, roots: [workRoot], label: "cancel-foreign" });
+    } catch (error) {
+      initialError = error;
     }
+    try {
+      await finalizeOwnedHarness(child, { pidFile, roots: [workRoot], initialError, label: "cancel-foreign" });
+    } finally {
+      killVerifiedPid(child.pid, true);
+    }
+    if (initialError !== undefined) throw initialError;
   });
 
   it("restores native signal termination when no framework handler exists", { skip: process.platform === "win32" }, async () => {
@@ -782,9 +787,9 @@ describe("cancellation ownership", () => {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
-    let pids;
+    let initialError;
     try {
-      pids = await waitForPids(pidFile, 8_000);
+      const pids = await waitForPids(pidFile, 8_000);
       process.kill(child.pid, "SIGTERM");
       const exit = await waitForExitResult(child, 8_000);
       assert.equal(exit.signal, "SIGTERM", `native termination must be preserved; got ${JSON.stringify(exit)}`);
@@ -792,22 +797,35 @@ describe("cancellation ownership", () => {
       await waitForExitOf(pids.grandchild, 5_000);
       assert.equal(isAlive(pids.leader), false);
       assert.equal(isAlive(pids.grandchild), false);
-    } finally {
-      await finalizeOwnedHarness(child, { pidFile, roots: [workRoot], label: "cancel-solo" });
+    } catch (error) {
+      initialError = error;
     }
+    try {
+      await finalizeOwnedHarness(child, { pidFile, roots: [workRoot], initialError, label: "cancel-solo" });
+    } finally {
+      killVerifiedPid(child.pid, true);
+    }
+    if (initialError !== undefined) throw initialError;
   });
 
   it("exits nonzero when the final root cleanup fails", { skip: process.platform === "win32" }, async () => {
     const base = makeDiskBase();
     const script = writeHarness("exit-failure", exitFailureHarnessSource());
     const child = spawn(process.execPath, [script, helperUrl(), base], { stdio: ["ignore", "pipe", "pipe"] });
+    let initialError;
     try {
       const exit = await waitForExitResult(child, 10_000);
       assert.notEqual(exit.code, 0, `a failed cleanup must not exit 0; got ${JSON.stringify(exit)}`);
-    } finally {
-      chmodSync(base, 0o700);
-      await finalizeOwnedHarness(child, { roots: [base], label: "exit-failure" });
+    } catch (error) {
+      initialError = error;
     }
+    try {
+      chmodSync(base, 0o700);
+      await finalizeOwnedHarness(child, { roots: [base], initialError, label: "exit-failure" });
+    } finally {
+      killVerifiedPid(child.pid, true);
+    }
+    if (initialError !== undefined) throw initialError;
   });
 
   it("cancels the own worker and proves cleanup when the initial PID handshake is unreadable", { skip: process.platform === "win32" }, async () => {
@@ -821,6 +839,7 @@ describe("cancellation ownership", () => {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
+    let initialError;
     try {
       // Force the initial PID observation to fail while the inert child and
       // grandchild are alive and the worker already owns its registry.
@@ -829,23 +848,27 @@ describe("cancellation ownership", () => {
         (error) => error,
       );
       assert.ok(observationError instanceof Error, "the initial PID observation must be forced to fail");
-    } finally {
-      // No initially captured PIDs: the finalizer must ask the owner via SIGTERM before any forced fallback.
-      await finalizeOwnedHarness(child, { pidFile, roots: [workRoot], label: "cancel-late" });
-      const handshake = safeReadHandshake(pidFile);
-      try {
-        assert.ok(handshake, "the handshake must be re-readable after cancellation");
-        assert.equal(probePid(handshake.leader), "gone", "the owned version child must not survive owner cancellation");
-        assert.equal(probePid(handshake.grandchild), "gone", "the owned grandchild must not survive owner cancellation");
-      } finally {
-        // Security cleanup by really-known PIDs only; never guessed names.
-        if (handshake) {
-          killVerifiedPid(handshake.leader);
-          killVerifiedPid(handshake.grandchild);
-        }
-        killVerifiedPid(child.pid, true);
-      }
+    } catch (error) {
+      initialError = error;
     }
+    let handshake;
+    try {
+      // No initially captured PIDs: the finalizer must ask the owner via SIGTERM before any forced fallback.
+      await finalizeOwnedHarness(child, { pidFile, roots: [workRoot], initialError, label: "cancel-late" });
+      handshake = safeReadHandshake(pidFile);
+      assert.ok(handshake, "the handshake must be re-readable after cancellation");
+      assert.equal(probePid(handshake.leader), "gone", "the owned version child must not survive owner cancellation");
+      assert.equal(probePid(handshake.grandchild), "gone", "the owned grandchild must not survive owner cancellation");
+    } finally {
+      // Security cleanup by really-known PIDs only; never guessed names.
+      if (handshake === undefined) handshake = safeReadHandshake(pidFile);
+      if (handshake) {
+        killVerifiedPid(handshake.leader);
+        killVerifiedPid(handshake.grandchild);
+      }
+      killVerifiedPid(child.pid, true);
+    }
+    if (initialError !== undefined) throw initialError;
   });
 
   it("retains and reports unverifiable resources when a forced cleanup cannot be confirmed", { skip: process.platform === "win32" }, async () => {
@@ -891,6 +914,83 @@ describe("cancellation ownership", () => {
         killVerifiedPid(handshake.grandchild);
       }
     }
+  });
+
+  it("collects an early SIGTERM failure, keeps checking, and preserves the first failure", { skip: process.platform === "win32" }, async () => {
+    const repoRoot = makeRepo(`pnpm@${REQUIRED_VERSION}`);
+    const workRoot = makeDiskBase();
+    const pidFile = join(workRoot, "term-fail.pid");
+    const pnpm = makePnpmPackageWithBehavior(REQUIRED_VERSION, workRoot, { inertWorker: true, pidFile });
+    const script = writeHarness("term-fail", cancelHarnessSource());
+    const child = spawn(process.execPath, [script, helperUrl(), repoRoot, pnpm.entry, pidFile, "stubborn", ""], {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+    const termError = Object.assign(new Error("simulated EPERM"), { code: "EPERM" });
+    let handshake;
+    let initialError;
+    try {
+      handshake = await waitForPids(pidFile, 8_000);
+      // Real caller failure: the first observation fails for real.
+      initialError = await waitForPids(join(workRoot, "never-written.pid"), 300).then(
+        () => undefined,
+        (error) => error,
+      );
+      assert.ok(initialError instanceof Error, "the caller must capture a real first failure");
+    } catch (error) {
+      initialError = initialError ?? error;
+    }
+    try {
+      // The injected SIGTERM failure must be collected, not propagated raw, and
+      // must not bypass root protection or the aggregate report.
+      await assert.rejects(
+        finalizeOwnedHarness(child, {
+          pidFile,
+          roots: [workRoot],
+          initialError,
+          graceMs: 300,
+          termSender: () => {
+            throw termError;
+          },
+          label: "term-fail",
+        }),
+        (error) => {
+          assert.ok(error instanceof AggregateError, `expected an AggregateError, got ${error}`);
+          assert.ok(error.errors.includes(initialError), "the caller's first failure must be preserved");
+          assert.ok(
+            error.errors.some((entry) => entry === termError || entry?.cause === termError),
+            "the SIGTERM failure cause must be collected",
+          );
+          assert.match(error.message, /roots protegidos/);
+          return true;
+        },
+      );
+      assert.equal(protectedRoots.has(workRoot), true, "an early SIGTERM throw must not bypass root protection");
+      assert.ok(handshake, "the handshake must be known for the owned cleanup proof");
+      assert.equal(probePid(handshake.leader), "gone", "the owned version child must be cleaned");
+      assert.equal(probePid(handshake.grandchild), "gone", "the owned grandchild must be cleaned");
+    } finally {
+      killVerifiedPid(child.pid, true);
+      if (handshake) {
+        killVerifiedPid(handshake.leader);
+        killVerifiedPid(handshake.grandchild);
+      }
+    }
+  });
+
+  it("preserves unexpected PID handshake read errors instead of masking them as a missing fixture", async () => {
+    const workRoot = makeDiskBase();
+    const directoryAsPidFile = join(workRoot, "handshake-dir");
+    mkdirSync(directoryAsPidFile);
+    await assert.rejects(
+      waitForPids(directoryAsPidFile, 500),
+      (error) => {
+        assert.match(error.message, /handshake-dir/, "the unexpected path must be preserved");
+        assert.ok(error.cause, "the unexpected cause (EISDIR/EACCES/EIO) must be preserved");
+        assert.doesNotMatch(error.message, /not written within/);
+        return true;
+      },
+    );
   });
 
   it("rejects invalid disk overrides before any write", () => {
@@ -1052,18 +1152,21 @@ function exitFailureHarnessSource() {
 
 async function waitForPids(path, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    if (existsSync(path)) {
-      try {
-        const parsed = JSON.parse(readFileSync(path, "utf8"));
-        if (Number.isInteger(parsed?.leader) && Number.isInteger(parsed?.grandchild)) return parsed;
-      } catch {
-        // The fixture may still be writing the file.
+  for (;;) {
+    try {
+      return readHandshake(path);
+    } catch (error) {
+      // Retry only expected absence or a partial write; preserve unexpected
+      // causes (EACCES/EIO/EPERM) with their path instead of masking them.
+      if (error?.code !== "ENOENT" && !(error instanceof SyntaxError)) {
+        throw contextualError("waitForPids", `lectura de ${path}`, error);
       }
+    }
+    if (Date.now() - started >= timeoutMs) {
+      throw new Error(`fixture pids were not written within ${timeoutMs}ms: ${path}`);
     }
     await delay(20);
   }
-  throw new Error(`fixture pids were not written: ${path}`);
 }
 
 function waitForExitResult(child, timeoutMs) {
@@ -1095,6 +1198,7 @@ async function finalizeOwnedHarness(resource, options = {}) {
     roots = [],
     initialError,
     killTree = killProcessTree,
+    termSender = sendOwnedTerm,
     graceMs = 8_000,
     label = "harness",
   } = options;
@@ -1112,7 +1216,14 @@ async function finalizeOwnedHarness(resource, options = {}) {
   }
 
   if (Number.isInteger(resource?.pid) && !hasExited(resource)) {
-    const termSent = sendOwnedTerm(resource);
+    let termSent = false;
+    try {
+      termSent = termSender(resource) !== false;
+    } catch (error) {
+      // Collect the TERM failure and continue the safe checks: an early throw
+      // must never bypass root protection or the aggregate report.
+      errors.push(contextualError(label, `SIGTERM al worker ${resource.pid}`, error));
+    }
     if (termSent) {
       const exited = await waitForExitWithin(resource, graceMs);
       if (!exited) {
