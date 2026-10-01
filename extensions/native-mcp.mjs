@@ -380,8 +380,14 @@ function packageSourceValue(entry) {
   return undefined;
 }
 
+// The own registration is the exact unscoped package source: `npm:jorgex-pi`
+// alone or `npm:jorgex-pi@...`. A foreign package whose name merely contains the
+// substring (e.g. `npm:my-jorgex-pi-helper`) or another scoped package is never
+// an own registration, so its presence cannot claim the user's local files nor
+// fabricate a duplicate own identity. A bare `npm:jorgex-pi` still counts as own
+// and is then disallowed by the exact managed source/version validation below.
 function isJorgeXPiSource(source) {
-  return typeof source === "string" && source.includes(PACKAGE_NAME);
+  return typeof source === "string" && /^npm:jorgex-pi(?:@|$)/.test(source);
 }
 
 function assertManagedSettings(settings, version) {
@@ -472,22 +478,7 @@ function readContainedLinkTarget(linkPath, allowedRoot, paths) {
   for (let index = 0; index < parts.length; index += 1) {
     const part = parts[index];
     const isLast = index === parts.length - 1;
-    if (part === "..") {
-      current = paths.dirname(current);
-      if (current !== allowedRoot && !isStrictChild(current)) {
-        throw new Error("Native MCP release symlink escapes its tree");
-      }
-      const stat = lstatOrUndefined(current);
-      if (stat === undefined) throw new Error("Native MCP release symlink is broken");
-      if (stat.isSymbolicLink()) throw new Error("Native MCP release symlink chain");
-      if (isLast) {
-        if (!stat.isDirectory()) throw new Error("Native MCP release symlink must point to a file or directory");
-      } else if (!stat.isDirectory()) {
-        throw new Error("Native MCP release symlink walks through a non-directory");
-      }
-      continue;
-    }
-    const next = paths.join(current, part);
+    const next = part === ".." ? paths.dirname(current) : paths.join(current, part);
     if (next !== allowedRoot && !isStrictChild(next)) {
       throw new Error("Native MCP release symlink escapes its tree");
     }
@@ -495,13 +486,14 @@ function readContainedLinkTarget(linkPath, allowedRoot, paths) {
     if (stat === undefined) throw new Error("Native MCP release symlink is broken");
     if (stat.isSymbolicLink()) throw new Error("Native MCP release symlink chain");
     if (isLast) {
-      if (!stat.isFile() && !stat.isDirectory()) {
-        throw new Error("Native MCP release symlink must point to a file or directory");
-      }
-    } else {
-      if (!stat.isDirectory()) throw new Error("Native MCP release symlink walks through a non-directory");
-      current = next;
+      // A final `..` must resolve to a directory; a final ordinary part may be a
+      // file or a directory.
+      const acceptable = part === ".." ? stat.isDirectory() : stat.isFile() || stat.isDirectory();
+      if (!acceptable) throw new Error("Native MCP release symlink must point to a file or directory");
+    } else if (!stat.isDirectory()) {
+      throw new Error("Native MCP release symlink walks through a non-directory");
     }
+    current = next;
   }
   return target;
 }

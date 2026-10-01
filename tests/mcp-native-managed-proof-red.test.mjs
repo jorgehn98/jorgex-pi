@@ -334,6 +334,40 @@ test("managed settings coexist with preserved packages and reject a duplicated o
     assert.deepEqual(snapshotTree(sandbox.root), before, "the readonly checker must not write any file");
   });
 
+  await t.test("foreign packages whose names merely contain jorgex-pi stay preserved and verified", async (sub) => {
+    const sandbox = createManagedReleaseSandbox(sub);
+    const settingsPath = join(sandbox.agentDir, "settings.json");
+    const settings = readJson(settingsPath);
+    // The own registration is the exact `npm:jorgex-pi` source, so a foreign
+    // package whose NAME merely contains `jorgex-pi` is not an own entry. Both
+    // additions are declaration-only fixture data: nothing is installed, no
+    // receipt is fabricated, and settings live outside the release root, so the
+    // lock and the tree hash stay coherent and no rebind is needed.
+    settings.packages = [
+      ...settings.packages,
+      { source: "npm:my-jorgex-pi-helper@1.2.3", skills: [], prompts: [] },
+      { source: "npm:jorgex-pi-extra@2.0.0", skills: [], prompts: [] },
+    ];
+    writeJson(settingsPath, settings);
+    const before = snapshotTree(sandbox.root);
+
+    const mcpModule = await import(pathToFileURL(sandbox.entryModulePath).href);
+    const result = await inspect(mcpModule, sandbox);
+
+    assert.equal(
+      result.package?.state,
+      "verified",
+      `a foreign name containing jorgex-pi is not an own registration: ${result.package?.reason ?? "no diagnostic"}`,
+    );
+    assert.equal(
+      result.servers?.context7?.state,
+      "managed",
+      `a foreign substring must not disturb the protected claim: ${result.servers?.context7?.reason ?? "no diagnostic"}`,
+    );
+    assert.equal(result.connection, "not-verified", "the checker never claims a live connection");
+    assert.deepEqual(snapshotTree(sandbox.root), before, "the readonly checker must not write any file");
+  });
+
   await t.test("a duplicated own registration can never be verified", async (sub) => {
     const sandbox = createManagedReleaseSandbox(sub);
     const settingsPath = join(sandbox.agentDir, "settings.json");
