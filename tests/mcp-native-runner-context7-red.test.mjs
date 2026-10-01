@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import { createManagedReleaseSandbox, snapshotTree } from "./fixtures/native-managed-release.mjs";
 import {
   context7Scan,
+  dropGlobalContext7,
   installRunnerClosure,
   officialPackagesPolicy,
   protectedDigests,
@@ -25,10 +26,14 @@ import {
   readProjection,
   readSettings,
   runRunnerCommand,
+  settingsDigest,
+  syncLifecycleArtifacts,
   writeGlobalMcpConfig,
+  writeGlobalMcpConfigText,
   writeGlobalSettings,
   writeProjectMcpConfig,
   writeProjection,
+  writeProjectionText,
 } from "./fixtures/native-runner-ownership.mjs";
 
 async function inspectOwnership(sandbox) {
@@ -60,6 +65,39 @@ function readPayload(run, command) {
   assert.equal(payload.command, command, `the response describes the executed ${command} command, never unknown/INTERNAL`);
   assert.notEqual(payload.error?.code, "INTERNAL", "an expected local diagnostic is never reported as an internal runner failure");
   return payload;
+}
+
+// Spec 71 review remediation: the runner must convey the internal
+// `{ permitted, blocked? }` diagnostic, so a blocked native inspection can never
+// collapse into a boolean and let the legacy scan report `available`. Every
+// consumer is asserted: doctor must not be ok, status must carry the fixed
+// diagnostic, and sync must reject before touching the lifecycle.
+async function assertBlockedNativeDiagnostic(sandbox, { state, code }) {
+  const protectedBefore = protectedDigests(sandbox);
+  const settingsBefore = settingsDigest(sandbox);
+
+  const doctor = readPayload(runRunnerCommand(sandbox, ["doctor", "--json"], { engramBin: true }), "doctor");
+  assert.notEqual(
+    context7Check(doctor).status,
+    "ok",
+    `doctor must not report a blocked native Context7 as ok: ${JSON.stringify(context7Check(doctor))}`,
+  );
+
+  const status = readPayload(runRunnerCommand(sandbox, ["status", "--json"], { engramBin: true }), "status");
+  assert.equal(
+    status.result?.context7?.state,
+    state,
+    `status must consume the native diagnostic: ${JSON.stringify(status.result?.context7)}`,
+  );
+  assert.equal(status.result?.context7?.source, "pi-native", "the blocked diagnostic keeps its fixed source");
+  assert.equal(status.result?.context7?.code, code, "the blocked diagnostic keeps its fixed code");
+
+  const sync = readPayload(runRunnerCommand(sandbox, ["sync", "--json"], { engramBin: true }), "sync");
+  assert.equal(sync.ok, false, "sync must reject a blocked native Context7 before the lifecycle");
+  assert.equal(sync.error?.code, "CONTEXT7_CONFIG_BLOCKED", `sync rejects with the existing lifecycle code: ${JSON.stringify(sync.error?.code)}`);
+  assert.equal(settingsDigest(sandbox), settingsBefore, "a rejected sync must not initialize settings");
+  assert.equal(syncLifecycleArtifacts(sandbox), 0, "a rejected sync must not create permission or experience state");
+  assert.deepEqual(protectedDigests(sandbox), protectedBefore, "no command may rewrite the protected receipts or the global MCP authority");
 }
 
 async function assertCertifiedPackage(sandbox) {
@@ -303,6 +341,89 @@ test("runner local diagnostic follows the official-package policy for a native C
     const status = readPayload(runRunnerCommand(sandbox, ["status", "--json"], { engramBin: true }), "status");
     assert.equal(status.ok, true, "status agrees with doctor after sync");
     assert.equal(status.result?.context7?.state, "available");
+  });
+
+  await t.test("a dangling native Context7 claim blocks doctor, status and sync", async (sub) => {
+    const sandbox = createManagedReleaseSandbox(sub);
+    installRunnerClosure(sandbox);
+    writeGlobalSettings(sandbox, { gentle: true });
+    // The projection still claims the entry; the global file no longer has it.
+    dropGlobalContext7(sandbox);
+
+    const official = await officialPackagesPolicy(sandbox);
+    assert.equal(official.state, "ready");
+    assert.equal(official.transport, "native");
+    const premise = await inspectOwnership(sandbox);
+    assert.equal(premise.package?.state, "verified", "the installation proof is still verified");
+    assert.equal(premise.servers?.context7?.state, "conflict", "a claimed entry missing from the global file is a conflict");
+    assert.equal(premise.servers?.context7?.availability, "unavailable");
+
+    await assertBlockedNativeDiagnostic(sandbox, { state: "conflict", code: "native-context7-conflict" });
+  });
+
+  await t.test("a JSONC native configuration without Context7 blocks instead of falling back", async (sub) => {
+    const sandbox = createManagedReleaseSandbox(sub);
+    installRunnerClosure(sandbox);
+    writeGlobalSettings(sandbox, { gentle: true });
+    // Strict native JSONC (trailing comma) holding only the Engram entry: the
+    // checker rejects it, so the legacy scanner must not accept it either.
+    const config = readGlobalMcpConfig(sandbox);
+    const { context7, ...servers } = config.mcpServers ?? {};
+    writeGlobalMcpConfigText(sandbox, `${JSON.stringify({ ...config, mcpServers: servers }, null, 2).replace(/\n}$/, ",\n}")}\n`);
+
+    const official = await officialPackagesPolicy(sandbox);
+    assert.equal(official.state, "ready");
+    assert.equal(official.transport, "native");
+    await assert.rejects(
+      () => inspectOwnership(sandbox),
+      /configuration/i,
+      "the strict readonly reader rejects the JSONC native file",
+    );
+
+    await assertBlockedNativeDiagnostic(sandbox, { state: "invalid", code: "native-inspection-failed" });
+  });
+
+  await t.test("a malformed native authority blocks instead of falling back", async (sub) => {
+    const sandbox = createManagedReleaseSandbox(sub);
+    installRunnerClosure(sandbox);
+    writeGlobalSettings(sandbox, { gentle: true });
+    dropGlobalContext7(sandbox);
+    writeProjectionText(sandbox, "{ \"schemaVersion\": 1, \"mcpNative\": ");
+
+    const official = await officialPackagesPolicy(sandbox);
+    assert.equal(official.state, "ready");
+    assert.equal(official.transport, "native");
+    await assert.rejects(
+      () => inspectOwnership(sandbox),
+      /authority/i,
+      "the readonly checker rejects the malformed projection authority",
+    );
+
+    await assertBlockedNativeDiagnostic(sandbox, { state: "invalid", code: "native-inspection-failed" });
+  });
+
+  await t.test("a legitimate absence without a claim stays an available local diagnostic", async (sub) => {
+    const sandbox = createManagedReleaseSandbox(sub);
+    installRunnerClosure(sandbox);
+    writeGlobalSettings(sandbox, { gentle: true });
+    dropGlobalContext7(sandbox);
+    // No claim either: the direct channel keeps the previous eligibility and the
+    // fix must not over-block a legitimate absence.
+    const projection = readProjection(sandbox);
+    delete projection.mcpNative;
+    writeProjection(sandbox, projection);
+
+    const official = await officialPackagesPolicy(sandbox);
+    assert.equal(official.state, "ready");
+    assert.equal(official.transport, "native");
+    const premise = await inspectOwnership(sandbox);
+    assert.notEqual(premise.package?.state, "invalid", "the installation proof stays coherent");
+    assert.notEqual(premise.servers?.context7?.state, "conflict", "absence without a claim is not a conflict");
+
+    const before = snapshotTree(sandbox.root);
+    const doctor = readPayload(runRunnerCommand(sandbox, ["doctor", "--json"], { engramBin: true }), "doctor");
+    assert.equal(context7Check(doctor).status, "ok", "absence without a claim stays an available local diagnostic");
+    assert.deepEqual(snapshotTree(sandbox.root), before, "doctor must not write configuration, receipts or trust state");
   });
 
   await t.test("an unowned global Context7 entry stays blocked in a valid native setup", async (sub) => {

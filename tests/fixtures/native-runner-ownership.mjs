@@ -8,7 +8,7 @@
 // runtime), then rebinds the synthetic release so the package proof still covers
 // the enlarged tree. Nothing is fetched, no SDK is copied and no ownership is
 // injected: only real bytes already in this repository.
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -80,6 +80,46 @@ export function protectedDigests(sandbox) {
     join(sandbox.agentDir, "mcp.json"),
     sandbox.projectionPath,
   ].map((file) => sha256Hex(readFileSync(file)));
+}
+
+// Digest of the settings file, used to prove a rejected sync performs no
+// lifecycle initialization.
+export function settingsDigest(sandbox) {
+  return sha256Hex(readFileSync(join(sandbox.agentDir, "settings.json")));
+}
+
+// How many lifecycle artifacts a successful sync would create. A rejected sync
+// must leave this at zero.
+export function syncLifecycleArtifacts(sandbox) {
+  return [
+    join(sandbox.agentDir, "jorgex-pi", "sol-lifecycle.v1.json"),
+    join(sandbox.agentDir, "jorgex-pi", "experience-lifecycle.v1.json"),
+    join(sandbox.agentDir, "jorgex-pi", "permissions-lifecycle.v1.json"),
+    join(sandbox.agentDir, "extensions", "pi-permission-system", "config.json"),
+    join(sandbox.agentDir, "models.json"),
+  ].filter((file) => existsSync(file)).length;
+}
+
+// Raw writers for the boundary samples: JSONC/trailing-comma content and a
+// corrupted authority are the inputs under test, never a fixture default.
+export function writeGlobalMcpConfigText(sandbox, text) {
+  const configPath = join(sandbox.agentDir, "mcp.json");
+  writeFileSync(configPath, text);
+  return configPath;
+}
+
+export function writeProjectionText(sandbox, text) {
+  writeFileSync(sandbox.projectionPath, text);
+  return sandbox.projectionPath;
+}
+
+// Drops the global Context7 entry while the granular claim stays in place: the
+// claim is then dangling.
+export function dropGlobalContext7(sandbox) {
+  const config = readGlobalMcpConfig(sandbox);
+  const { context7, ...servers } = config.mcpServers ?? {};
+  writeGlobalMcpConfig(sandbox, { ...config, mcpServers: servers });
+  return context7;
 }
 
 export function readProjection(sandbox) {
