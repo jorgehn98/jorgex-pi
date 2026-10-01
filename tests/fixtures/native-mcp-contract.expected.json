@@ -1,0 +1,52 @@
+{
+  "rootContractPath": "contract/jorgex-pi.v1.json",
+  "rootBinding": {
+    "schemaVersion": 1,
+    "contractPath": "contract/native-mcp.v1.json"
+  },
+  "capability": "mcp-native-v1",
+  "capabilities": [
+    "foundation-contract-v1",
+    "stack-snapshot-v2",
+    "modular-system-prompts-v1",
+    "runtime-agents-v1",
+    "permission-gated-tools-v1",
+    "structured-questions-v1",
+    "web-access-v1",
+    "goal-continuation-v1",
+    "engram-official-bridge-v1",
+    "engram-runtime-tools-v1",
+    "context7-http-v1",
+    "permissions-policy-v1",
+    "permissions-upgrade-v1",
+    "experience-defaults-v1",
+    "chrome-devtools-handoff-v1",
+    "playwright-handoff-v1",
+    "runner-json-v1",
+    "tui-branding-v1",
+    "managed-primary-model-v1",
+    "quality-receipt-contract-v1",
+    "quality-capabilities-contract-v1",
+    "initialization-diagnostics-v1",
+    "mcp-native-v1"
+  ],
+  "contract": {
+    "schemaVersion": 1,
+    "capability": "mcp-native-v1",
+    "transport": "native",
+    "configurationPath": "PI_CODING_AGENT_DIR/mcp.json",
+    "packageReceiptPath": "HOME/.jorgex-stack/pi-receipt.json",
+    "projectionReceiptPath": "HOME/.jorgex-stack/pi-projection-receipt.json",
+    "authorityField": "mcpNative",
+    "servers": ["engram", "context7", "chrome-devtools"],
+    "definitions": {
+      "entrypoint": "extensions/mcp-engram.mjs",
+      "digestExport": "digestNativeMcpDefinition",
+      "devtoolsExport": "resolveNativeDevtoolsDefinition"
+    },
+    "ownership": {
+      "entrypoint": "extensions/native-mcp.mjs",
+      "export": "inspectNativeMcpOwnership"
+    }
+  }
+}

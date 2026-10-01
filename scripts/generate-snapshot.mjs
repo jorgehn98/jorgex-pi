@@ -123,6 +123,10 @@ function generatePermissionsProjection() {
     ls: "allow",
     bash: structuredClone(opencode.bash),
     mcp: "allow",
+    // Native Pi MCP tools are named `mcp__<server>__<tool>`; the wildcard
+    // surface keeps the canon's "any MCP allowed" default without a managed
+    // server allowlist. It is not origin authentication.
+    "mcp__*": "allow",
     skill: "allow",
     external_directory: "allow",
     git_read: "allow",

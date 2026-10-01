@@ -71,10 +71,11 @@ export function resolvePiAgentDir({ env = process.env, cwd = process.cwd(), plat
   return paths.resolve(cwd, configured);
 }
 
-// Shared official package-pair gate: exactly one global gentle-engram@semver
-// and one global pi-mcp-adapter own the channel. Exposed separately so the
-// bridge can block managed on package ownership even when an independent
-// Context7 MCP conflict would otherwise hide the missing gate.
+// Shared official package gate: a native activation declares one global
+// gentle-engram@semver and no pi-mcp-adapter; a declared adapter keeps the
+// legacy gentle+adapter pair. Exposed separately so the bridge can block
+// managed on package ownership even when an independent Context7 MCP conflict
+// would otherwise hide the missing gate.
 export function inspectOfficialPackages({ env = process.env, cwd = process.cwd(), platform = process.platform } = {}) {
   const paths = platform === "win32" ? win32 : posix;
   const home = (platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? homedir();
@@ -95,10 +96,11 @@ export function inspectOfficialPackages({ env = process.env, cwd = process.cwd()
   let agentDir;
   try { agentDir = resolvePiAgentDir({ env, cwd, platform, configDir }); }
   catch { return invalid("pi-global", "invalid-path"); }
-  // Total official package gate: exactly one valid global gentle-engram@semver
-  // and one valid global pi-mcp-adapter entry own the channel. Duplicate
-  // official names, project entries, or any missing/empty/foreign-only or
-  // malformed package declaration fail closed as missing.
+  // Total official package gate: a native activation declares exactly one
+  // valid global gentle-engram@semver and no adapter; a declared adapter keeps
+  // the legacy pair. Duplicate official names, project entries, or any
+  // missing/empty/foreign-only or malformed package declaration fail closed as
+  // missing.
   let globalGentleValid = 0;
   let globalAdapterValid = 0;
   let globalGentleOfficial = 0;
@@ -134,13 +136,22 @@ export function inspectOfficialPackages({ env = process.env, cwd = process.cwd()
   }
   if (globalGentleOfficial > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-gentle-engram", agentDir, configDir };
   if (globalAdapterOfficial > 1) return { state: "conflict", source: "pi-global-settings", code: "duplicate-pi-mcp-adapter", agentDir, configDir };
+  // A native activation declares no pi-mcp-adapter: exactly one global
+  // gentle-engram@semver owns the channel and Pi's builtin reads strict
+  // mcp.json. A declared adapter keeps the legacy pair gate below.
+  if (globalAdapterOfficial === 0) {
+    if (globalGentleValid !== 1) {
+      return { state: "missing", source: "pi-global-settings", code: "missing-official-packages", agentDir, configDir };
+    }
+    return { state: "ready", transport: "native", agentDir, configDir };
+  }
   if (globalGentleValid !== 1 || globalAdapterValid !== 1) {
     return { state: "missing", source: "pi-global-settings", code: "missing-official-packages", agentDir, configDir };
   }
-  return { state: "ready", agentDir, configDir };
+  return { state: "ready", transport: "legacy", agentDir, configDir };
 }
 
-export function inspectContext7Config({ env = process.env, cwd = process.cwd(), platform = process.platform, argv = process.argv } = {}) {
+export function inspectContext7Config({ env = process.env, cwd = process.cwd(), platform = process.platform, argv = process.argv, nativeContext7 = false } = {}) {
   const paths = platform === "win32" ? win32 : posix;
   const home = (platform === "win32" ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? homedir();
   const invalid = (source, code) => ({ state: "invalid", source, code });
@@ -175,7 +186,19 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
     if (!isRecord(config)) return invalid(source, "invalid-shape");
     for (const key of ["mcpServers", "mcp-servers"]) {
       if (config[key] !== undefined && !isRecord(config[key])) return invalid(source, "invalid-shape");
-      if (isRecord(config[key]) && Object.hasOwn(config[key], "context7")) return { state: "conflict", source, code: "existing-context7" };
+      if (isRecord(config[key]) && Object.hasOwn(config[key], "context7")) {
+        // The persisted global native entry in `agentDir/mcp.json` is permitted
+        // only when BOTH the readonly native authority certifies it
+        // (`nativeContext7`) AND this very scan selected the native transport.
+        // A caller boolean can never turn a legacy/missing pair into a bypass;
+        // every other source, the legacy `mcp-servers` alias and all
+        // imports/discovery checks stay enforced.
+        const nativePermitted = source === "pi-global"
+          && key === "mcpServers"
+          && nativeContext7 === true
+          && packages.transport === "native";
+        if (!nativePermitted) return { state: "conflict", source, code: "existing-context7" };
+      }
     }
     if (config.imports !== undefined && (!Array.isArray(config.imports) || config.imports.length > 0)) return invalid(source, "imports-unverified");
     if (config.settings !== undefined && !isRecord(config.settings)) return invalid(source, "invalid-shape");
@@ -183,6 +206,9 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
       || (config.settings?.agentPluginPaths !== undefined && (!Array.isArray(config.settings.agentPluginPaths) || config.settings.agentPluginPaths.length > 0))
       || config.claudePlugins !== undefined) return invalid(source, "discovery-unverified");
   }
+  // A permitted native entry needs no separate terminal branch: a native
+  // transport is always a ready pair, so the default available return below is
+  // correct while a missing/blocked pair keeps failing closed.
   // Total gate runs after duplicate checks and MCP-scan diagnosis: absent,
   // undeclared, empty, foreign-only, or malformed-sole all fail closed as
   // missing. MCP-scan invalid/conflict already returned above and is preserved.
@@ -192,11 +218,13 @@ export function inspectContext7Config({ env = process.env, cwd = process.cwd(), 
   return { state: "available" };
 }
 
-export function readConfig(file) {
+export function readConfig(file, { strict = false } = {}) {
   const stat = statSync(file);
   if (!stat.isFile() || stat.size > maxConfigBytes) throw new Error("Invalid MCP configuration file");
   const bytes = readFileSync(file);
   if (bytes.length > maxConfigBytes) throw new Error("MCP configuration exceeds the size limit");
   const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  return JSON.parse(stripJsonComments(raw, { trailingCommas: true }));
+  // Pi's builtin native parser is strict JSON; the adapter historically accepts
+  // bounded JSONC (comments and trailing commas). Native authority reads strict.
+  return strict ? JSON.parse(raw) : JSON.parse(stripJsonComments(raw, { trailingCommas: true }));
 }

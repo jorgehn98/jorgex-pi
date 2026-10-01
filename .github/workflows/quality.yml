@@ -63,3 +63,5 @@ jobs:
       - run: node --test --test-name-pattern="T3[689] .*Playwright" tests/playwright.test.mjs
       - name: Verify serialized DevTools guard through the real Pi loader
         run: node --test --test-name-pattern="T67 real Pi loader" tests/mcp-engram.test.mjs
+      - name: Verify the native managed release seam on Windows
+        run: node --test --test-concurrency=1 tests/mcp-native-windows-managed.test.mjs

@@ -55,6 +55,7 @@
       "*/mkfs.*": "deny"
     },
     "mcp": "allow",
+    "mcp__*": "allow",
     "skill": "allow",
     "external_directory": "allow",
     "git_read": "allow",
