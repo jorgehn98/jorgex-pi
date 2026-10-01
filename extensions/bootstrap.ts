@@ -18,7 +18,7 @@ const webAccessGuide = "Use Web Access for web research, source verification, st
 // (thrown inspector, returned `package.state: conflict`, or a protected managed
 // server conflict). It never echoes a reason, path, JSON, hash or script, and
 // never claims a connection state; the existing channel dedups it per session.
-const nativeOwnershipDiagnostic = "JorgeX native MCP ownership could not be verified; the JorgeX Context7 and Chrome DevTools guides are unavailable. Preserve the existing MCP configuration, repair or verify the managed native MCP state, and reload Pi.";
+const nativeOwnershipDiagnostic = "JorgeX native MCP ownership could not be verified; affected managed native MCP guides are unavailable. Preserve the existing MCP configuration, verify the managed native MCP state, and reload Pi.";
 const systemPromptAssetFiles = {
   policy: "AGENTS.md",
   context7: "context7.md",

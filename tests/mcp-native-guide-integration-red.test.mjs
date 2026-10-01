@@ -286,6 +286,16 @@ test("native bootstrap guides Chrome DevTools only from managed ownership plus o
   });
 });
 
+// Truthful-diagnostic helper: a guide that is actually present in the composed
+// prompt must never be labelled unavailable by the ownership notice. The check
+// stays wording-agnostic (no prose snapshot): it only rejects pairing a healthy
+// guide's name with an unavailability claim in the same sentence, so a message
+// that names only the affected server or stays generic both pass.
+function claimsGuideUnavailable(message, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`${escaped}[^.;!?]*unavailable|unavailable[^.;!?]*${escaped}`, "i").test(message);
+}
+
 // Authority-diagnostic vertical: the bootstrap must surface a RETURNED conflict
 // DTO, not only a thrown inspector. Spec 71 L51: it notifies `package.state:
 // conflict` and managed-server conflicts through the existing channel with a
@@ -375,6 +385,51 @@ test("native bootstrap diagnoses a returned ownership conflict instead of swallo
     assert.deepEqual(pi.notifications(), [], "a legitimate unowned/pending state must not raise an authority warning");
     assert.equal(prompt.includes("jorgex:context7"), false, "an unowned server keeps the guide absent");
     assert.equal(prompt.includes("jorgex:chrome-devtools"), false, "an absent DevTools keeps the guide absent");
+    assert.deepEqual(snapshotSandbox(sandbox), before, "the bootstrap must not write configuration or trust state");
+  });
+
+  await t.test("a mixed state keeps the healthy guide and never claims it unavailable", async (sub) => {
+    const sandbox = createGuideSandbox(sub);
+    const before = snapshotSandbox(sandbox);
+    const { pi, prompt } = await runNativeGuideBootstrap({
+      sandbox,
+      // Package verified and Context7 fully managed with its builtin namespace
+      // catalog observed: the Context7 guide is genuinely available. Only Chrome
+      // DevTools conflicts, so the shared notice must stay truthful about which
+      // guides are affected instead of asserting both are unavailable.
+      inspector: ownershipDto({ context7State: "managed", devtoolsState: "conflict" }),
+      commands: [BUILTIN_MCP_COMMAND],
+      tools: [BUILTIN_TOOL_SEARCH, DEFERRED_CONTEXT7_TOOL],
+      activeTools: ["tool_search"],
+    });
+
+    assert.equal(
+      prompt.includes("jorgex:context7"),
+      true,
+      "a managed/configured Context7 with an observed catalog keeps its guide in a mixed state",
+    );
+    assert.equal(
+      prompt.includes("jorgex:chrome-devtools"),
+      false,
+      "the conflicting Chrome DevTools guide stays absent",
+    );
+    assert.equal(
+      pi.notifications().length,
+      1,
+      "the single conflicting server must still raise one per-session authority notice",
+    );
+    const [notification] = pi.notifications();
+    assert.match(notification.message, /(ownership|authority)/i, "the diagnostic names the broken ownership/authority");
+    assert.match(notification.message, /(preserve|reload)/i, "the diagnostic carries a fixed preserve/reload remedy");
+    // Wording-agnostic contract: a truthful message may name only the affected
+    // server or stay generic ("affected managed native MCP guides"); the hard
+    // rule is that it never labels the healthy Context7 guide as unavailable,
+    // because the composed prompt proves that guide is present.
+    assert.equal(
+      claimsGuideUnavailable(notification.message, "context7"),
+      false,
+      `the diagnostic must not claim the healthy Context7 guide is unavailable: ${notification.message}`,
+    );
     assert.deepEqual(snapshotSandbox(sandbox), before, "the bootstrap must not write configuration or trust state");
   });
 });
