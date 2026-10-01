@@ -1,4 +1,4 @@
-// T70 tracer: native MCP permission surface (RED, Pi).
+// Native MCP permission surface (Pi).
 //
 // Risk: Pi's generated permission policy maps MCP through the legacy `mcp`
 // proxy surface only. Pi's built-in MCP extension exposes native tools named
@@ -9,8 +9,7 @@
 //
 // This test drives the REAL permission provider through Pi's real no-LLM
 // resource loader + runner and the REAL generated policy
-// (`assets/permissions/defaults.json`). It fails today because the native
-// surface mapping is missing, not because of fixture setup.
+// (`assets/permissions/defaults.json`).
 //
 // Controls in the same run keep the failure unambiguous:
 //   - a native call carrying a protected path must still be denied by the
@@ -18,11 +17,10 @@
 //   - a tool without the MCP namespace prefix must keep the `ask` fallback;
 //   - the legacy `mcp: allow` proxy grant must remain effective.
 //
-// Nested native calls are not covered here: a real proof must go through
-// `ctx.executeTool`, whose dispatcher (`ExtensionRunner.executeToolFn`) is a
+// Nested native calls are covered in `permissions-native-mcp-nested.test.mjs`:
+// a real proof must go through `ctx.executeTool`, whose dispatcher
 // host SDK action this no-LLM harness does not run; emitting a manual
-// `parentToolCallId` would fake the pipeline. A native SDK session fixture
-// exercises that seam.
+// `parentToolCallId` would fake the pipeline.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {

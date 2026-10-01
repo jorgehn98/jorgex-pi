@@ -23,8 +23,7 @@ import {
   snapshotTree,
 } from "./fixtures/native-managed-release.mjs";
 
-// T70 heavy ownership tracer — first positive plus the root-bind control
-// (Spec 71, "Proof offline y bind del checker").
+// Heavy ownership case — coherent release plus the root-bind control.
 //
 // Own API: `inspectNativeMcpOwnership({ env, platform, cwd, projectTrusted })`
 // async readonly in `extensions/native-mcp.mjs`, with NO public package-root

@@ -5,13 +5,11 @@ import { join } from "node:path";
 import test from "node:test";
 import { resolveMcpEngramConfig } from "../extensions/mcp-engram.ts";
 
-// T70 first vertical tracer — Pi-native reader/config without the legacy adapter.
+// Native reader/config without the legacy adapter.
 //
-// T69 observed on the published Pi 0.99.1 sample that the builtin MCP support
-// reads `mcp.json` (strict JSON) as the authority for the Engram server, and
-// that `gentle-engram@0.1.16` provides its 22 mem_* tools by HTTP without
-// `pi-mcp-adapter`. Requiring the adapter here would report a working native
-// install as missing, which is the regression this tracer protects.
+// The builtin MCP support reads `mcp.json` (strict JSON) as the authority for
+// the Engram server; requiring the adapter here would report a working native
+// install as missing, which is the regression this test protects.
 //
 // The native server entry carries only native fields (`command`, `args`,
 // `exposure`); `lifecycle`/`directTools` are adapter-only and must not be

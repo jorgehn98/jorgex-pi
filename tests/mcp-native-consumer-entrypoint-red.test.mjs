@@ -1,11 +1,10 @@
-// T70/T73 portability seed: the standalone consumer contract.
+// Portability seed: the standalone consumer contract.
 //
-// Spec 71 declares ONE implementation in `extensions/mcp-engram.mjs`, keeps the
-// `.ts` file only as a historical `export *` shim, and requires the checker and
-// bootstrap to consume the `.mjs` with no Node type-stripping hook and no new
+// One implementation lives in `extensions/mcp-engram.mjs`; the `.ts` file is
+// only a historical `export *` shim. The checker and bootstrap consume the
 // Jiti dependency. Node 24 refuses TS under `node_modules`
-// (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so the existing heavy proof's
-// test-side `module.registerHooks` bridge does NOT represent a real consumer.
+// (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so a hook-based load would
+// not represent a real consumer.
 //
 // This case is the real boundary: the shipped producer closure is copied
 // byte-identical into `<temp>/node_modules/jorgex-pi` and a PLAIN child Node

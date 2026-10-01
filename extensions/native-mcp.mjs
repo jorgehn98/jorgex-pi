@@ -15,9 +15,8 @@ import { fileURLToPath } from "node:url";
 import { readConfig, resolvePiAgentDir } from "./context7-config.mjs";
 import { digestNativeMcpDefinition, readBoundedRegularFile, resolveNativeDevtoolsDefinition } from "./mcp-engram.mjs";
 
-// Readonly ownership checker for the persistent native MCP configuration
-// (Spec 71, "Proof offline y bind del checker"). It never writes, spawns,
-// downloads or claims a live connection. Ownership is authority, never shape:
+// Readonly ownership checker for the persistent native MCP configuration.
+// It never writes, spawns, downloads or claims a connection. Ownership is authority, never shape:
 // a present entry is `unowned` unless a granular `mcpNative` claim matches, and
 // a claim is `managed` only after the offline package proof verifies and the
 // protected digest matches. The package root is derived internally from this
@@ -40,7 +39,7 @@ const SHA512_HEX = /^[0-9a-f]{128}$/;
 const SRI_SHA512_B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const STAGE_NAME = /^stage-[0-9a-f]{32}$/;
 
-// Spec 71 closing clause: the heavy offline proof is a once-per-startup cost
+// Startup cache: the heavy offline proof is a once-per-startup cost
 // keyed by a cheap identity, while configuration, projection authority and
 // preferences stay fresh on every inspection. A single module-local entry, never
 // a history or dictionary.
@@ -399,7 +398,7 @@ function assertManagedSettings(settings, version) {
   }
 }
 
-// Spec 71 closure: `kind` NUL `rel` NUL raw payload, relative slash paths, JS
+// Release tree hash: `kind` NUL `rel` NUL raw payload, relative slash paths, JS
 // ordinal sort, no root entry and no browser-v2 framing. File bytes are streamed
 // into the running hash with the same reused 1 MiB buffer, and every symlink
 // must satisfy the published containment walk (`readContainedLinkTarget`).
@@ -568,11 +567,11 @@ function inspectServer(name, entry, claim, proof, context) {
     };
   }
   // Availability is syntax only: a present definition is configured, never a
-  // live connection, and without a claim it is never owned or cleanup-eligible.
+  // connection claim, and without a claim it is never owned or cleanup-eligible.
   return { state: "unowned", cleanupEligible: false, availability };
 }
 
-// Spec 71 L33: a DevTools claim is owned only when the projection stamped the
+// DevTools ownership: a DevTools claim is owned only when the projection stamped the
 // WHOLE handoff file (`devtools.sha256`) and the persisted command/args EXACTLY
 // equal the trusted v3 resolution of that handoff. A plain launcher, a v1/v2
 // fallback or any arbitrary script with a matching definition digest is never

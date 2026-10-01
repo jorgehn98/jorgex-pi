@@ -1,4 +1,4 @@
-// T70 bootstrap native guide integration (Spec 71 L35).
+// Bootstrap native guide integration.
 //
 // The readonly ownership checker is integrated into the native bootstrap hooks
 // through an OWN test injection seam (`inspectNativeMcpOwnership`, same pattern

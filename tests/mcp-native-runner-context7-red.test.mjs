@@ -290,7 +290,7 @@ test("runner local diagnostic follows the official-package policy for a native C
     assert.deepEqual(second.result?.actions ?? [], [], "a converged sync reports no actions");
     assert.deepEqual(protectedDigests(sandbox), before, "the second sync keeps the protected paths untouched");
 
-    // The authentic local state produced by sync satisfies the five checks.
+    // The converged local state produced by sync satisfies the five checks.
     const doctor = readPayload(runRunnerCommand(sandbox, ["doctor", "--json"], { engramBin: true }), "doctor");
     assert.deepEqual(
       Object.fromEntries(doctor.result.checks.map((check) => [check.id, check.status])),

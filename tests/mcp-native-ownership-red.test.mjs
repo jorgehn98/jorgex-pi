@@ -5,8 +5,7 @@ import { join, relative } from "node:path";
 import test from "node:test";
 import { CONTEXT7_URL } from "../extensions/mcp-engram.ts";
 
-// T70 first ownership tracer — direct channel without granular authority
-// (Spec 71, "Proof offline y bind del checker").
+// Direct-channel ownership: native `mcp.json` without granular authority.
 //
 // The planned readonly checker is `inspectNativeMcpOwnership({ env, platform,
 // cwd, projectTrusted })`, async, exported from `extensions/native-mcp.mjs`,
@@ -16,11 +15,11 @@ import { CONTEXT7_URL } from "../extensions/mcp-engram.ts";
 // unsupported-execution), plus `package.state` (not-required/verified/conflict)
 // and `connection` (always not-verified).
 //
-// This first tracer covers only the direct channel: a valid native `mcp.json`
+// This direct-channel case covers only unclaimed state: a valid native `mcp.json`
 // without any granular claim and without Stack receipts. Ownership is authority,
 // never shape, so both present servers are unowned, DevTools is absent, the
 // package proof is not required and no connection is claimed. The heavy
-// package/tamper proof and the imported-checkout case are later verticals.
+// package/tamper proof and the imported-checkout case are separate cases below.
 //
 // The checker is read-only: the whole fixture tree must be byte-identical after
 // the call. Nothing is spawned (no Engram server, no process) and no real HOME,
@@ -30,9 +29,8 @@ const SERVER_NAMES = ["engram", "context7", "chrome-devtools"];
 const OWNERSHIP_STATES = ["absent", "unowned", "conflict", "managed"];
 const AVAILABILITY_STATES = ["unavailable", "configured", "disabled", "unsupported-execution"];
 
-// A missing module is the expected RED for this tracer: the public checker does
-// not exist yet, and that must fail the contract assertion in each test instead
-// of crashing the import.
+// The checker module is required for this contract; a missing module fails
+// the contract assertion in each test instead of crashing the import.
 async function loadOwnershipChecker() {
   try {
     return await import(MODULE);

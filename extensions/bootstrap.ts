@@ -1138,7 +1138,7 @@ function isBuiltinSourceInfo(sourceInfo, path) {
   return sourceInfo?.path === path && sourceInfo?.source === "builtin";
 }
 
-// Spec 71 L35: a native guide exists only when the readonly owner reports the
+// A native guide exists only when the readonly owner reports the
 // server managed/configured, the builtin provider/discovery is demonstrated by
 // the public runtime getters, no trusted project override blocks it, and the
 // public namespace catalog of that server has actually been observed. The

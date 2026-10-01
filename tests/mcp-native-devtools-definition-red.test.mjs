@@ -9,14 +9,11 @@ import {
   writeT28Handoff,
 } from "./fixtures/t28-devtools-handoff.mjs";
 
-// T70 first tracer — shared readonly authority for persistent native MCP
-// (Spec 71, "Autoridad readonly de MCP persistente: contrato para ambos
-// consumidores").
+// First tracer — shared readonly authority for persistent native MCP.
 //
 // DevTools requires more than a name/digest entry: it needs the existing
-// launcher/tree/Node/flags v3 chain. Spec 71 requires exporting
-// `resolveNativeDevtoolsDefinition({ env, platform })` from
-// `extensions/mcp-engram.ts`, reusing the trusted v3 handoff transform to the
+// launcher/tree/Node/flags v3 chain. The `resolveNativeDevtoolsDefinition(`
+// `{ env, platform })` export from `extensions/mcp-engram.mjs` (via the `.ts`
 // full guard command/args, without adapter fields, and with no v1/v2 fallback
 // for new native registrations. Stack consumes that export from the verified
 // artifact instead of duplicating the guard.
