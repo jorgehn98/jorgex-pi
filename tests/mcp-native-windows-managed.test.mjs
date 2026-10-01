@@ -138,8 +138,9 @@ test(
   },
 );
 
-// Positive control: a plain contained relative link with a forward-slash target
-// must never be mistaken for a chain.
+// Positive control: a plain contained relative link whose raw target uses the
+// platform's own separators (backslashes on Windows) must never be mistaken for
+// a chain.
 test(
   "a plain contained relative link stays verified on real Windows",
   { skip: WINDOWS ? false : SKIP_REASON },
@@ -150,20 +151,26 @@ test(
     // `rebindManagedRelease` renames the release to its new id, so an absolute
     // path captured before the rename would be stale.
     const libDirRel = join("node_modules", "lib");
+    const libFileRel = join(libDirRel, "entry.dat");
     const binDirRel = join("node_modules", ".bin");
     const linkRel = join(binDirRel, "entry");
     mkdirSync(join(sandbox.releaseDir, libDirRel), { recursive: true });
-    writeFileSync(join(sandbox.releaseDir, libDirRel, "entry.dat"), "fixture entry\n");
+    writeFileSync(join(sandbox.releaseDir, libFileRel), "fixture entry\n");
     mkdirSync(join(sandbox.releaseDir, binDirRel), { recursive: true });
-    symlinkSync("../lib/entry.dat", join(sandbox.releaseDir, linkRel));
+    // The expected raw target is the platform's own `path.relative` output, so
+    // Windows stores and returns it with backslash separators. The expectation is
+    // derived independently, never recomputed from the checker.
+    const rawTarget = relative(join(sandbox.releaseDir, binDirRel), join(sandbox.releaseDir, libFileRel));
+    symlinkSync(rawTarget, join(sandbox.releaseDir, linkRel));
     rebindManagedRelease(sandbox);
 
     // Re-derive every absolute path from the rebound release dir.
     const link = join(sandbox.releaseDir, linkRel);
-    assert.equal(readlinkSync(link), "../lib/entry.dat", "the plain link keeps its forward-slash relative target");
+    assert.equal(rawTarget.includes("\\"), true, `the Windows raw target must use backslash separators: ${rawTarget}`);
+    assert.equal(readlinkSync(link), rawTarget, "the plain link keeps its raw sys-native relative target");
     assert.equal(lstatSync(link).isSymbolicLink(), true, "the case needs a real contained symlink");
     assert.equal(
-      lstatSync(join(sandbox.releaseDir, libDirRel, "entry.dat")).isFile(),
+      lstatSync(join(sandbox.releaseDir, libFileRel)).isFile(),
       true,
       "the link target must be a regular file",
     );

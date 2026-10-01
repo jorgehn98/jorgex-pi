@@ -464,7 +464,10 @@ function readContainedLinkTarget(linkPath, allowedRoot, paths) {
     const rel = paths.relative(allowedRoot, child);
     return rel !== "" && rel !== ".." && !rel.startsWith(`..${paths.sep}`) && !paths.isAbsolute(rel);
   };
-  const parts = target.split("/").filter((part) => part !== "" && part !== ".");
+  // Windows targets may use either separator (`/` or `\`); POSIX backslash is a
+  // valid file name and must never be split. The raw target string is still
+  // returned unchanged and fed into the tree hash exactly as read.
+  const parts = target.split(paths === win32 ? /[\\/]/ : "/").filter((part) => part !== "" && part !== ".");
   if (parts.length === 0) throw new Error("Native MCP release symlink escapes its tree");
   let current = linkParent;
   for (let index = 0; index < parts.length; index += 1) {
