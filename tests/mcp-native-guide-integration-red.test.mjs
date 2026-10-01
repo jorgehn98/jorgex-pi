@@ -285,3 +285,96 @@ test("native bootstrap guides Chrome DevTools only from managed ownership plus o
     assert.deepEqual(pi.activeToolSelections(), [], "discovery is observed, never activated");
   });
 });
+
+// Authority-diagnostic vertical: the bootstrap must surface a RETURNED conflict
+// DTO, not only a thrown inspector. Spec 71 L51: it notifies `package.state:
+// conflict` and managed-server conflicts through the existing channel with a
+// fixed diagnostic/remedy; guides suppressed by broken authority are
+// distinguished from a pending catalog or a legitimate unowned server, and the
+// notice never blocks the builtin or a foreign MCP. The inspector here is the
+// same test-only seam and RETURNS a DTO (never throws), which is exactly the
+// case the current refresh swallows.
+test("native bootstrap diagnoses a returned ownership conflict instead of swallowing it", async (t) => {
+  await t.test("a returned package conflict produces one generic authority diagnostic and no guide", async (sub) => {
+    const sandbox = createGuideSandbox(sub);
+    const before = snapshotSandbox(sandbox);
+    const { pi, prompt } = await runNativeGuideBootstrap({
+      sandbox,
+      inspector: ownershipDto({
+        context7State: "conflict",
+        devtoolsState: "conflict",
+        packageState: "conflict",
+        // Fixed placeholder: a negative case must never carry a real error.
+        packageReason: "fixture package conflict",
+      }),
+      commands: [BUILTIN_MCP_COMMAND],
+      tools: [BUILTIN_TOOL_SEARCH, DEFERRED_CONTEXT7_TOOL, DEFERRED_DEVTOOLS_TOOL],
+      activeTools: ["tool_search"],
+    });
+
+    // Exactly one notice across session_start + before_agent_start: the same
+    // returned conflict must not be reported twice for one session.
+    assert.equal(
+      pi.notifications().length,
+      1,
+      "a returned package conflict must notify once per session through the existing channel, not be swallowed",
+    );
+    const [notification] = pi.notifications();
+    assert.match(notification.message, /(ownership|authority)/i, "the diagnostic names the broken ownership/authority");
+    assert.match(notification.message, /(preserve|reload)/i, "the diagnostic carries a fixed preserve/reload remedy");
+    assert.equal(notification.message.includes(sandbox.root), false, "the diagnostic must never echo a private path");
+    assert.equal(/[{}]/.test(notification.message), false, "the diagnostic must never echo raw JSON");
+    assert.equal(/[0-9a-f]{64}/.test(notification.message), false, "the diagnostic must never echo a guard hash");
+    assert.equal(/\b(connected|connection)\b/i.test(notification.message), false, "the diagnostic is not a connectivity claim");
+    assert.equal(prompt.includes("jorgex:context7"), false, "a broken package authority keeps the Context7 guide absent");
+    assert.equal(prompt.includes("jorgex:chrome-devtools"), false, "a broken package authority keeps the DevTools guide absent");
+    assert.deepEqual(snapshotSandbox(sandbox), before, "the bootstrap must not write configuration or trust state");
+  });
+
+  await t.test("a managed-server conflict with a verified package is diagnosed once and unguided", async (sub) => {
+    const sandbox = createGuideSandbox(sub);
+    const before = snapshotSandbox(sandbox);
+    const { pi, prompt } = await runNativeGuideBootstrap({
+      sandbox,
+      // Package proof verified; the conflict is the managed Context7 server, and
+      // the namespace catalog IS observed so the absence cannot be blamed on a
+      // pending catalog.
+      inspector: ownershipDto({ context7State: "conflict" }),
+      commands: [BUILTIN_MCP_COMMAND],
+      tools: [BUILTIN_TOOL_SEARCH, DEFERRED_CONTEXT7_TOOL],
+      activeTools: ["tool_search"],
+    });
+
+    assert.equal(
+      pi.notifications().length,
+      1,
+      "a conflict of a managed server must notify once per session even when the package proof is verified",
+    );
+    const [notification] = pi.notifications();
+    assert.match(notification.message, /(ownership|authority)/i, "the diagnostic names the broken ownership/authority");
+    assert.match(notification.message, /(preserve|reload)/i, "the diagnostic carries a fixed preserve/reload remedy");
+    assert.equal(notification.message.includes(sandbox.root), false, "the diagnostic must never echo a private path");
+    assert.equal(prompt.includes("jorgex:context7"), false, "a conflicting Context7 server keeps its guide absent");
+    assert.equal(prompt.includes("jorgex:chrome-devtools"), false, "an absent DevTools keeps its guide absent");
+    assert.deepEqual(snapshotSandbox(sandbox), before, "the bootstrap must not write configuration or trust state");
+  });
+
+  await t.test("a legitimate unowned or pending state stays silent and unguided", async (sub) => {
+    const sandbox = createGuideSandbox(sub);
+    const before = snapshotSandbox(sandbox);
+    const { pi, prompt } = await runNativeGuideBootstrap({
+      sandbox,
+      // Legitimate absence, never broken authority: unowned server plus a
+      // registered-but-inactive tool_search with the Context7 catalog pending.
+      inspector: ownershipDto({ context7State: "unowned", devtoolsState: "absent" }),
+      commands: [BUILTIN_MCP_COMMAND],
+      tools: [BUILTIN_TOOL_SEARCH],
+      activeTools: ["tool_search"],
+    });
+
+    assert.deepEqual(pi.notifications(), [], "a legitimate unowned/pending state must not raise an authority warning");
+    assert.equal(prompt.includes("jorgex:context7"), false, "an unowned server keeps the guide absent");
+    assert.equal(prompt.includes("jorgex:chrome-devtools"), false, "an absent DevTools keeps the guide absent");
+    assert.deepEqual(snapshotSandbox(sandbox), before, "the bootstrap must not write configuration or trust state");
+  });
+});

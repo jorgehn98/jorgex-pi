@@ -218,7 +218,12 @@ export async function runNativeGuideBootstrap({
 // Public readonly DTO of the ownership checker (metadata only). The DevTools
 // guard chain itself is proven by tests/mcp-native-devtools-ownership-red; this
 // fixture only abstracts the metadata the guide policy consumes.
-export function ownershipDto({ context7State = "managed", devtoolsState = "absent" } = {}) {
+export function ownershipDto({
+  context7State = "managed",
+  devtoolsState = "absent",
+  packageState = "verified",
+  packageReason,
+} = {}) {
   const serverState = (state, { cleanup = true } = {}) => ({
     state,
     cleanupEligible: state === "managed" && cleanup,
@@ -233,7 +238,9 @@ export function ownershipDto({ context7State = "managed", devtoolsState = "absen
         ? { state: "absent", cleanupEligible: false, availability: "unavailable" }
         : serverState(devtoolsState),
     },
-    package: { state: "verified" },
+    // The package state defaults to the coherent verified proof; a negative case
+    // can inject a conflict with an optional fixed reason (never a real error).
+    package: packageReason === undefined ? { state: packageState } : { state: packageState, reason: packageReason },
     connection: "not-verified",
   };
 }
