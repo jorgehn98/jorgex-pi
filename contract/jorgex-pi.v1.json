@@ -13,8 +13,8 @@
   },
   "package": {
     "name": "jorgex-pi",
-    "version": "0.8.39",
-    "source": "npm:jorgex-pi@0.8.39"
+    "version": "0.8.40",
+    "source": "npm:jorgex-pi@0.8.40"
   },
   "pi": {
     "minimumVersion": "0.84.2",
