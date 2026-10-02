@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "9f72310ebcb12367382a8d1a6db9b81da8d24fb5"
+    "commit": "0e002edee81ac633df74d56d3a51d882cd31acf0"
   },
   "agents": [
     {
@@ -30,8 +30,8 @@
       "name": "comment-fixer",
       "sourcePath": "stack/agents/comment-fixer.md",
       "targetPath": "snapshot/agents/comment-fixer.md",
-      "sourceSha256": "376ab565dd5151b618daf53cb555fc794ceef18a3ca0faa438ce6218f6411a6c",
-      "outputSha256": "376ab565dd5151b618daf53cb555fc794ceef18a3ca0faa438ce6218f6411a6c"
+      "sourceSha256": "c0ec46e54157e48860733fd8df323b747a6f25c092a5469bb8f0b5cbe3a1e18b",
+      "outputSha256": "c0ec46e54157e48860733fd8df323b747a6f25c092a5469bb8f0b5cbe3a1e18b"
     },
     {
       "name": "docs-maintainer",
@@ -142,7 +142,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "0bf1c4da48ee40ec4667a3ed241e2cb24237bc3b522d66da68e1e2e36cec848e"
+          "sha256": "5a762ea0bfd39929a09ae823ed9ae4fe578bbead1b9b3c17c1eca627d8fb9823"
         },
         {
           "path": "scripts/hitl-loop.template.sh",
@@ -168,7 +168,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "f904907a5910658fabdd06643b7b44e97de8a0006c6a0657c7292b3cc9617deb"
+          "sha256": "e5a0659b2eb7275cbd0f5b462c799b226feee2a1a16ddd4a9e180aa88d88fe59"
         }
       ]
     },
@@ -199,7 +199,7 @@
         },
         {
           "path": "reference/python_mcp_server.md",
-          "sha256": "2da52f77e675191014ca2e146a4b95aa04d0ca7dd7e2b100322df15ade685e80"
+          "sha256": "6a451e99c18642af2cb6908c14559c27468e4398f166e55f1f44619b6ef205ed"
         },
         {
           "path": "scripts/connections.py",
@@ -576,7 +576,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "32b77296eef3064e7b090384076f28c2ab1aa3afea4faa3a262f5df4e4e6d5ea"
+          "sha256": "5f4d34ec9790f9d0ae991471937e0a2817168a7a4816471a01220fab06509cdd"
         }
       ]
     }
@@ -584,8 +584,8 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md",
-    "sourceSha256": "c938c8d37fbe143ce1c68bfb655acf6efa8df1ca871a1855b71bba7a27ca9222",
-    "outputSha256": "c938c8d37fbe143ce1c68bfb655acf6efa8df1ca871a1855b71bba7a27ca9222"
+    "sourceSha256": "0c4e1d16eacb906ebc1ff5ac0acf03749e2576c9c0f9a2dcd5d8c4bc9cf2e696",
+    "outputSha256": "0c4e1d16eacb906ebc1ff5ac0acf03749e2576c9c0f9a2dcd5d8c4bc9cf2e696"
   },
   "systemPromptModules": [
     {
