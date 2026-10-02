@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "70354b3b03cfc4e7346200303aa0b4342cce5a9a"
+    "commit": "9f72310ebcb12367382a8d1a6db9b81da8d24fb5"
   },
   "agents": [
     {
@@ -584,8 +584,8 @@
   "policy": {
     "sourcePath": "stack/system-prompt/AGENTS.md",
     "targetPath": "assets/system-prompt/AGENTS.md",
-    "sourceSha256": "16400374675715c454ebdeef2a40e13458405aa5a89b812afe8c046e0b7049f6",
-    "outputSha256": "16400374675715c454ebdeef2a40e13458405aa5a89b812afe8c046e0b7049f6"
+    "sourceSha256": "c938c8d37fbe143ce1c68bfb655acf6efa8df1ca871a1855b71bba7a27ca9222",
+    "outputSha256": "c938c8d37fbe143ce1c68bfb655acf6efa8df1ca871a1855b71bba7a27ca9222"
   },
   "systemPromptModules": [
     {
