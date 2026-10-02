@@ -7,18 +7,23 @@
       "mcp-adapter.json"
     ]
   },
+  "mcpNative": {
+    "schemaVersion": 1,
+    "contractPath": "contract/native-mcp.v1.json"
+  },
   "package": {
     "name": "jorgex-pi",
-    "version": "0.8.39",
-    "source": "npm:jorgex-pi@0.8.39"
+    "version": "0.8.40",
+    "source": "npm:jorgex-pi@0.8.40"
   },
   "pi": {
     "minimumVersion": "0.84.2",
-    "maximumVersion": "0.87.1",
+    "maximumVersion": "0.99.1",
     "testedVersions": [
       "0.84.2",
       "0.85.1",
-      "0.87.1"
+      "0.87.1",
+      "0.99.1"
     ]
   },
   "capabilities": [
@@ -43,7 +48,8 @@
     "managed-primary-model-v1",
     "quality-receipt-contract-v1",
     "quality-capabilities-contract-v1",
-    "initialization-diagnostics-v1"
+    "initialization-diagnostics-v1",
+    "mcp-native-v1"
   ],
   "snapshot": {
     "contractPath": "contract/parity.v2.json",

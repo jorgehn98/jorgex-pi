@@ -80,7 +80,7 @@ test("assets preserve official external state and never claim managed MCP writes
 
 test("cleanup/status/doctor preserve external state and use no fallback factory (source)", async () => {
   const runnerSource = readFileSync(join(root, "bin", "jorgex-pi.mjs"), "utf8");
-  const bridgeSource = readFileSync(join(root, "extensions", "mcp-engram.ts"), "utf8");
+  const bridgeSource = readFileSync(join(root, "extensions", "mcp-engram.mjs"), "utf8");
   const bootstrapSource = readFileSync(join(root, "extensions", "bootstrap.ts"), "utf8");
   assert.doesNotMatch(bridgeSource, /createMcpAdapter/, "no bundled factory fallback when official setup is missing");
   assert.doesNotMatch(bootstrapSource, /createMcpAdapter/, "bootstrap must not fall back to a bundled factory");

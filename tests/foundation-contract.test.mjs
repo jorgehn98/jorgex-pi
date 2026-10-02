@@ -71,13 +71,13 @@ test("contract v1 records tested Pi evidence as a closed boundary, not a future 
   assert.equal(contract.package?.version, packageManifest.version);
   assert.equal(contract.package?.source, `${expected.sourcePrefix}${packageManifest.version}`);
   assert.ok(Array.isArray(contract.pi?.testedVersions), "contract.pi.testedVersions must be an array");
-  assert.deepEqual(contract.pi.testedVersions, ["0.84.2", "0.85.1", "0.87.1"], "contract.pi.testedVersions must list the three really tested Pi authorities in order (tested evidence, not a future host allowlist)");
+  assert.deepEqual(contract.pi.testedVersions, ["0.84.2", "0.85.1", "0.87.1", "0.99.1"], "contract.pi.testedVersions must list the Pi authorities that were really observed in order (tested evidence, never a future host allowlist or a claim about untested intermediate versions)");
   assert.equal(contract.pi.minimumVersion, "0.84.2", "pi.minimumVersion must equal the oldest tested Pi authority");
-  assert.equal(contract.pi.maximumVersion, "0.87.1", "pi.maximumVersion must equal the newest tested Pi authority (tested evidence, not a future host allowlist)");
+  assert.equal(contract.pi.maximumVersion, "0.99.1", "pi.maximumVersion must equal the newest observed Pi authority (tested evidence, never a future host allowlist)");
   assert.equal(
     packageManifest.devDependencies?.["@earendil-works/pi-coding-agent"],
     "0.84.2",
-    "the local Pi development dependency remains the fixed stable SDK fixture while 0.85.1 and 0.87.1 are covered by native smokes",
+    "the local Pi development dependency remains the fixed stable SDK fixture while the other observed authorities are covered by native smokes",
   );
   assert.deepEqual(contract.capabilities, expected.capabilities, "contract capabilities must enumerate the activated versioned boundary");
   assert.deepEqual(contract.snapshot, expected.snapshot, "root contract must link the versioned Stack snapshot it advertises");

@@ -24,6 +24,8 @@ let upgradePermissions;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let manifest;
 let inspectContext7Config;
+let inspectOfficialPackages;
+let inspectNativeMcpOwnership;
 let agentDir;
 let packageInfo = { name: "jorgex-pi", version: "unknown", root };
 const commands = new Set(["status", "doctor", "models", "sync", "upgrade", "cleanup"]);
@@ -83,7 +85,11 @@ try {
   ({ cleanupPermissions, inspectPermissions, PermissionsLifecycleError, syncPermissions, upgradePermissions } = await import("../extensions/permissions-lifecycle.mjs"));
   const context7Module = await import("../extensions/context7-config.mjs");
   inspectContext7Config = context7Module.inspectContext7Config;
+  inspectOfficialPackages = context7Module.inspectOfficialPackages;
   agentDir = context7Module.resolvePiAgentDir();
+  // The readonly native ownership checker is plain JS (`extensions/native-mcp.mjs`),
+  // never a TS module: no hook or Jiti is required to consume it here.
+  ({ inspectNativeMcpOwnership } = await import("../extensions/native-mcp.mjs"));
   const args = process.argv.slice(2);
   const command = args[0];
   currentCommand = command ?? "unknown";
@@ -101,9 +107,11 @@ try {
       tiers: ["strong", "standard", "cheap"],
     });
   } else if (command === "sync" || command === "upgrade" || command === "cleanup") {
-    emit(command, true, command === "sync" ? syncLifecycle() : command === "upgrade" ? upgradeLifecycle() : cleanupLifecycle());
+    emit(command, true, command === "sync"
+      ? syncLifecycle({ context7Evidence: await nativeContext7Evidence() })
+      : command === "upgrade" ? upgradeLifecycle() : cleanupLifecycle());
   } else {
-    const state = inspectState();
+    const state = inspectState({ context7Evidence: await nativeContext7Evidence() });
     if (command === "status") {
       const healthy = state.installation.state !== "invalid"
         && state.engram.state !== "invalid"
@@ -208,14 +216,59 @@ try {
   }
 }
 
-function inspectState() {
+function inspectState({ context7Evidence = { permitted: false } } = {}) {
   return {
     installation: inspectInstallation(),
     engram: inspectEngram(),
-    context7: inspectContext7Config(),
+    context7: inspectContext7State(context7Evidence),
     permissions: inspectPermissions({ agentDir, packageRoot: root }),
     experience: inspectExperience(),
   };
+}
+
+// Readonly native authority evidence for the Context7 dimension, computed from
+// the actual active module (never a caller CLI flag). The native exception is
+// selected through the official-package policy: a declared adapter keeps the
+// legacy pair and a missing pair stays blocked, so the certified package and
+// Context7 ownership alone can never make the entry available. The record
+// carries the permit plus, when the native inspection itself failed or the
+// authority contradicts the persisted entry, a fixed blocked diagnostic from the
+// existing Context7 schema. That diagnostic is consumed before the legacy scan,
+// so a malformed native state can never collapse into a silent `available`, and
+// a legitimate absence without a claim keeps the previous local eligibility.
+async function nativeContext7Evidence() {
+  const official = inspectOfficialPackages({ env: process.env, cwd: process.cwd(), platform: process.platform });
+  if (official.state !== "ready" || official.transport !== "native") return { permitted: false };
+  let owner;
+  try {
+    owner = await inspectNativeMcpOwnership({ env: process.env, platform: process.platform, cwd: process.cwd() });
+  } catch {
+    return blockedContext7("invalid", "native-inspection-failed");
+  }
+  const context7 = owner?.servers?.context7;
+  if (!isJsonObject(owner) || !isJsonObject(owner.package) || !isJsonObject(context7)) {
+    return blockedContext7("invalid", "native-inspection-failed");
+  }
+  if (owner.package.state === "conflict") return blockedContext7("conflict", "native-package-conflict");
+  if (context7.state === "conflict") return blockedContext7("conflict", "native-context7-conflict");
+  return {
+    permitted: owner.package.state === "verified"
+      && context7.state === "managed"
+      && context7.availability === "configured",
+  };
+}
+
+// Fixed local diagnostic for a blocked native Context7 dimension: only the
+// existing public Context7 fields (state/source/code), never a raw error or user
+// content.
+function blockedContext7(state, code) {
+  return { permitted: false, blocked: { state, source: "pi-native", code } };
+}
+
+// Single source for the Context7 state of a command: a blocked native
+// diagnostic wins; otherwise the existing scan runs with the native permit.
+function inspectContext7State(evidence) {
+  return evidence.blocked ?? inspectContext7Config({ nativeContext7: evidence.permitted === true });
 }
 
 function inspectExperience() {
@@ -285,8 +338,8 @@ function inspectEngram() {
     : { state: "missing", ownership: "user" };
 }
 
-function syncLifecycle() {
-  const context7 = inspectContext7Config();
+function syncLifecycle({ context7Evidence = { permitted: false } } = {}) {
+  const context7 = inspectContext7State(context7Evidence);
   if (context7.state !== "available") throw new LifecycleError("CONTEXT7_CONFIG_BLOCKED", `Context7 configuration is blocked: ${context7.code} (${context7.source}). Preserve the existing configuration and resolve the conflict before sync.`);
   return withLifecycleLocks(syncLifecycleUnlocked, true);
 }
