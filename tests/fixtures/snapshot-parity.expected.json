@@ -2,7 +2,7 @@
   "parityPath": "contract/parity.v2.json",
   "schemaVersion": 2,
   "sourceRepository": "https://github.com/jorgehn98/jorgex-stack",
-  "sourceCommit": "0e002edee81ac633df74d56d3a51d882cd31acf0",
+  "sourceCommit": "b7997b44d2f6b80a6ae4758986ded70490b902e3",
   "agentCount": 14,
   "agentNames": [
     "code-reviewer",
