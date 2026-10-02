@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/jorgehn98/jorgex-stack",
-    "commit": "0e002edee81ac633df74d56d3a51d882cd31acf0"
+    "commit": "b7997b44d2f6b80a6ae4758986ded70490b902e3"
   },
   "agents": [
     {
@@ -79,15 +79,15 @@
       "name": "test-analyzer",
       "sourcePath": "stack/agents/test-analyzer.md",
       "targetPath": "snapshot/agents/test-analyzer.md",
-      "sourceSha256": "3245c7f0e85a6c0d393cd7a03db1ee0009a3117e07849907c5f07e88ee76e80b",
-      "outputSha256": "3245c7f0e85a6c0d393cd7a03db1ee0009a3117e07849907c5f07e88ee76e80b"
+      "sourceSha256": "77c260b8d9b4d1b62171b7fd505c59662339489a0c157273e2793c62442b77b5",
+      "outputSha256": "77c260b8d9b4d1b62171b7fd505c59662339489a0c157273e2793c62442b77b5"
     },
     {
       "name": "tester",
       "sourcePath": "stack/agents/tester.md",
       "targetPath": "snapshot/agents/tester.md",
-      "sourceSha256": "062ef65f7e87d12f0f7c68bba7a2bf3beac85966dedbb2a59d2314751557494d",
-      "outputSha256": "062ef65f7e87d12f0f7c68bba7a2bf3beac85966dedbb2a59d2314751557494d"
+      "sourceSha256": "ee9808903da380190daf96a3dabfda80eec253117ae7e32be50eda118ee54a25",
+      "outputSha256": "ee9808903da380190daf96a3dabfda80eec253117ae7e32be50eda118ee54a25"
     },
     {
       "name": "translator",
@@ -142,7 +142,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "5a762ea0bfd39929a09ae823ed9ae4fe578bbead1b9b3c17c1eca627d8fb9823"
+          "sha256": "1906599c708d346b8209f74fc82fdfe486a96493c055d31b45da1e16795438a7"
         },
         {
           "path": "scripts/hitl-loop.template.sh",
@@ -168,7 +168,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "e5a0659b2eb7275cbd0f5b462c799b226feee2a1a16ddd4a9e180aa88d88fe59"
+          "sha256": "4fc6bf2113924a81d40e83c44d964216147e9a50d5bc763e45847fc8dd60fca5"
         }
       ]
     },
@@ -535,7 +535,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "10836fa65528a2b7d4ef02aecc6d0bd6ca917b61a4a449c5eb54dcc2b921fba8"
+          "sha256": "d6a47dfa4fa60deb34c30751c668ffa2aec566f78a8bfb3ba5a0e55029cae3ad"
         }
       ]
     },
@@ -546,7 +546,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "f48c667be1d2a8a6557b086aca63d07b3dd82b7445d246f329e260c558bd6b62"
+          "sha256": "b1104804ddffcb289b551bf8428611e21d71324b005e9d7eb8ca637f2aabd33e"
         }
       ]
     },
@@ -561,7 +561,7 @@
         },
         {
           "path": "references/plan-template.md",
-          "sha256": "cead3cb2e065649e5bb0ff00b764194979e553d5ae048de850bf899763cf6e09"
+          "sha256": "324df47ac6a282d9369188deaed56be9e15bcd2facca747e0e8300c4759cec74"
         },
         {
           "path": "references/pr-continuation.md",
