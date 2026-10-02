@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 import {
   existsSync,
   lstatSync,
-  mkdtempSync,
   mkdirSync,
   realpathSync,
   readFileSync,
@@ -12,22 +11,25 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { createVerificationSandbox, packProjectTarball } from "./helpers/pnpm-tooling.mjs";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
 const bootstrapExpected = readJson(join(testDir, "fixtures", "bootstrap.expected.json"));
 
-test("the packed foundation survives install, reload, repeat, and remove on its contract-tested Pi", () => {
-  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-lifecycle-"));
+test("the packed foundation survives install, reload, repeat, and remove on its contract-tested Pi", async () => {
+  const sandbox = createVerificationSandbox({
+    repoRoot: root,
+    env: process.env,
+    prefix: "jorgex-pi-lifecycle-",
+  }).root;
   const agentDir = join(sandbox, "agent");
   const homeDir = join(sandbox, "home");
   const cwd = join(sandbox, "workspace");
   const npmCache = join(sandbox, "npm-cache");
-  const packDir = join(sandbox, "pack");
   const foreignPackageDir = join(sandbox, "foreign-package");
   const xdgConfigDir = join(sandbox, "xdg-config");
   const settingsPath = join(agentDir, "settings.json");
@@ -45,7 +47,7 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     join(homeDir, ".pi", "web-search-cache", "keep.json"),
   ];
 
-  for (const path of [agentDir, homeDir, cwd, npmCache, packDir, foreignPackageDir]) {
+  for (const path of [agentDir, homeDir, cwd, npmCache, foreignPackageDir]) {
     mkdirSync(path, { recursive: true });
   }
 
@@ -118,16 +120,12 @@ test("the packed foundation survives install, reload, repeat, and remove on its 
     const pi = resolveLocalPi(expectedVersion);
     runPi(pi, ["--version"], isolatedEnv, cwd);
 
-    const packageManager = resolvePnpm();
-    execFileSync(packageManager.command, [...packageManager.args, "pack", "--pack-destination", packDir], {
-      cwd: root,
-      env: isolatedEnv,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
+    const { tarball } = await packProjectTarball({
+      repoRoot: root,
+      env: process.env,
+      versionCheckTimeoutMs: 15_000,
+      timeoutMs: 60_000,
     });
-    const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
-    assert.equal(tarballs.length, 1, "pnpm pack must produce one installable tarball");
-    const tarball = join(packDir, tarballs[0]);
     const source = `npm:jorgex-pi@file:${tarball}`;
 
     runPi(pi, ["install", source, "--no-approve"], isolatedEnv, cwd);
@@ -276,15 +274,6 @@ function allowedHostEnv() {
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
-}
-
-function resolvePnpm() {
-  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
-  return existsSync(corepackEntry)
-    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
-    : process.platform === "win32"
-      ? { command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe", args: ["/d", "/s", "/c", "pnpm.cmd"] }
-      : { command: "pnpm", args: [] };
 }
 
 function writeJson(path, value) {

@@ -5,17 +5,15 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  realpathSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
+import { createVerificationSandbox, packProjectTarball } from "./helpers/pnpm-tooling.mjs";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
@@ -29,7 +27,11 @@ const skipReason = configuredPi
 // freshly npm-resolved companions instead of the worktree's frozen CI deps.
 
 test("experience settings use the native contract in local control and configured host (tested in this execution only)", { skip: skipReason }, async () => {
-  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-settings-compat-"));
+  const sandbox = createVerificationSandbox({
+    repoRoot: root,
+    env: process.env,
+    prefix: "jorgex-pi-settings-compat-",
+  }).root;
   const localSdk = await import("@earendil-works/pi-coding-agent");
 
   try {
@@ -100,7 +102,11 @@ test("experience settings use the native contract in local control and configure
 });
 
 test("configured host loads the freshly installed JorgeX package and exposes its real RPC contract (tested in this execution only)", { skip: skipReason }, async () => {
-  const sandbox = mkdtempSync(join(tmpdir(), "jorgex-pi-host-compat-"));
+  const sandbox = createVerificationSandbox({
+    repoRoot: root,
+    env: process.env,
+    prefix: "jorgex-pi-host-compat-",
+  }).root;
   const home = join(sandbox, "home");
   const agentDir = join(sandbox, "agent");
   const cwd = join(sandbox, "workspace");
@@ -109,12 +115,11 @@ test("configured host loads the freshly installed JorgeX package and exposes its
   const xdgData = join(sandbox, "xdg-data");
   const tempDir = join(sandbox, "temp");
   const npmCache = join(sandbox, "npm-cache");
-  const packDir = join(sandbox, "pack");
   const markers = join(sandbox, "markers.jsonl");
   const fakeEngram = join(sandbox, process.platform === "win32" ? "engram.exe" : "engram");
   const probe = join(testDir, "fixtures", "pi-sdk-compatibility-probe.mjs");
 
-  for (const path of [home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir, npmCache, packDir]) {
+  for (const path of [home, agentDir, cwd, xdgConfig, xdgCache, xdgData, tempDir, npmCache]) {
     mkdirSync(path, { recursive: true });
   }
   writeJson(join(agentDir, "settings.json"), { packages: [] });
@@ -131,7 +136,12 @@ test("configured host loads the freshly installed JorgeX package and exposes its
     // Fresh product: pack the worktree root with pnpm (never npm/npx) and let
     // the configured host resolve companions via its native npm acquisition
     // into this sandbox's isolated agentDir. NEVER the personal ~/.pi.
-    const tarball = packTarball(packDir);
+    const { tarball } = await packProjectTarball({
+      repoRoot: root,
+      env: process.env,
+      versionCheckTimeoutMs: 15_000,
+      timeoutMs: 120_000,
+    });
     const installEnv = {
       ...allowedHostEnv(),
       HOME: home,
@@ -354,22 +364,6 @@ function resolveSdkModule(piBinary, modulePath) {
     directory = dirname(directory);
   }
   throw new Error(`Unable to resolve Pi SDK module ${modulePath} from ${piBinary}`);
-}
-
-function packTarball(packDir) {
-  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
-  const pm = existsSync(corepackEntry)
-    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
-    : { command: "pnpm", args: [] };
-  execFileSync(pm.command, [...pm.args, "pack", "--pack-destination", packDir], {
-    cwd: root,
-    env: { ...process.env, NO_COLOR: "1" },
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
-  assert.equal(tarballs.length, 1);
-  return join(packDir, tarballs[0]);
 }
 
 function allowedHostEnv() {

@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
+import { packProjectTarball } from "./helpers/pnpm-tooling.mjs";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testDir, "..");
@@ -176,15 +175,15 @@ test("component inventory activates only the T09 companions and preserves the au
   }
 });
 
-test("the pnpm-packed artifact contains every contract and declared resource", () => {
+test("the pnpm-packed artifact contains every contract and declared resource", async () => {
   readJson(join(root, "package.json"), "package manifest required before pnpm pack");
-  const packDir = mkdtempSync(join(tmpdir(), "jorgex-pi-pack-"));
-  try {
-    const packageManager = resolvePnpm();
-    execFileSync(packageManager.command, [...packageManager.args, "pack", "--pack-destination", packDir], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    const packedFiles = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
-    assert.equal(packedFiles.length, 1, "pnpm pack must produce exactly one tarball");
-    const tarball = join(packDir, packedFiles[0]);
+  const { tarball } = await packProjectTarball({
+    repoRoot: root,
+    env: process.env,
+    versionCheckTimeoutMs: 15_000,
+    timeoutMs: 60_000,
+  });
+  {
     const archive = readTgz(tarball);
     const headers = readTgzHeaders(tarball);
     const entries = new Set(archive.keys());
@@ -231,8 +230,6 @@ test("the pnpm-packed artifact contains every contract and declared resource", (
     assert.notEqual(binHeader.mode & 0o111, 0, "the packed jorgex-pi bin must remain executable");
     const digest = createHash("sha256").update(readFileSync(tarball)).digest("hex");
     assert.match(digest, /^[a-f0-9]{64}$/, "packed artifact must be hashable for release evidence");
-  } finally {
-    rmSync(packDir, { recursive: true, force: true });
   }
 });
 
@@ -385,13 +382,4 @@ function projectionShape(projection) {
     sourcePath: projection?.sourcePath,
     targetPath: projection?.targetPath,
   };
-}
-
-function resolvePnpm() {
-  const corepackEntry = join(dirname(process.execPath), "node_modules", "corepack", "dist", "corepack.js");
-  return existsSync(corepackEntry)
-    ? { command: process.execPath, args: [corepackEntry, "pnpm"] }
-    : process.platform === "win32"
-      ? { command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe", args: ["/d", "/s", "/c", "pnpm.cmd"] }
-      : { command: "pnpm", args: [] };
 }
