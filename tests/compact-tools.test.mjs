@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import { mountCompactTools } from "../extensions/compact-tools.mjs";
 
@@ -42,4 +45,45 @@ test("group, expand every original result, collapse and restore the transcript",
   }
   assert.equal(chat.render, originalRender);
   assert.match(chat.render(100).join("\n"), /DETAIL-r1/);
+});
+
+test("configuration enables or disables the extension without registering a command", { skip: !host }, async t => {
+  let owned;
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  t.after(() => {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    if (owned) {
+      rmSync(owned, { recursive: true, force: true });
+      assert.equal(existsSync(owned), false);
+    }
+  });
+  owned = mkdtempSync(join(tmpdir(), "jorgex-compact-config-"));
+  process.env.PI_CODING_AGENT_DIR = owned;
+  const configDir = join(owned, "extensions", "jorgex-compact-tools");
+  mkdirSync(configDir, { recursive: true });
+  const { createJiti } = await import(pathToFileURL(`${host}/jiti/lib/jiti.mjs`).href);
+  const jiti = createJiti(import.meta.url, { fsCache: false, alias: {
+    "@earendil-works/pi-coding-agent": `${host}/@earendil-works/pi-coding-agent/dist/index.js`,
+    "@earendil-works/pi-tui": `${host}/@earendil-works/pi-tui/dist/index.js`,
+  } });
+  const { default: extension } = await jiti.import(fileURLToPath(new URL("../extensions/compact-tools.ts", import.meta.url)));
+  const handlers = new Map();
+  let widget;
+  const warnings = [];
+  extension({ on: (name, handler) => handlers.set(name, handler), registerCommand() { assert.fail("no extension command should be registered"); } });
+  const ctx = { mode: "tui", ui: {
+    setWidget: (_name, factory) => { widget?.dispose?.(); widget = factory?.({ requestRender() {} }, {}); },
+    notify: text => warnings.push(text),
+  } };
+  t.after(() => handlers.get("session_shutdown")());
+  for (const [config, expected] of [[{ enabled: false }, false], [{ enabled: true }, true], [{ enabled: "false" }, false]]) {
+    writeFileSync(join(configDir, "config.json"), JSON.stringify(config));
+    await handlers.get("session_start")({}, ctx);
+    assert.equal(Boolean(widget), expected);
+  }
+  assert.equal(warnings.length, 1);
+  rmSync(join(configDir, "config.json"));
+  await handlers.get("session_start")({}, ctx);
+  assert.equal(Boolean(widget), true, "missing config defaults to enabled");
 });
