@@ -50,7 +50,8 @@
   "pi": {
     "extensions": [
       "./extensions/bootstrap.ts",
-      "./extensions/branding.ts"
+      "./extensions/branding.ts",
+      "./extensions/compact-tools.ts"
     ],
     "skills": [
       "./skills/agent-delegation",

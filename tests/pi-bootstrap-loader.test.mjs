@@ -53,7 +53,7 @@ test("Pi 0.84.2 loads the package bootstrap before binding runtime actions and i
     const loaded = JSON.parse(output);
     assert.deepEqual(loaded.errors, [], "the package bootstrap must not call runtime actions during Pi extension loading");
     assert.equal(loaded.context7FetchCount, 0, "the offline loader fixture must never connect to Context7");
-    assert.equal(loaded.extensionCount, 2, "the root package manifest must load the bootstrap and TUI branding extensions");
+    assert.equal(loaded.extensionCount, 3, "the root package manifest must load bootstrap, branding, and compact-tools without errors on the older host");
     assert.deepEqual(loaded.themeNames, ["JorgeX"], "the real Pi loader must load the package's opt-in JorgeX theme");
     assert.deepEqual(loaded.themeDiagnostics, [], "the package theme must load without Pi diagnostics");
     assert.equal(loaded.settingsBytes, userSettings, "loading branding must preserve existing Pi settings byte-for-byte");
