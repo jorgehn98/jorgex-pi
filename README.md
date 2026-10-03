@@ -106,17 +106,17 @@ Enable or disable the extension using `PI_CODING_AGENT_DIR/extensions/jorgex-com
 { "enabled": true }
 ```
 
-Set `enabled` to `false` for native rendering. An absent file defaults to enabled; invalid configuration keeps native rendering and reports a warning. There is no extension command. Other Pi versions retain native rendering with a compatibility warning. Grouping operates on the transcript's presentation only: it neither registers tools nor changes execution, permissions, model context, stored history, or settings. Shutdown and `/reload` restore the original renderer.
+Set `enabled` to `false` for native rendering. An absent file defaults to enabled; invalid configuration keeps native rendering and reports a warning. There is no extension command. Other Pi versions retain native rendering with a compatibility warning. Grouping operates on the transcript's presentation only: it neither registers tools nor changes execution, permissions, model context, stored history, or settings. Shutdown and `/reload` restore the original renderer. The extension and its grouping helpers live together in `extensions/compact-tools.ts`, so `/reload` refreshes the helpers too.
 
 This intentionally small adaptation follows [pi-tool-display](https://github.com/MasuRii/pi-tool-display)'s reversible presentation/cleanup approach. Its tool overrides, diff engine, prompt-box changes, and thinking-label/context transformations are not included. Upstream PRs [#31](https://github.com/MasuRii/pi-tool-display/pull/31) and [#50](https://github.com/MasuRii/pi-tool-display/pull/50) informed renderer-only integration and native Codemode handling. No upstream runtime dependency is added.
 
-The focused component check uses an existing Pi 1.0.0 installation, without downloading a host:
+The focused component and loader-reload checks use an existing Pi 1.0.0 installation, without downloading a host:
 
 ```sh
 JORGEX_PI_TEST_HOST=/absolute/path/to/pi-1.0.0/node_modules pnpm exec node --test tests/compact-tools.test.mjs
 ```
 
-Without that explicit host the component check is skipped; it does not certify compatibility with the package's older development host. Stack's lifecycle is unchanged; the extension ships with the Pi package and reaches managed installations only through a deliberate verified update. A manual local copy used for evaluation is separate from the managed package and should have its `index.ts` and `compact-tools.mjs` removed after adopting the published extension to avoid loading it twice; preserve `config.json`.
+Without that explicit host these checks are skipped; they do not certify compatibility with the package's older development host. Stack's lifecycle is unchanged; the extension ships with the Pi package and reaches managed installations only through a deliberate verified update. A manual local copy used for evaluation is separate from the managed package: after adopting the published extension, remove its `index.ts` and any legacy `compact-tools.mjs` if present to avoid duplicate loading or retaining the old helper; preserve `config.json`.
 
 ## Bootstrap and safety boundary
 

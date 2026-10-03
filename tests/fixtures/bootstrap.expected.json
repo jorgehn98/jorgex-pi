@@ -3,7 +3,8 @@
   "extension": "./extensions/bootstrap.ts",
   "extensions": [
     "./extensions/bootstrap.ts",
-    "./extensions/branding.ts"
+    "./extensions/branding.ts",
+    "./extensions/compact-tools.ts"
   ],
   "themes": [
     "./themes/JorgeX.json"

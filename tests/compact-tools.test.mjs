@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { mountCompactTools } from "../extensions/compact-tools.mjs";
-
 const host = process.env.JORGEX_PI_TEST_HOST;
+
+async function importCompactTools() {
+  const { createJiti } = await import(pathToFileURL(`${host}/jiti/lib/jiti.mjs`).href);
+  const jiti = createJiti(import.meta.url, { fsCache: false, moduleCache: false, alias: {
+    "@earendil-works/pi-coding-agent": `${host}/@earendil-works/pi-coding-agent/dist/index.js`,
+    "@earendil-works/pi-tui": `${host}/@earendil-works/pi-tui/dist/index.js`,
+  } });
+  return jiti.import(fileURLToPath(new URL("../extensions/compact-tools.ts", import.meta.url)));
+}
 
 test("group visibility preserves native tool detail and restores the transcript", { skip: !host }, async () => {
   const agent = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/index.js`).href);
@@ -26,7 +33,8 @@ test("group visibility preserves native tool detail and restores the transcript"
     chat.addChild(row);
   }
   const nativeCompact = originalRender.call(chat, 100).join("\n");
-  const restore = mountCompactTools(chat, { ...tui, ...agent, theme, requestRender: ui.requestRender, getExpanded: () => false });
+  const { mountCompactTools } = await importCompactTools();
+  const restore = mountCompactTools(chat, { ...tui, ...agent, theme, requestRender: ui.requestRender });
   try {
     const collapsed = chat.render(100).join("\n");
     assert.match(collapsed, /1 edit, 1 thought, 2 reads, 1 tool/);
@@ -82,12 +90,7 @@ test("configuration enables or disables the extension without registering a comm
   process.env.PI_CODING_AGENT_DIR = owned;
   const configDir = join(owned, "extensions", "jorgex-compact-tools");
   mkdirSync(configDir, { recursive: true });
-  const { createJiti } = await import(pathToFileURL(`${host}/jiti/lib/jiti.mjs`).href);
-  const jiti = createJiti(import.meta.url, { fsCache: false, alias: {
-    "@earendil-works/pi-coding-agent": `${host}/@earendil-works/pi-coding-agent/dist/index.js`,
-    "@earendil-works/pi-tui": `${host}/@earendil-works/pi-tui/dist/index.js`,
-  } });
-  const { default: extension } = await jiti.import(fileURLToPath(new URL("../extensions/compact-tools.ts", import.meta.url)));
+  const { default: extension } = await importCompactTools();
   const handlers = new Map();
   let widget;
   const warnings = [];
@@ -106,4 +109,55 @@ test("configuration enables or disables the extension without registering a comm
   rmSync(join(configDir, "config.json"));
   await handlers.get("session_start")({}, ctx);
   assert.equal(Boolean(widget), true, "missing config defaults to enabled");
+});
+
+test("Pi reload refreshes the grouping helper rather than retaining a cached module", { skip: !host }, async t => {
+  let owned;
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  let extension;
+  const ctx = { mode: "tui", ui: {} };
+  t.after(async () => {
+    try { await extension?.handlers.get("session_shutdown")?.[0]({}, ctx); }
+    finally {
+      if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previous;
+      if (owned) {
+        rmSync(owned, { recursive: true, force: true });
+        assert.equal(existsSync(owned), false);
+      }
+    }
+  });
+  owned = mkdtempSync(join(tmpdir(), "jorgex-compact-reload-"));
+  process.env.PI_CODING_AGENT_DIR = owned;
+  const entryPath = join(owned, "index.ts");
+  writeFileSync(entryPath, readFileSync(new URL("../extensions/compact-tools.ts", import.meta.url)));
+  const original = readFileSync(entryPath, "utf8");
+  assert.ok(original.includes("export function mountCompactTools(chat, host) {"));
+  const agent = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/index.js`).href);
+  const tui = await import(pathToFileURL(`${host}/@earendil-works/pi-tui/dist/index.js`).href);
+  const { theme } = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js`).href);
+  const loader = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js`).href);
+  agent.initTheme("dark", false);
+  const screen = new tui.Container();
+  screen.requestRender = () => {};
+  const chat = new tui.Container();
+  screen.addChild(chat);
+  chat.addChild(new agent.ToolExecutionComponent("read", "r1", { path: "/example/a" }, {}, {}, screen, "/example"));
+  let widget;
+  ctx.ui = {
+    setWidget: (_key, factory) => { widget?.dispose?.(); widget = factory?.(screen, theme); },
+    notify: text => assert.fail(text),
+  };
+  for (const revision of [1, 2]) {
+    await extension?.handlers.get("session_shutdown")?.[0]({}, ctx);
+    writeFileSync(entryPath, original.replace("export function mountCompactTools(chat, host) {", `export function mountCompactTools(chat, host) { chat.loadedRevision = ${revision};`));
+    loader.clearExtensionCache();
+    const loaded = await loader.loadExtensions([entryPath], owned);
+    assert.deepEqual(loaded.errors, []);
+    extension = loaded.extensions[0];
+    await extension.handlers.get("session_start")[0]({}, ctx);
+    widget.render();
+    assert.equal(chat.loadedRevision, revision, "reload must use the updated helper, not the previous ESM module");
+    assert.match(chat.render(80).join("\n"), /1 read/);
+  }
 });
