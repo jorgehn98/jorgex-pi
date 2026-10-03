@@ -34,7 +34,6 @@ export default function compactTools(pi: ExtensionAPI) {
         AssistantMessageComponent, ToolExecutionComponent, UserMessageComponent,
         theme,
         requestRender: () => tui.requestRender(),
-        getExpanded: () => ctx.ui.getToolsExpanded(),
       };
       return {
         render() {

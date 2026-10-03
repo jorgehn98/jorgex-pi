@@ -98,7 +98,7 @@ The permission lifecycle does not claim a shared lock with Pi's native permissio
 
 ## Compact tool transcript
 
-On Pi 1.0.0, the independent `compact-tools` extension groups consecutive tool calls and thinking-only messages into one collapsed activity row. Click its header to reveal every original tool result, including edits, writes, images, and Codemode; click again to collapse. `Ctrl+O` expands or collapses all tool groups. Assistant prose and user messages remain unchanged. Running and failed tool counts stay visible in the header.
+On Pi 1.0.0, the independent `compact-tools` extension groups consecutive tool calls and thinking-only messages into one collapsed activity row. Click its header to show the original components, including edits, writes, images, and Codemode; click again to collapse. Opening a group preserves each component's native detail level and thinking visibility. `Ctrl+O` retains its native role of toggling tool detail without opening or closing groups. Assistant prose and user messages remain unchanged. Running and failed tool counts stay visible in the header.
 
 Enable or disable the extension using `PI_CODING_AGENT_DIR/extensions/jorgex-compact-tools/config.json` (normally `~/.pi/agent/extensions/jorgex-compact-tools/config.json`), then run `/reload`:
 

@@ -8,7 +8,7 @@ import { mountCompactTools } from "../extensions/compact-tools.mjs";
 
 const host = process.env.JORGEX_PI_TEST_HOST;
 
-test("group, expand every original result, collapse and restore the transcript", { skip: !host }, async () => {
+test("group visibility preserves native tool detail and restores the transcript", { skip: !host }, async () => {
   const agent = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/index.js`).href);
   const tui = await import(pathToFileURL(`${host}/@earendil-works/pi-tui/dist/index.js`).href);
   const { theme } = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js`).href);
@@ -17,20 +17,40 @@ test("group, expand every original result, collapse and restore the transcript",
   const chat = new tui.Container();
   const originalRender = chat.render;
   const ui = { requestRender() {} };
+  const thought = new agent.AssistantMessageComponent({ role: "assistant", content: [{ type: "thinking", thinking: "THOUGHT-DETAIL" }] }, true);
+  chat.addChild(thought);
   for (const [id, name] of [["r1", "read"], ["r2", "read"], ["e1", "edit"], ["c1", "codemode"]]) {
-    const row = new agent.ToolExecutionComponent(name, id, { path: "/example/file" }, { showImages: false }, undefined, ui, "/example");
-    row.updateResult({ content: [{ type: "text", text: `DETAIL-${id}\nSECOND-${id}` }], details: undefined }, false);
+    const definition = name === "read" ? agent.createReadToolDefinition("/example") : name === "edit" ? agent.createEditToolDefinition("/example") : {};
+    const row = new agent.ToolExecutionComponent(name, id, { path: "/example/file" }, { showImages: false }, definition, ui, "/example");
+    row.updateResult({ content: [{ type: "text", text: `DETAIL-${id}\nSECOND-${id}\n${Array.from({ length: 24 }, (_, n) => `LINE-${n}-${id}`).join("\n")}` }], details: undefined }, false);
     chat.addChild(row);
   }
+  const nativeCompact = originalRender.call(chat, 100).join("\n");
   const restore = mountCompactTools(chat, { ...tui, ...agent, theme, requestRender: ui.requestRender, getExpanded: () => false });
   try {
     const collapsed = chat.render(100).join("\n");
-    assert.match(collapsed, /1 edit, 2 reads, 1 tool/);
+    assert.match(collapsed, /1 edit, 1 thought, 2 reads, 1 tool/);
     assert.doesNotMatch(collapsed, /DETAIL-/);
     const click = { type: "click", button: "left", x: 2, y: 1, screenX: 2, screenY: 1, width: 100, height: 2 };
     chat.handleMouse(click);
     const expanded = chat.render(100).join("\n");
-    for (const id of ["r1", "r2", "e1", "c1"]) assert.match(expanded, new RegExp(`SECOND-${id}`));
+    assert.ok(expanded.endsWith(nativeCompact), "opening the group must render exactly the native compact components");
+    assert.doesNotMatch(expanded, /LINE-23-c1/);
+    assert.equal(chat.children[1].expanded, false, "group visibility must not change native tool detail");
+    assert.equal(thought.hideThinkingBlock, true, "opening a group must not force reasoning visibility");
+    assert.doesNotMatch(expanded, /THOUGHT-DETAIL/);
+    const rows = chat.children.filter(row => row instanceof agent.ToolExecutionComponent);
+    for (const row of rows) row.setExpanded(true);
+    const nativeFull = originalRender.call(chat, 100).join("\n");
+    const groupedFull = chat.render(100).join("\n");
+    assert.ok(groupedFull.endsWith(nativeFull), "native detail changes must leave the group open and render exactly the native full components");
+    assert.match(groupedFull, /LINE-23-r1/);
+    assert.match(groupedFull, /LINE-23-c1/);
+    for (const row of rows) row.setExpanded(false);
+    const compactAgain = chat.render(100).join("\n");
+    assert.ok(compactAgain.endsWith(nativeCompact));
+    assert.match(compactAgain, /DETAIL-c1/);
+    assert.doesNotMatch(compactAgain, /LINE-23-c1/);
     chat.handleMouse({ ...click, height: chat.render(100).length });
     assert.doesNotMatch(chat.render(100).join("\n"), /DETAIL-/);
     chat.addChild(new tui.Text("ANSWER", 0, 0));
@@ -39,12 +59,12 @@ test("group, expand every original result, collapse and restore the transcript",
     failed.updateResult({ content: [{ type: "text", text: "FAILURE DETAIL" }], details: undefined, isError: true }, false);
     chat.addChild(failed);
     assert.match(chat.render(100).join("\n"), /1 failed/);
-    assert.equal(chat.children.length, 6, "presentation must not replace stored components");
+    assert.equal(chat.children.length, 7, "presentation must not replace stored components");
   } finally {
     restore();
   }
   assert.equal(chat.render, originalRender);
-  assert.match(chat.render(100).join("\n"), /DETAIL-r1/);
+  assert.match(chat.render(100).join("\n"), /DETAIL-c1/);
 });
 
 test("configuration enables or disables the extension without registering a command", { skip: !host }, async t => {

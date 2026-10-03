@@ -19,14 +19,11 @@ export function findChatContainer(tui, host) {
 
 export function mountCompactTools(chat, host) {
   if (chat[MOUNTED]) return () => {};
-  const { Container, Text, Spacer, MouseRegion, ToolExecutionComponent, AssistantMessageComponent, theme, requestRender, getExpanded } = host;
+  const { Container, Text, Spacer, MouseRegion, ToolExecutionComponent, AssistantMessageComponent, theme, requestRender } = host;
   const originalRender = chat.render;
   const originalMouse = chat.handleMouse;
-  const originalLayout = chat.mouseLayout;
   const projection = new Container();
   const groups = new WeakMap();
-  const originalStates = new Map();
-  let globalExpanded = getExpanded();
   let disposed = false;
 
   function activity(child) {
@@ -34,21 +31,6 @@ export function mountCompactTools(chat, host) {
     if (!(child instanceof AssistantMessageComponent)) return false;
     const content = child.lastMessage?.content;
     return Array.isArray(content) && content.length > 0 && !content.some(block => block.type === "text" && block.text?.trim());
-  }
-
-  function setMemberExpanded(child, expanded) {
-    if (!originalStates.has(child)) originalStates.set(child, {
-      expanded: child.expanded,
-      hideThinkingBlock: child.hideThinkingBlock,
-    });
-    const previous = originalStates.get(child);
-    if (child instanceof ToolExecutionComponent) {
-      const value = expanded ? true : previous.expanded;
-      if (child.expanded !== value) child.setExpanded(value);
-    } else {
-      const value = expanded ? false : previous.hideThinkingBlock;
-      if (child.hideThinkingBlock !== value) child.setHideThinkingBlock(value);
-    }
   }
 
   function summary(members) {
@@ -85,7 +67,6 @@ export function mountCompactTools(chat, host) {
         return { handled: true };
       });
       this.children = [new Spacer(1), clickable];
-      for (const child of this.members) setMemberExpanded(child, this.expanded);
       if (this.expanded) this.children.push(...this.members);
       return super.render(width);
     }
@@ -93,9 +74,6 @@ export function mountCompactTools(chat, host) {
 
   function render(width) {
     if (disposed) return originalRender.call(chat, width);
-    const nextExpanded = getExpanded();
-    const expansionChanged = nextExpanded !== globalExpanded;
-    globalExpanded = nextExpanded;
     const children = [];
     let members = [];
     function flush() {
@@ -103,10 +81,8 @@ export function mountCompactTools(chat, host) {
       let group = groups.get(members[0]);
       if (!group) {
         group = new ActivityGroup();
-        group.expanded = globalExpanded;
         groups.set(members[0], group);
       }
-      if (expansionChanged) group.expanded = globalExpanded;
       group.members = members;
       children.push(group);
       members = [];
@@ -119,14 +95,6 @@ export function mountCompactTools(chat, host) {
       }
     }
     flush();
-    // Drop abandoned branches instead of holding their components for the session.
-    const live = new Set(chat.children);
-    for (const [child, state] of originalStates) {
-      if (live.has(child) && activity(child)) continue;
-      if (child instanceof ToolExecutionComponent) child.setExpanded(state.expanded);
-      else child.setHideThinkingBlock(state.hideThinkingBlock);
-      originalStates.delete(child);
-    }
     projection.children = children;
     return projection.render(width);
   }
@@ -145,13 +113,7 @@ export function mountCompactTools(chat, host) {
     disposed = true;
     if (chat.render === render) chat.render = originalRender;
     if (chat.handleMouse === handleMouse) chat.handleMouse = originalMouse;
-    chat.mouseLayout = originalLayout;
     delete chat[MOUNTED];
-    for (const [child, state] of originalStates) {
-      if (child instanceof ToolExecutionComponent) child.setExpanded(state.expanded);
-      else child.setHideThinkingBlock(state.hideThinkingBlock);
-    }
-    originalStates.clear();
     projection.clear();
     requestRender();
   };
