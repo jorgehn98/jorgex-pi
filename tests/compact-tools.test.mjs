@@ -19,7 +19,6 @@ test("group visibility preserves native tool detail and restores the transcript"
   const agent = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/index.js`).href);
   const tui = await import(pathToFileURL(`${host}/@earendil-works/pi-tui/dist/index.js`).href);
   const { theme } = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js`).href);
-  assert.equal(agent.VERSION, "1.0.0", "the prepared component host must be Pi 1.0.0");
   agent.initTheme("dark", false);
   const chat = new tui.Container();
   const originalRender = chat.render;

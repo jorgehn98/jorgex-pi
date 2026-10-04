@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { AssistantMessageComponent, ToolExecutionComponent, UserMessageComponent, VERSION, getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { AssistantMessageComponent, ToolExecutionComponent, UserMessageComponent, getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Container, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 
 const MOUNTED = Symbol.for("jorgex-pi.compact-tools");
@@ -142,10 +142,6 @@ export default function compactTools(pi: ExtensionAPI) {
         ctx.ui.notify("Invalid compact-tools config; use enabled: true or false. Keeping native rendering.", "warning");
         return;
       }
-    }
-    if (VERSION !== "1.0.0") {
-      ctx.ui.notify("Compact tools currently supports Pi 1.0.0; keeping native rendering.", "warning");
-      return;
     }
     ctx.ui.setWidget(WIDGET, (tui, theme) => {
       let mounted = false;
