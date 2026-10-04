@@ -1,5 +1,0 @@
-{
-  "schemaVersion": 1,
-  "playwright": [1, 2],
-  "devtools": [1, 2, 3]
-}

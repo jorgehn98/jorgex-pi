@@ -1,8 +1,9 @@
 {
-  "name": "jorgex-pi",
+  "name": "compact-tools",
   "version": "0.8.47",
-  "description": "Pi-native runtime package for the JorgeX harness.",
+  "description": "Collapsible activity groups for the Pi terminal interface.",
   "license": "MIT",
+  "type": "module",
   "repository": {
     "type": "git",
     "url": "https://github.com/jorgehn98/jorgex-pi.git"
@@ -14,87 +15,34 @@
   "publishConfig": {
     "access": "public"
   },
-  "type": "module",
-  "bin": {
-    "jorgex-pi": "./bin/jorgex-pi.mjs"
-  },
   "keywords": [
     "pi-package",
     "pi",
-    "coding-agent",
-    "jorgex"
+    "tools",
+    "tui"
   ],
   "files": [
-    "agents",
-    "assets",
-    "bin",
-    "contract",
-    "extensions",
-    "primary",
-    "prompts",
-    "skills",
-    "snapshot/agents",
-    "themes",
-    "DESIGN.md",
-    "LICENSE",
-    "README.md"
+    "extensions/compact-tools.ts",
+    "README.md",
+    "LICENSE"
   ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
-    "build": "pnpm test",
-    "runtime-agents:generate": "node scripts/generate-runtime-agents.mjs",
-    "snapshot:generate": "node scripts/generate-snapshot.mjs",
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
-    "test:coverage": "node -e \"require('node:fs').mkdirSync('coverage',{recursive:true})\" && node --experimental-test-coverage --test --test-concurrency=1 --test-coverage-include=bin/jorgex-pi.mjs --test-coverage-include=extensions/bootstrap.ts --test-coverage-include=extensions/quality-capabilities.ts --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info tests/bootstrap.test.mjs tests/runner.test.mjs",
-    "test:property": "node --test --test-concurrency=1 pilots/property/*.test.mjs"
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },
   "pi": {
     "extensions": [
-      "./extensions/bootstrap.ts",
-      "./extensions/branding.ts",
       "./extensions/compact-tools.ts"
-    ],
-    "skills": [
-      "./skills/agent-delegation",
-      "./skills/deploy-to-vercel",
-      "./skills/diagnose",
-      "./skills/find-skills",
-      "./skills/lean-code",
-      "./skills/mcp-builder",
-      "./skills/orchestrator",
-      "./skills/react-doctor",
-      "./skills/skill-creator",
-      "./skills/supabase",
-      "./skills/supabase-postgres-best-practices",
-      "./skills/tdd",
-      "./skills/to-issues",
-      "./skills/to-prd",
-      "./skills/work-audit",
-      "./skills/work-lifecycle",
-      "./skills/xreview"
-    ],
-    "prompts": [
-      "./prompts/lean-audit.md"
-    ],
-    "themes": [
-      "./themes/JorgeX.json"
-    ]
-  },
-  "pi-subagents": {
-    "agents": [
-      "./agents"
     ]
   },
   "packageManager": "pnpm@11.22.0",
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.2",
-    "fast-check": "4.9.0"
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   },
-  "dependencies": {
-    "@gotgenes/pi-permission-system": "*",
-    "@juicesharp/rpiv-ask-user-question": "*",
-    "@narumitw/pi-goal": "*",
-    "pi-subagents": "*",
-    "pi-web-access": "*",
-    "strip-json-comments": "*"
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.0.2"
   }
 }
