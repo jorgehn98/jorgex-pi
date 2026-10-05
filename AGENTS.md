@@ -19,8 +19,8 @@ El trabajo no trivial va en worktrees dentro de la raíz (`worktrees/`, excluido
 
 ## Publicación
 
-Mantener la publicación normal y su aislamiento de permisos; pnpm para desarrollo/pack, npm solo para la publicación OIDC y su comprobación de versión dentro del workflow. El nuevo nombre necesita trusted publisher propio configurado en npm antes de publicar.
+Mantener la publicación normal y su aislamiento de permisos; pnpm para desarrollo/pack, npm solo para la publicación OIDC del tarball dentro del workflow. El nuevo nombre necesita trusted publisher propio configurado en npm antes de publicar.
 
-No publicar esta extensión bajo `jorgex-pi` ni reutilizar sus tags históricos. El workflow conserva auto-bump patch; minor/major se deciden en el PR. No tocar instalaciones personales, credenciales o paquetes ya publicados sin autorización.
+No publicar esta extensión bajo `jorgex-pi` ni reutilizar sus tags históricos. La versión se prepara en el PR; minor/major requieren decisión humana. No hay auto-patch ni commits de versión en main. Un solo pack validado pasa a OIDC; SRI de registry confirmado antes del tag inmutable del mismo SHA. Recuperación con SHA explícita de main y coincidencia de bytes. No tocar instalaciones personales, credenciales o paquetes ya publicados sin autorización.
 
 Revisar impacto en Stack cuando cambien el nombre, configuración o uso de la extensión, sin recrear sincronización automática o snapshots del canon. La documentación operativa está en README; no duplicar aquí su procedimiento.
