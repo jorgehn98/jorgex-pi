@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { AssistantMessageComponent, ToolExecutionComponent, UserMessageComponent, getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Container, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 
-const MOUNTED = Symbol.for("jorgex-pi.compact-tools");
+const MOUNTED = Symbol.for("compact-tools");
 
 // Pi 1.0 has no renderer-only transcript API. Keep the private-field adapter
 // here; unknown layouts retain native rendering, and disposal restores it.
@@ -124,7 +124,7 @@ export function mountCompactTools(chat, host) {
   };
 }
 
-const WIDGET = "jorgex.compact-tools";
+const WIDGET = "compact-tools";
 
 export default function compactTools(pi: ExtensionAPI) {
   let dispose = () => {};
@@ -134,7 +134,7 @@ export default function compactTools(pi: ExtensionAPI) {
     if (ctx.mode !== "tui") return;
     ctx.ui.setWidget(WIDGET, undefined);
     try {
-      const config = JSON.parse(readFileSync(join(getAgentDir(), "extensions", "jorgex-compact-tools", "config.json"), "utf8"));
+      const config = JSON.parse(readFileSync(join(getAgentDir(), "extensions", "compact-tools", "config.json"), "utf8"));
       if (typeof config.enabled !== "boolean") throw new Error("enabled must be true or false");
       if (!config.enabled) return;
     } catch (error) {

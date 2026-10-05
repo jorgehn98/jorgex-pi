@@ -4,7 +4,8 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-const host = process.env.JORGEX_PI_TEST_HOST;
+const host = process.env.PI_TEST_HOST ?? fileURLToPath(new URL("../node_modules/", import.meta.url));
+assert.ok(existsSync(join(host, "@earendil-works/pi-coding-agent/dist/index.js")), "Install the development host or set PI_TEST_HOST; these tests must not silently skip.");
 
 async function importCompactTools() {
   const { createJiti } = await import(pathToFileURL(`${host}/jiti/lib/jiti.mjs`).href);
@@ -15,7 +16,7 @@ async function importCompactTools() {
   return jiti.import(fileURLToPath(new URL("../extensions/compact-tools.ts", import.meta.url)));
 }
 
-test("group visibility preserves native tool detail and restores the transcript", { skip: !host }, async () => {
+test("group visibility preserves native tool detail and restores the transcript", async () => {
   const agent = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/index.js`).href);
   const tui = await import(pathToFileURL(`${host}/@earendil-works/pi-tui/dist/index.js`).href);
   const { theme } = await import(pathToFileURL(`${host}/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js`).href);
@@ -74,7 +75,7 @@ test("group visibility preserves native tool detail and restores the transcript"
   assert.match(chat.render(100).join("\n"), /DETAIL-c1/);
 });
 
-test("configuration enables or disables the extension without registering a command", { skip: !host }, async t => {
+test("configuration enables or disables the extension without registering a command", async t => {
   let owned;
   const previous = process.env.PI_CODING_AGENT_DIR;
   t.after(() => {
@@ -87,7 +88,7 @@ test("configuration enables or disables the extension without registering a comm
   });
   owned = mkdtempSync(join(tmpdir(), "jorgex-compact-config-"));
   process.env.PI_CODING_AGENT_DIR = owned;
-  const configDir = join(owned, "extensions", "jorgex-compact-tools");
+  const configDir = join(owned, "extensions", "compact-tools");
   mkdirSync(configDir, { recursive: true });
   const { default: extension } = await importCompactTools();
   const handlers = new Map();
@@ -110,7 +111,7 @@ test("configuration enables or disables the extension without registering a comm
   assert.equal(Boolean(widget), true, "missing config defaults to enabled");
 });
 
-test("Pi reload refreshes the grouping helper rather than retaining a cached module", { skip: !host }, async t => {
+test("Pi reload refreshes the grouping helper rather than retaining a cached module", async t => {
   let owned;
   const previous = process.env.PI_CODING_AGENT_DIR;
   let extension;

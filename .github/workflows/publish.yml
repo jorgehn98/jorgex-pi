@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_sha:
-        description: SHA completa de 40 hex de recuperación anclada a main (opcional)
+        description: SHA completa de recuperación anclada a main (opcional)
         required: false
 
 concurrency:
@@ -20,6 +20,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       target_sha: ${{ steps.target.outputs.sha }}
     steps:
@@ -27,71 +28,44 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
       - name: Resolve release target
         id: target
-        shell: bash
         env:
           RELEASE_SHA: ${{ github.event.inputs.release_sha || '' }}
         run: |
           set -euo pipefail
           git fetch origin main --tags
-          origin_main="$(git rev-parse origin/main)"
-          target="$origin_main"
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            if [ -n "$RELEASE_SHA" ]; then
-              release_sha="${RELEASE_SHA,,}"
-              if ! [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]; then
-                echo "::error::release_sha debe ser una SHA completa de 40 hex."
-                exit 1
-              fi
-              if ! git merge-base --is-ancestor "$release_sha" "$origin_main"; then
-                echo "::error::$release_sha no pertenece a main."
-                exit 1
-              fi
-              target="$release_sha"
+          target="$(git rev-parse origin/main)"
+          if [ -n "$RELEASE_SHA" ]; then
+            if ! [[ "$RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo 'release_sha debe ser una SHA completa.' >&2
+              exit 1
             fi
+            git merge-base --is-ancestor "$RELEASE_SHA" "$target"
+            target="${RELEASE_SHA,,}"
           fi
           git checkout --detach "$target"
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            if (JSON.parse(readFileSync("package.json", "utf8")).name !== "compact-tools") {
+              throw new Error("No se publica el paquete legacy desde este workflow.");
+            }
+          '
           echo "sha=$target" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
         with:
-          version: 11.22.0
           run_install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
-          cache: pnpm
-      - name: Resolve pinned public Stack snapshot
-        id: stack-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            const parity = JSON.parse(readFileSync("contract/parity.v2.json", "utf8"));
-            const repository = parity?.source?.repository;
-            const commit = parity?.source?.commit;
-            if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? "")) throw new Error("parity.v2.source.repository must be a public GitHub repository");
-            if (!/^[a-f0-9]{40}$/.test(commit ?? "")) throw new Error("parity.v2.source.commit must be a full lowercase SHA");
-            console.log(`repository=${repository.slice("https://github.com/".length)}`);
-            console.log(`commit=${commit}`);
-          ' >> "$GITHUB_OUTPUT"
-      - name: Check out pinned Stack snapshot
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: ${{ steps.stack-source.outputs.repository }}
-          ref: ${{ steps.stack-source.outputs.commit }}
-          path: .jorgex-stack
-          fetch-depth: 1
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm test
-      - name: Verify cross-repo parity against the pinned Stack snapshot
-        run: JORGEX_STACK_DIR="${{ github.workspace }}/.jorgex-stack" node --test tests/cross-repo/snapshot-parity.test.mjs
-      - run: pnpm pack --pack-destination .validation-artifacts
+      - run: pnpm pack --pack-destination "$RUNNER_TEMP"
 
   plan:
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     outputs:
@@ -104,13 +78,12 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.target_sha }}
           fetch-depth: 0
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
-        with:
-          version: 11.22.0
-          run_install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          run_install: false
       - name: Resolve release plan
         id: release
         env:
@@ -122,6 +95,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       id-token: write
@@ -130,42 +104,34 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.publish_sha }}
           fetch-depth: 0
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
-        with:
-          version: 11.22.0
-          run_install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          run_install: false
       - name: Verify trusted-publishing npm
-        env:
-          MINIMUM_NPM_VERSION: "11.5.1"
         run: |
-          set -euo pipefail
           npm_version="$(npm --version)"
-          node - "$npm_version" "$MINIMUM_NPM_VERSION" <<'NODE'
-          const [current, minimum] = process.argv.slice(2);
-          const parse = (value) => value.split(".").map((part) => Number.parseInt(part, 10));
-          const [currentParts, minimumParts] = [parse(current), parse(minimum)];
-          const compatible = minimumParts.every((part, index) => (currentParts[index] ?? 0) === part)
-            || currentParts.some((part, index) => part > (minimumParts[index] ?? 0)
-              && currentParts.slice(0, index).every((value, prefix) => value === minimumParts[prefix]));
-          if (!compatible) throw new Error(`npm ${current} is older than required ${minimum}.`);
+          node - "$npm_version" <<'NODE'
+          const [major, minor, patch] = process.argv[2].split('.').map(Number);
+          if (!(major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1))))) {
+            throw new Error('Trusted publishing requiere npm >=11.5.1.');
+          }
           NODE
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test
       - name: Pack exact release
         run: |
           mkdir -p .release-artifacts
           pnpm pack --pack-destination .release-artifacts
       - name: Publish exact release
-        run: npm publish .release-artifacts/jorgex-pi-${{ needs.plan.outputs.version }}.tgz --ignore-scripts --provenance
+        run: npm publish .release-artifacts/compact-tools-${{ needs.plan.outputs.version }}.tgz --ignore-scripts --provenance
 
   tag-release:
     needs: [plan, publish]
     if: always() && !cancelled() && needs.publish.result != 'failure' && needs.publish.result != 'cancelled' && (needs.publish.result == 'success' || needs.plan.outputs.tag_needed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
@@ -173,82 +139,17 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.publish_sha }}
           fetch-depth: 0
-      - name: Create immutable release tag
-        shell: bash
+      - name: Create immutable package tag
         env:
           VERSION: ${{ needs.plan.outputs.version }}
           SHA: ${{ needs.plan.outputs.publish_sha }}
         run: |
           set -euo pipefail
-          tag="v$VERSION"
+          tag="compact-tools-v$VERSION"
           git fetch origin --tags
           if git rev-parse --verify --quiet "refs/tags/$tag" > /dev/null; then
-            existing="$(git rev-list -n 1 "$tag")"
-            if [ "$existing" != "$SHA" ]; then
-              echo "::error::$tag apunta a $existing, no a $SHA."
-              exit 1
-            fi
-            exit 0
+            test "$(git rev-list -n 1 "$tag")" = "$SHA"
+          else
+            git tag "$tag" "$SHA"
+            git push origin "$tag"
           fi
-          git tag "$tag" "$SHA"
-          git push origin "$tag"
-
-  verify-notification:
-    needs: [plan, publish, tag-release]
-    if: always() && !cancelled() && vars.JORGEX_AUTOMATION_ENABLED == 'true' && needs.plan.result == 'success' && needs.tag-release.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    permissions:
-      contents: read
-    outputs:
-      version: ${{ steps.verify.outputs.version }}
-      producer_sha: ${{ steps.verify.outputs.producer_sha }}
-      run_id: ${{ steps.verify.outputs.run_id }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: main
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
-      - name: Verify published producer without App credentials
-        id: verify
-        env:
-          VERSION: ${{ needs.plan.outputs.version }}
-          PRODUCER_SHA: ${{ needs.plan.outputs.publish_sha }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          git fetch origin main --tags
-          node ./scripts/notify-stack.mjs
-
-  notify-stack:
-    needs: verify-notification
-    if: always() && !cancelled() && needs.verify-notification.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions: {}
-    steps:
-      - name: Create dedicated Stack dispatch token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
-        with:
-          client-id: ${{ vars.JORGEX_AUTOMATION_APP_CLIENT_ID }}
-          private-key: ${{ secrets.JORGEX_AUTOMATION_APP_PRIVATE_KEY }}
-          owner: jorgehn98
-          repositories: jorgex-stack
-          permission-contents: write
-      - name: Notify Stack once (recover with coordinator workflow_dispatch, not republish)
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ needs.verify-notification.outputs.version }}
-          PRODUCER_SHA: ${{ needs.verify-notification.outputs.producer_sha }}
-          RUN_ID: ${{ needs.verify-notification.outputs.run_id }}
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'NODE' | gh api --method POST /repos/jorgehn98/jorgex-stack/dispatches --input -
-          const { VERSION: version, PRODUCER_SHA: producer_sha, RUN_ID: run_id } = process.env;
-          console.log(JSON.stringify({ event_type: "pi-published-v1", client_payload: { version, producer_sha, run_id } }));
-          NODE

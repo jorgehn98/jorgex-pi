@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const FULL_SHA = /^[0-9a-f]{40}$/i;
-const VERSION_NOT_FOUND = /ERR_PNPM_PACKAGE_NOT_FOUND|No matching version found/i;
+const VERSION_NOT_FOUND = /ERR_PNPM_PACKAGE_NOT_FOUND|ERR_PNPM_FETCH_404|No matching version found/i;
 
 export const PUBLICABLE_EXACT = new Set([
   "package.json",
@@ -14,18 +14,7 @@ export const PUBLICABLE_EXACT = new Set([
   "LICENSE",
 ]);
 
-export const PUBLICABLE_PREFIXES = [
-  "agents/",
-  "assets/",
-  "bin/",
-  "contract/",
-  "extensions/",
-  "primary/",
-  "prompts/",
-  "skills/",
-  "snapshot/agents/",
-  "themes/",
-];
+export const PUBLICABLE_PREFIXES = ["extensions/"];
 
 const TEST_PATTERN = /(^|\/)(?:tests?|specs?)\//i;
 
@@ -74,17 +63,14 @@ export function buildReleasePlan({ currentVersion, currentVersionExists, publica
   return { publish: true, bump: true, version, reason: "publicable_patch" };
 }
 
-export function synchronizeReleaseMetadata({ manifest, contract, version }) {
-  const nextManifest = structuredClone(manifest);
-  const nextContract = structuredClone(contract);
-  if (nextManifest.name !== "jorgex-pi" || nextContract?.package?.name !== "jorgex-pi") {
-    throw new Error("Release metadata must describe jorgex-pi.");
-  }
+export function withReleaseVersion(manifest, version) {
   bumpPatch(version);
-  nextManifest.version = version;
-  nextContract.package.version = version;
-  nextContract.package.source = `npm:jorgex-pi@${version}`;
-  return { manifest: nextManifest, contract: nextContract };
+  return { ...manifest, version };
+}
+
+export function releaseTag(version) {
+  bumpPatch(version);
+  return `compact-tools-v${version}`;
 }
 
 export function isReleaseBumpCommit(message, actor = "") {
@@ -102,7 +88,7 @@ export function normalizeRecoverySha(value) {
 
 export function assertReleaseBaseline({ currentVersion, currentVersionExists, currentTagSha, recoveryRun, releaseShaProvided }) {
   if (!currentVersionExists || currentTagSha !== null) return;
-  const tag = `v${currentVersion}`;
+  const tag = releaseTag(currentVersion);
   if (recoveryRun && !releaseShaProvided) {
     throw new Error(`${tag} is missing. Recovery requires the exact release_sha that was published.`);
   }
@@ -113,7 +99,7 @@ export function assertReleaseBaseline({ currentVersion, currentVersionExists, cu
 
 export function resolveReleaseTagState({ version, tagSha, publishSha, publish, recoveryRun }) {
   if (!publish && !recoveryRun) return { tagNeeded: false };
-  if (tagSha !== null && tagSha !== publishSha) throw new Error(`v${version} already points to ${tagSha}, not ${publishSha}.`);
+  if (tagSha !== null && tagSha !== publishSha) throw new Error(`${releaseTag(version)} already points to ${tagSha}, not ${publishSha}.`);
   return { tagNeeded: tagSha === null && (publish || recoveryRun) };
 }
 
@@ -121,9 +107,9 @@ function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }).trim();
 }
 
-function npmHasVersion(name, version) {
+export function npmHasVersion(name, version, execute = run) {
   try {
-    run("pnpm", ["view", `${name}@${version}`, "version"]);
+    execute("pnpm", ["view", `${name}@${version}`, "version"]);
     return true;
   } catch (error) {
     const output = `${error?.message ?? ""}\n${String(error?.stdout ?? "")}\n${String(error?.stderr ?? "")}`;
@@ -163,13 +149,10 @@ function appendOutputs(values) {
 
 function commitVersion(version) {
   const manifest = readJson("package.json");
-  const contract = readJson("contract/jorgex-pi.v1.json");
-  const synchronized = synchronizeReleaseMetadata({ manifest, contract, version });
-  writeJson("package.json", synchronized.manifest);
-  writeJson("contract/jorgex-pi.v1.json", synchronized.contract);
+  writeJson("package.json", withReleaseVersion(manifest, version));
   run("git", ["config", "user.name", "github-actions[bot]"]);
   run("git", ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
-  run("git", ["add", "package.json", "contract/jorgex-pi.v1.json"]);
+  run("git", ["add", "package.json"]);
   run("git", ["commit", "-m", `chore(release): bump version to v${version}`]);
   run("git", ["push", "origin", "HEAD:main"]);
   return run("git", ["rev-parse", "HEAD"]);
@@ -187,16 +170,11 @@ export function runReleasePlan() {
   if (!recoveryRun && originMain !== targetSha) throw new Error("Release run is stale because origin/main advanced.");
 
   const manifest = readJson("package.json");
-  const contract = readJson("contract/jorgex-pi.v1.json");
   bumpPatch(manifest.version);
-  if (contract?.package?.name !== manifest.name
-    || contract.package.version !== manifest.version
-    || contract.package.source !== `npm:${manifest.name}@${manifest.version}`) {
-    throw new Error("package.json and contract/jorgex-pi.v1.json release metadata are not synchronized.");
-  }
+  if (manifest.name !== "compact-tools") throw new Error("Refusing to publish a legacy package from this workflow.");
 
   const currentVersionExists = npmHasVersion(manifest.name, manifest.version);
-  const currentTag = `v${manifest.version}`;
+  const currentTag = releaseTag(manifest.version);
   const currentTagSha = resolveTagSha(currentTag)?.toLowerCase() ?? null;
   assertReleaseBaseline({
     currentVersion: manifest.version,
@@ -228,7 +206,7 @@ export function runReleasePlan() {
   let publishSha = targetSha;
   if (plan.bump) publishSha = commitVersion(plan.version).toLowerCase();
 
-  const tag = `v${plan.version}`;
+  const tag = releaseTag(plan.version);
   const tagSha = resolveTagSha(tag)?.toLowerCase() ?? null;
   const { tagNeeded } = resolveReleaseTagState({
     version: plan.version,
