@@ -2,13 +2,13 @@ name: Publish package
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
     inputs:
       release_sha:
-        description: SHA completa de recuperación anclada a main (opcional)
-        required: false
+        description: SHA completa de main aceptada/publicada para recuperación
+        required: true
+        type: string
 
 concurrency:
   group: publish-main
@@ -20,136 +20,123 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
-      target_sha: ${{ steps.target.outputs.sha }}
+      needed: ${{ steps.plan.outputs.needed }}
+      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version }}
+      sha: ${{ steps.plan.outputs.sha }}
+      tag: ${{ steps.plan.outputs.tag }}
+      integrity: ${{ steps.artifact.outputs.integrity }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: main
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
-      - name: Resolve release target
+          node-version: "24.18.0"
+      - name: Resolve immutable main candidate
         id: target
         env:
-          RELEASE_SHA: ${{ github.event.inputs.release_sha || '' }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: node scripts/release-policy.mjs target
+      - name: Select candidate
+        env:
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: git checkout --detach "$TARGET_SHA"
+      - name: Resolve version prepared in PR
+        id: plan
+        env:
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: node scripts/release-policy.mjs plan
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        if: steps.plan.outputs.needed == 'true'
+      - if: steps.plan.outputs.needed == 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - if: steps.plan.outputs.needed == 'true'
+        run: pnpm --config.verify-deps-before-run=false test
+      - name: Pack once and validate native integrity
+        if: steps.plan.outputs.needed == 'true'
+        id: artifact
+        env:
+          PUBLISH: ${{ steps.plan.outputs.publish }}
         run: |
           set -euo pipefail
-          git fetch origin main --tags
-          target="$(git rev-parse origin/main)"
-          if [ -n "$RELEASE_SHA" ]; then
-            if ! [[ "$RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-              echo 'release_sha debe ser una SHA completa.' >&2
-              exit 1
-            fi
-            git merge-base --is-ancestor "$RELEASE_SHA" "$target"
-            target="${RELEASE_SHA,,}"
-          fi
-          git checkout --detach "$target"
-          node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            if (JSON.parse(readFileSync("package.json", "utf8")).name !== "compact-tools") {
-              throw new Error("No se publica el paquete legacy desde este workflow.");
-            }
-          '
-          echo "sha=$target" >> "$GITHUB_OUTPUT"
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+          mkdir -p "$RUNNER_TEMP/release"
+          pnpm --config.verify-deps-before-run=false pack --pack-destination "$RUNNER_TEMP/release"
+          mv "$RUNNER_TEMP/release/"*.tgz "$RUNNER_TEMP/release/package.tgz"
+          node scripts/release-policy.mjs artifact "$RUNNER_TEMP/release/package.tgz"
+          cp scripts/release-policy.mjs "$RUNNER_TEMP/release/release-policy.mjs"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: steps.plan.outputs.needed == 'true'
         with:
-          run_install: false
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm test
-      - run: pnpm pack --pack-destination "$RUNNER_TEMP"
-
-  plan:
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    outputs:
-      publish: ${{ steps.release.outputs.publish }}
-      version: ${{ steps.release.outputs.version }}
-      publish_sha: ${{ steps.release.outputs.publish_sha }}
-      tag_needed: ${{ steps.release.outputs.tag_needed }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ needs.validate.outputs.target_sha }}
-          fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
-        with:
-          run_install: false
-      - name: Resolve release plan
-        id: release
-        env:
-          RELEASE_SHA: ${{ github.event.inputs.release_sha || '' }}
-          TARGET_SHA: ${{ needs.validate.outputs.target_sha }}
-        run: node ./scripts/release-policy.mjs plan
+          name: release
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 7
 
   publish:
-    needs: plan
-    if: needs.plan.outputs.publish == 'true'
+    needs: validate
+    if: needs.validate.outputs.needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: read
       id-token: write
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      INTEGRITY: ${{ needs.validate.outputs.integrity }}
+      SHA: ${{ needs.validate.outputs.sha }}
+      PUBLISH: ${{ needs.validate.outputs.publish }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
-          ref: ${{ needs.plan.outputs.publish_sha }}
-          fetch-depth: 0
+          name: release
+          path: ${{ runner.temp }}/release
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.18.0"
           registry-url: https://registry.npmjs.org
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
-        with:
-          run_install: false
-      - name: Verify trusted-publishing npm
-        run: |
-          npm_version="$(npm --version)"
-          node - "$npm_version" <<'NODE'
-          const [major, minor, patch] = process.argv[2].split('.').map(Number);
-          if (!(major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1))))) {
-            throw new Error('Trusted publishing requiere npm >=11.5.1.');
-          }
-          NODE
-      - name: Pack exact release
-        run: |
-          mkdir -p .release-artifacts
-          pnpm pack --pack-destination .release-artifacts
-      - name: Publish exact release
-        run: npm publish .release-artifacts/compact-tools-${{ needs.plan.outputs.version }}.tgz --ignore-scripts --provenance
+      - name: Check bytes and registry before publishing or rerunning
+        id: ready
+        run: node "$RUNNER_TEMP/release/release-policy.mjs" prepare "$RUNNER_TEMP/release/package.tgz"
+      - name: Publish exact validated tarball by OIDC
+        if: steps.ready.outputs.publish == 'true'
+        run: npm publish "$RUNNER_TEMP/release/package.tgz" --ignore-scripts --provenance --access public
+      - name: Confirm registry integrity before tagging
+        run: node "$RUNNER_TEMP/release/release-policy.mjs" verify "$RUNNER_TEMP/release/package.tgz"
 
   tag-release:
-    needs: [plan, publish]
-    if: always() && !cancelled() && needs.publish.result != 'failure' && needs.publish.result != 'cancelled' && (needs.publish.result == 'success' || needs.plan.outputs.tag_needed == 'true')
+    needs: [validate, publish]
+    if: needs.publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ needs.plan.outputs.publish_sha }}
-          fetch-depth: 0
-      - name: Create immutable package tag
+      # No checkout, artifact execution or product code with a repository write token.
+      - name: Create immutable tag after registry byte confirmation
         env:
-          VERSION: ${{ needs.plan.outputs.version }}
-          SHA: ${{ needs.plan.outputs.publish_sha }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          SHA: ${{ needs.validate.outputs.sha }}
         run: |
           set -euo pipefail
-          tag="compact-tools-v$VERSION"
-          git fetch origin --tags
-          if git rev-parse --verify --quiet "refs/tags/$tag" > /dev/null; then
-            test "$(git rev-list -n 1 "$tag")" = "$SHA"
+          trap 'echo "::error::npm bytes were verified, but tagging failed. Recover using workflow_dispatch with release_sha=$SHA; never republish or move a tag."' ERR
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$TAG" =~ ^compact-tools-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > "$RUNNER_TEMP/ref.json" 2> "$RUNNER_TEMP/ref-error"; then
+            object="$(jq -c .object "$RUNNER_TEMP/ref.json")"
+            while [ "$(jq -r .type <<< "$object")" = tag ]; do
+              object="$(gh api "repos/$GH_REPO/git/tags/$(jq -r .sha <<< "$object")" --jq '.object')"
+            done
+            test "$(jq -r .type <<< "$object")" = commit
+            test "$(jq -r .sha <<< "$object")" = "$SHA"
+          elif grep -q 'HTTP 404' "$RUNNER_TEMP/ref-error"; then
+            gh api --method POST "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$SHA"
           else
-            git tag "$tag" "$SHA"
-            git push origin "$tag"
+            cat "$RUNNER_TEMP/ref-error" >&2
+            exit 1
           fi

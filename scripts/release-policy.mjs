@@ -1,225 +1,145 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
 
-const FULL_SHA = /^[0-9a-f]{40}$/i;
-const VERSION_NOT_FOUND = /ERR_PNPM_PACKAGE_NOT_FOUND|ERR_PNPM_FETCH_404|No matching version found/i;
+const NAME = "compact-tools";
+const TAG_PREFIX = "compact-tools-v";
 
-export const PUBLICABLE_EXACT = new Set([
-  "package.json",
-  "pnpm-lock.yaml",
-  "pnpm-workspace.yaml",
-  "README.md",
-  "DESIGN.md",
-  "LICENSE",
-]);
-
-export const PUBLICABLE_PREFIXES = ["extensions/"];
-
-const TEST_PATTERN = /(^|\/)(?:tests?|specs?)\//i;
-
-export function normalizeReleasePath(input) {
-  return input.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
-}
-
-export function classifyReleasePaths(paths) {
-  const result = { publicPaths: [], ignoredPaths: [], testPaths: [], workflowPaths: [], scriptPaths: [] };
-
-  for (const input of paths) {
-    const path = normalizeReleasePath(input);
-    if (path === "") continue;
-    if (TEST_PATTERN.test(path)) result.testPaths.push(path);
-    else if (path.startsWith(".github/workflows/")) result.workflowPaths.push(path);
-    else if (path.startsWith("scripts/")) result.scriptPaths.push(path);
-    else if (PUBLICABLE_EXACT.has(path) || PUBLICABLE_PREFIXES.some((prefix) => path.startsWith(prefix))) result.publicPaths.push(path);
-    else result.ignoredPaths.push(path);
+export function validateVersion(version) {
+  if (typeof version !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
+    throw new Error("Release version must be plain x.y.z; staged placeholders are not releases.");
   }
-
-  return result;
+  return version;
 }
 
-export function bumpPatch(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!match) throw new Error(`Version \"${version}\" must be a plain x.y.z semver.`);
-  return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
+export function normalizeSha(value) {
+  if (!/^[a-f0-9]{40}$/i.test(value ?? "")) throw new Error("release_sha must be a complete 40-character SHA.");
+  return value.toLowerCase();
 }
 
-export function buildReleasePlan({ currentVersion, currentVersionExists, publicable, releaseBumpCommit, recoveryRun, versionExists }) {
-  if (releaseBumpCommit && !recoveryRun) {
-    return { publish: false, bump: false, version: currentVersion, reason: "release_bump_commit" };
-  }
-  if (!currentVersionExists) {
-    return { publish: true, bump: false, version: currentVersion, reason: "unpublished_version" };
-  }
-  if (recoveryRun) {
-    return { publish: false, bump: false, version: currentVersion, reason: "published_recovery" };
-  }
-  if (!publicable) {
-    return { publish: false, bump: false, version: currentVersion, reason: "no_publicable_changes" };
-  }
-
-  let version = bumpPatch(currentVersion);
-  while (versionExists(version)) version = bumpPatch(version);
-  return { publish: true, bump: true, version, reason: "publicable_patch" };
-}
-
-export function withReleaseVersion(manifest, version) {
-  bumpPatch(version);
-  return { ...manifest, version };
-}
-
-export function releaseTag(version) {
-  bumpPatch(version);
-  return `compact-tools-v${version}`;
-}
-
-export function isReleaseBumpCommit(message, actor = "") {
-  const text = message.trim();
-  return /^chore\(release\):\s+/i.test(text)
-    || /^v?\d+\.\d+\.\d+$/i.test(text)
-    || (/\[bot\]$/i.test(actor.trim()) && /\b(?:release|publish|bump|version)\b/i.test(text));
-}
-
-export function normalizeRecoverySha(value) {
-  const sha = value.trim().toLowerCase();
-  if (!FULL_SHA.test(sha)) throw new Error("release_sha must be a complete 40-character Git SHA.");
-  return sha;
-}
-
-export function assertReleaseBaseline({ currentVersion, currentVersionExists, currentTagSha, recoveryRun, releaseShaProvided }) {
-  if (!currentVersionExists || currentTagSha !== null) return;
-  const tag = releaseTag(currentVersion);
-  if (recoveryRun && !releaseShaProvided) {
-    throw new Error(`${tag} is missing. Recovery requires the exact release_sha that was published.`);
-  }
-  if (!recoveryRun) {
-    throw new Error(`${tag} is missing. Recover its exact published SHA before automatic patch releases continue.`);
-  }
-}
-
-export function resolveReleaseTagState({ version, tagSha, publishSha, publish, recoveryRun }) {
-  if (!publish && !recoveryRun) return { tagNeeded: false };
-  if (tagSha !== null && tagSha !== publishSha) throw new Error(`${releaseTag(version)} already points to ${tagSha}, not ${publishSha}.`);
-  return { tagNeeded: tagSha === null && (publish || recoveryRun) };
-}
-
-function run(command, args, options = {}) {
-  return execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }).trim();
-}
-
-export function npmHasVersion(name, version, execute = run) {
-  try {
-    execute("pnpm", ["view", `${name}@${version}`, "version"]);
-    return true;
-  } catch (error) {
-    const output = `${error?.message ?? ""}\n${String(error?.stdout ?? "")}\n${String(error?.stderr ?? "")}`;
-    if (VERSION_NOT_FOUND.test(output)) return false;
-    throw error;
-  }
-}
-
-function resolveTagSha(tag) {
-  try {
-    return run("git", ["rev-list", "-n", "1", tag]) || null;
-  } catch (error) {
-    const output = `${error?.message ?? ""}\n${String(error?.stderr ?? "")}`;
-    if (/unknown revision|ambiguous argument|bad revision|unknown commit/i.test(output)) return null;
-    throw error;
-  }
-}
-
-function readJson(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
-}
-
-function writeJson(path, value) {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function changedPathsSinceRelease(base, head) {
-  return run("git", ["diff", "--name-only", base, head]).split(/\r?\n/).filter(Boolean);
-}
-
-function appendOutputs(values) {
-  const output = process.env.GITHUB_OUTPUT;
-  if (!output) throw new Error("GITHUB_OUTPUT is required.");
-  const lines = Object.entries(values).map(([key, value]) => `${key}=${value}`).join("\n");
-  writeFileSync(output, `${lines}\n`, { flag: "a" });
-}
-
-function commitVersion(version) {
-  const manifest = readJson("package.json");
-  writeJson("package.json", withReleaseVersion(manifest, version));
-  run("git", ["config", "user.name", "github-actions[bot]"]);
-  run("git", ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
-  run("git", ["add", "package.json"]);
-  run("git", ["commit", "-m", `chore(release): bump version to v${version}`]);
-  run("git", ["push", "origin", "HEAD:main"]);
-  return run("git", ["rev-parse", "HEAD"]);
-}
-
-export function runReleasePlan() {
-  const event = (process.env.GITHUB_EVENT_NAME ?? "").trim();
-  const recoveryRun = event === "workflow_dispatch";
-  const targetSha = normalizeRecoverySha(process.env.TARGET_SHA ?? "");
-  const head = run("git", ["rev-parse", "HEAD"]).toLowerCase();
-  if (head !== targetSha) throw new Error(`Checked out SHA ${head} does not match target ${targetSha}.`);
-
-  run("git", ["fetch", "origin", "main", "--tags"]);
-  const originMain = run("git", ["rev-parse", "origin/main"]).toLowerCase();
-  if (!recoveryRun && originMain !== targetSha) throw new Error("Release run is stale because origin/main advanced.");
-
-  const manifest = readJson("package.json");
-  bumpPatch(manifest.version);
-  if (manifest.name !== "compact-tools") throw new Error("Refusing to publish a legacy package from this workflow.");
-
-  const currentVersionExists = npmHasVersion(manifest.name, manifest.version);
-  const currentTag = releaseTag(manifest.version);
-  const currentTagSha = resolveTagSha(currentTag)?.toLowerCase() ?? null;
-  assertReleaseBaseline({
-    currentVersion: manifest.version,
-    currentVersionExists,
-    currentTagSha,
-    recoveryRun,
-    releaseShaProvided: Boolean((process.env.RELEASE_SHA ?? "").trim()),
+export async function registryVersion(name, version, fetcher = fetch) {
+  const response = await fetcher(`https://registry.npmjs.org/${encodeURIComponent(name)}/${validateVersion(version)}`, {
+    signal: AbortSignal.timeout(10_000), headers: { "cache-control": "no-cache" },
   });
-  if (currentTagSha !== null) {
-    try {
-      run("git", ["merge-base", "--is-ancestor", currentTagSha, targetSha]);
-    } catch {
-      throw new Error(`${currentTag} does not belong to the selected main history.`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Registry read failed: HTTP ${response.status}.`);
+  const metadata = await response.json();
+  if (metadata.name !== name || metadata.version !== version || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(metadata.dist?.integrity ?? "")) {
+    throw new Error("Registry metadata does not identify the requested version and SHA-512 integrity.");
+  }
+  return { integrity: metadata.dist.integrity };
+}
+
+export function releasePlan({ registry, tagSha, sha, mainSha, recovery }) {
+  if (registry && !recovery) {
+    if (!tagSha) throw new Error("Published version has no tag. Dispatch with the exact published release_sha to recover.");
+    return { publish: false, needed: false };
+  }
+  if (tagSha && tagSha !== sha) throw new Error("Immutable release tag points to a different SHA.");
+  if (!registry && sha !== mainSha) throw new Error("A new historical publication is blocked; select current main, without downgrading latest.");
+  return { publish: registry === null, needed: true };
+}
+
+export function verifyIntegrity(registry, integrity) {
+  if (!registry) throw new Error("Published version is unavailable; do not republish to compensate for readback.");
+  if (registry.integrity !== integrity) throw new Error("Registry integrity differs from the validated tarball; no tag may be created.");
+}
+
+export function publicationNeeded(registry, integrity, planned, rerun = false) {
+  if (registry || !planned) {
+    verifyIntegrity(registry, integrity);
+    return false;
+  }
+  if (rerun) throw new Error("Registry still reports absence on rerun; publication outcome is uncertain. Wait for metadata, never republish for readback.");
+  return true;
+}
+
+function run(command, args) {
+  return execFileSync(command, args, { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+function output(values) {
+  if (!process.env.GITHUB_OUTPUT) throw new Error("GITHUB_OUTPUT is required.");
+  appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(values).map(([key, value]) => `${key}=${value}\n`).join(""));
+}
+
+function manifest() {
+  const value = JSON.parse(readFileSync("package.json", "utf8"));
+  if (value.name !== NAME) throw new Error("Legacy or unexpected package cannot be published here.");
+  validateVersion(value.version);
+  return value;
+}
+
+function tagSha(tag) {
+  // Only a locally absent ref means absent; fetch/auth failures have already failed.
+  const ref = run("git", ["for-each-ref", "--format=%(refname)", `refs/tags/${tag}`]);
+  return ref ? normalizeSha(run("git", ["rev-parse", `${tag}^{commit}`])) : null;
+}
+
+function artifact(path, version) {
+  const packed = JSON.parse(run("tar", ["-xOf", path, "package/package.json"]));
+  if (packed.name !== NAME || packed.version !== validateVersion(version)) throw new Error("Tarball package/version differs from the candidate.");
+  return `sha512-${createHash("sha512").update(readFileSync(path)).digest("base64")}`;
+}
+
+async function main(command, path) {
+  if (command === "target") {
+    if (process.env.GITHUB_REF !== "refs/heads/main") throw new Error("Release workflow must run on main.");
+    run("git", ["fetch", "origin", "main", "--tags"]);
+    const mainSha = normalizeSha(run("git", ["rev-parse", "origin/main"]));
+    const sha = normalizeSha(process.env.GITHUB_EVENT_NAME === "workflow_dispatch" ? process.env.RELEASE_SHA : process.env.GITHUB_SHA);
+    run("git", ["merge-base", "--is-ancestor", sha, mainSha]);
+    output({ sha });
+  } else if (command === "plan") {
+    const { version } = manifest();
+    const sha = normalizeSha(run("git", ["rev-parse", "HEAD"]));
+    if (sha !== normalizeSha(process.env.TARGET_SHA)) throw new Error("Checkout differs from the selected candidate SHA.");
+    const mainSha = normalizeSha(run("git", ["rev-parse", "origin/main"]));
+    run("git", ["merge-base", "--is-ancestor", sha, mainSha]);
+    const tag = `${TAG_PREFIX}${version}`;
+    const existingTag = tagSha(tag);
+    if (existingTag) {
+      run("git", ["merge-base", "--is-ancestor", existingTag, sha]);
+      const tagged = JSON.parse(run("git", ["show", `${existingTag}:package.json`]));
+      if (tagged.name !== NAME || tagged.version !== version) throw new Error("Tag does not identify this package version.");
     }
+    const plan = releasePlan({ registry: await registryVersion(NAME, version), tagSha: existingTag, sha, mainSha, recovery: process.env.GITHUB_EVENT_NAME === "workflow_dispatch" });
+    output({ ...plan, version, sha, tag });
+  } else if (command === "artifact") {
+    const { version } = manifest();
+    const integrity = artifact(path, version);
+    if (process.env.PUBLISH !== "true") verifyIntegrity(await registryVersion(NAME, version), integrity);
+    output({ integrity });
+  } else if (command === "prepare" || command === "verify") {
+    const version = validateVersion(process.env.VERSION);
+    const integrity = artifact(path, version);
+    if (integrity !== process.env.INTEGRITY) throw new Error("Artifact changed after validation.");
+    if (command === "prepare") {
+      const registry = await registryVersion(NAME, version);
+      const publish = publicationNeeded(registry, integrity, process.env.PUBLISH === "true", Number(process.env.GITHUB_RUN_ATTEMPT ?? 1) > 1);
+      if (publish) {
+        const repo = process.env.GITHUB_REPOSITORY;
+        if (!/^[\w.-]+\/[\w.-]+$/.test(repo ?? "")) throw new Error("Invalid repository.");
+        const currentMain = run("git", ["ls-remote", `https://github.com/${repo}.git`, "refs/heads/main"]).split(/\s/)[0];
+        if (normalizeSha(currentMain) !== normalizeSha(process.env.SHA)) throw new Error("New publication is stale; main advanced. Dispatch the accepted current candidate.");
+      }
+      output({ publish });
+      return;
+    }
+    // Bounded public readback. Auth errors, malformed metadata and byte mismatch fail immediately.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const registry = await registryVersion(NAME, version);
+      if (registry || attempt === 3) { verifyIntegrity(registry, integrity); return; }
+      await sleep(5_000);
+    }
+  } else {
+    throw new Error("Usage: release-policy.mjs target|plan|artifact|prepare|verify [tarball]");
   }
-
-  const paths = recoveryRun || currentTagSha === null ? [] : changedPathsSinceRelease(currentTagSha, targetSha);
-  const classification = classifyReleasePaths(paths);
-  const message = run("git", ["log", "-1", "--pretty=%B", targetSha]);
-  const plan = buildReleasePlan({
-    currentVersion: manifest.version,
-    currentVersionExists,
-    publicable: classification.publicPaths.length > 0,
-    releaseBumpCommit: isReleaseBumpCommit(message, process.env.GITHUB_ACTOR ?? ""),
-    recoveryRun,
-    versionExists: (version) => npmHasVersion(manifest.name, version),
-  });
-
-  let publishSha = targetSha;
-  if (plan.bump) publishSha = commitVersion(plan.version).toLowerCase();
-
-  const tag = releaseTag(plan.version);
-  const tagSha = resolveTagSha(tag)?.toLowerCase() ?? null;
-  const { tagNeeded } = resolveReleaseTagState({
-    version: plan.version,
-    tagSha,
-    publishSha,
-    publish: plan.publish,
-    recoveryRun,
-  });
-
-  appendOutputs({ publish: plan.publish, version: plan.version, publish_sha: publishSha, tag_needed: tagNeeded, reason: plan.reason });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  if (process.argv[2] !== "plan") throw new Error("Usage: node scripts/release-policy.mjs plan");
-  runReleasePlan();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main(process.argv[2], process.argv[3]);
 }

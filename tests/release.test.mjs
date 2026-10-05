@@ -1,19 +1,25 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import * as release from "../scripts/release-policy.mjs";
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const root = fileURLToPath(new URL("../", import.meta.url));
+const read = path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const manifest = JSON.parse(read("package.json"));
+const sha = "a".repeat(40);
+const otherSha = "b".repeat(40);
+const integrity = "sha512-" + "A".repeat(86) + "==";
+const input = { version: "0.8.48", registry: null, tagSha: null, sha, mainSha: sha, recovery: false };
 
-// The manifest is the native discovery and distribution boundary.
 test("the independent package exposes only compact tools and host-provided peers", () => {
   assert.equal(manifest.name, "compact-tools");
   assert.deepEqual(manifest.pi, { extensions: ["./extensions/compact-tools.ts"] });
   assert.deepEqual(manifest.files, ["extensions/compact-tools.ts", "README.md", "LICENSE"]);
   assert.deepEqual(manifest.peerDependencies, {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
+    "@earendil-works/pi-coding-agent": "*", "@earendil-works/pi-tui": "*",
   });
   assert.equal(manifest.dependencies, undefined);
   assert.equal(manifest.bin, undefined);
@@ -21,66 +27,60 @@ test("the independent package exposes only compact tools and host-provided peers
   assert.equal(manifest.publishConfig.access, "public");
 });
 
-test("only shipped resources trigger an automatic patch release", () => {
-  assert.deepEqual(release.classifyReleasePaths([
-    "extensions/compact-tools.ts", "README.md", "tests/compact-tools.test.mjs",
-    ".github/workflows/publish.yml", "scripts/release-policy.mjs", "AGENTS.md",
-  ]), {
-    publicPaths: ["extensions/compact-tools.ts", "README.md"],
-    testPaths: ["tests/compact-tools.test.mjs"],
-    workflowPaths: [".github/workflows/publish.yml"],
-    scriptPaths: ["scripts/release-policy.mjs"],
-    ignoredPaths: ["AGENTS.md"],
-  });
-  const input = { currentVersion: "0.2.0", currentVersionExists: true, publicable: true,
-    releaseBumpCommit: false, recoveryRun: false, versionExists: version => version === "0.2.1" };
-  assert.deepEqual(release.buildReleasePlan(input), { publish: true, bump: true, version: "0.2.2", reason: "publicable_patch" });
-  assert.equal(release.buildReleasePlan({ ...input, publicable: false }).publish, false);
-  assert.equal(release.buildReleasePlan({ ...input, recoveryRun: true }).publish, false);
-  assert.equal(release.buildReleasePlan({ ...input, releaseBumpCommit: true }).publish, false);
-  assert.deepEqual(release.buildReleasePlan({ ...input, currentVersionExists: false }),
-    { publish: true, bump: false, version: "0.2.0", reason: "unpublished_version" });
+test("PR versions publish once; ordinary pushes never generate a patch", () => {
+  assert.deepEqual(release.releasePlan(input), { publish: true, needed: true });
+  assert.deepEqual(release.releasePlan({ ...input, registry: { integrity }, tagSha: otherSha }), { publish: false, needed: false });
+  assert.throws(() => release.releasePlan({ ...input, registry: { integrity } }), /release_sha/);
+  assert.throws(() => release.releasePlan({ ...input, mainSha: otherSha }), /historical/);
+  assert.throws(() => release.releasePlan({ ...input, tagSha: otherSha }), /different SHA/);
 });
 
-test("a missing npm package is unpublished, but authentication errors still block", () => {
-  const execute = message => () => { throw new Error(message); };
-  assert.equal(release.npmHasVersion("compact-tools", "0.2.0", execute("[ERR_PNPM_FETCH_404] Not Found - 404")), false);
-  assert.throws(() => release.npmHasVersion("compact-tools", "0.2.0", execute("ERR_PNPM_FETCH_401")), /401/);
+test("recovery binds exact SHA and SRI without republishing or moving tags", () => {
+  assert.deepEqual(release.releasePlan({ ...input, recovery: true, registry: { integrity }, mainSha: otherSha }), { publish: false, needed: true });
+  assert.throws(() => release.releasePlan({ ...input, recovery: true, registry: { integrity }, tagSha: otherSha }), /different SHA/);
+  assert.throws(() => release.verifyIntegrity({ integrity: "sha512-different" }, integrity), /integrity/);
+  assert.throws(() => release.verifyIntegrity(null, integrity), /unavailable/);
+  release.verifyIntegrity({ integrity }, integrity);
+  assert.equal(release.publicationNeeded(null, integrity, true), true);
+  assert.equal(release.publicationNeeded({ integrity }, integrity, true, true), false); // rerun after successful publish
+  assert.throws(() => release.publicationNeeded(null, integrity, true, true), /never republish/);
+  assert.equal(release.publicationNeeded({ integrity }, integrity, false), false); // recovery
+  assert.throws(() => release.publicationNeeded(null, integrity, false), /unavailable/);
+  assert.throws(() => release.publicationNeeded({ integrity: "sha512-different" }, integrity, true), /integrity/);
 });
 
-test("version updates need no parallel contract and tags cannot collide with legacy releases", () => {
-  const original = { name: "compact-tools", version: "0.2.0", untouched: true };
-  assert.deepEqual(release.withReleaseVersion(original, "0.2.1"), { ...original, version: "0.2.1" });
-  assert.equal(original.version, "0.2.0");
-  assert.equal(release.releaseTag("0.2.1"), "compact-tools-v0.2.1");
+test("only 404 means absent; registry/auth/network errors fail closed", async () => {
+  const fetcher = (status, value = {}) => async () => ({ status, ok: status === 200, json: async () => value });
+  assert.equal(await release.registryVersion("compact-tools", "0.8.48", fetcher(404)), null);
+  await assert.rejects(release.registryVersion("compact-tools", "0.8.48", fetcher(403)), /403/);
+  await assert.rejects(release.registryVersion("compact-tools", "0.8.48", fetcher(200)), /metadata/);
+  await assert.rejects(release.registryVersion("compact-tools", "0.8.48", async () => { throw new Error("network"); }), /network/);
+  assert.deepEqual(await release.registryVersion("compact-tools", "0.8.48", fetcher(200, { name: "compact-tools", version: "0.8.48", dist: { integrity } })), { integrity });
 });
 
-test("published releases retain immutable tags and explicit missing-tag recovery", () => {
-  const input = { currentVersion: "0.2.0", currentVersionExists: true, currentTagSha: null,
-    recoveryRun: false, releaseShaProvided: false };
-  assert.throws(() => release.assertReleaseBaseline(input), /Recover its exact published SHA/);
-  assert.throws(() => release.assertReleaseBaseline({ ...input, recoveryRun: true }), /requires the exact release_sha/);
-  assert.doesNotThrow(() => release.assertReleaseBaseline({ ...input, recoveryRun: true, releaseShaProvided: true }));
-  const tag = { version: "0.2.0", tagSha: "a".repeat(40), publishSha: "b".repeat(40), publish: false, recoveryRun: false };
-  assert.deepEqual(release.resolveReleaseTagState(tag), { tagNeeded: false });
-  assert.throws(() => release.resolveReleaseTagState({ ...tag, publish: true }), /already points to/);
+test("real tarball bytes and package version are checked before registry access", () => {
+  const temp = mkdtempSync("/var/tmp/pi-release-test-");
+  try {
+    mkdirSync(join(temp, "package"));
+    writeFileSync(join(temp, "package/package.json"), JSON.stringify({ name: "compact-tools", version: "0.8.48" }));
+    const tarball = join(temp, "package.tgz");
+    execFileSync("tar", ["-czf", tarball, "-C", temp, "package"], { timeout: 5_000 });
+    const result = spawnSync(process.execPath, ["scripts/release-policy.mjs", "verify", tarball], {
+      cwd: root, env: { ...process.env, VERSION: "0.8.48", INTEGRITY: integrity }, encoding: "utf8", timeout: 5_000,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Artifact changed after validation/);
+    const wrongVersion = spawnSync(process.execPath, ["scripts/release-policy.mjs", "verify", tarball], {
+      cwd: root, env: { ...process.env, VERSION: "0.8.49", INTEGRITY: integrity }, encoding: "utf8", timeout: 5_000,
+    });
+    assert.equal(wrongVersion.status, 1);
+    assert.match(wrongVersion.stderr, /Tarball package\/version differs/);
+  } finally { rmSync(temp, { recursive: true, force: true }); }
 });
 
-test("release keeps OIDC separate from repository writes and publishes the selected tarball", () => {
-  const workflow = read(".github/workflows/publish.yml");
-  const job = name => workflow.split(`\n  ${name}:\n`)[1]?.split(/\n  [\w-]+:\n/)[0] ?? "";
-  assert.match(workflow, /concurrency:[\s\S]*?cancel-in-progress: false/);
-  assert.match(workflow, /release_sha:/);
-  assert.match(job("validate"), /name !== "compact-tools"/);
-  assert.match(job("plan"), /contents: write/);
-  assert.doesNotMatch(job("plan"), /id-token: write/);
-  assert.match(job("publish"), /contents: read[\s\S]*id-token: write/);
-  assert.doesNotMatch(job("publish"), /contents: write/);
-  assert.match(job("publish"), /npm publish \.release-artifacts\/compact-tools-\$\{\{ needs.plan.outputs.version \}\}\.tgz --ignore-scripts --provenance/);
-  assert.match(job("tag-release"), /tag="compact-tools-v\$VERSION"/);
-  assert.doesNotMatch(workflow, /secrets\.|create-github-app-token|notify-stack|parity/);
-  const quality = read(".github/workflows/quality.yml");
-  assert.match(quality, /pull_request:/);
-  assert.match(quality, /contents: read/);
-  assert.doesNotMatch(quality, /id-token: write|contents: write|npm publish|secrets\./);
+test("placeholders and mutable refs are not release candidates", () => {
+  assert.equal(release.validateVersion("0.8.48"), "0.8.48");
+  for (const version of ["0.0.0-stage", "00.8.48", "0.8", "0.8.48\n"]) assert.throws(() => release.validateVersion(version));
+  assert.equal(release.normalizeSha(sha.toUpperCase()), sha);
+  assert.throws(() => release.normalizeSha("main"), /40/);
 });
