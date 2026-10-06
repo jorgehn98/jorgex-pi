@@ -58,6 +58,55 @@ test("only 404 means absent; registry/auth/network errors fail closed", async ()
   assert.deepEqual(await release.registryVersion("compact-tools", "0.8.48", fetcher(200, { name: "compact-tools", version: "0.8.48", dist: { integrity } })), { integrity });
 });
 
+const published = { name: "compact-tools", version: "0.8.48", dist: { integrity } };
+function registry(...responses) {
+  const sleeps = [];
+  let calls = 0;
+  const fetcher = async () => {
+    const [status, value = {}] = responses[Math.min(calls++, responses.length - 1)];
+    return { status, ok: status === 200, json: async () => value };
+  };
+  return { sleeps, calls: () => calls, options: { fetcher, sleep: async ms => { sleeps.push(ms); } } };
+}
+const confirm = options => release.confirmPublished("compact-tools", "0.8.48", integrity, options);
+
+test("readback waits through propagation 404s until the version appears", async () => {
+  const npm = registry([404], [404], [200, published]);
+  await confirm(npm.options);
+  assert.equal(npm.calls(), 3);
+  assert.deepEqual(npm.sleeps, [15_000, 15_000]);
+});
+
+test("readback stops at five minutes of absence without authorizing a republish", async () => {
+  const npm = registry([404]);
+  await assert.rejects(confirm(npm.options), /unavailable; do not republish/);
+  assert.equal(npm.calls(), 21);
+  assert.equal(npm.sleeps.length, 20);
+  assert.equal(npm.sleeps.reduce((total, ms) => total + ms, 0), 300_000);
+});
+
+test("readback fails on the attempt that sees anything other than a 404", async () => {
+  const differentBytes = registry([404], [200, { ...published, dist: { integrity: "sha512-" + "B".repeat(86) + "==" } }], [200, published]);
+  await assert.rejects(confirm(differentBytes.options), /integrity differs/);
+  assert.equal(differentBytes.calls(), 2);
+
+  for (const status of [401, 500]) {
+    const npm = registry([status], [200, published]);
+    await assert.rejects(confirm(npm.options), new RegExp(`HTTP ${status}`));
+    assert.equal(npm.calls(), 1);
+    assert.deepEqual(npm.sleeps, []);
+  }
+
+  const otherVersion = registry([200, { ...published, version: "0.8.49" }], [200, published]);
+  await assert.rejects(confirm(otherVersion.options), /metadata/);
+  assert.equal(otherVersion.calls(), 1);
+
+  let calls = 0;
+  const fetcher = async () => { calls++; throw new Error("network"); };
+  await assert.rejects(confirm({ fetcher, sleep: async () => {} }), /network/);
+  assert.equal(calls, 1);
+});
+
 test("real tarball bytes and package version are checked before registry access", () => {
   const temp = mkdtempSync("/var/tmp/pi-release-test-");
   try {
