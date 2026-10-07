@@ -80,7 +80,7 @@ jobs:
     needs: validate
     if: needs.validate.outputs.needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
